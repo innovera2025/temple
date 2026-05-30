@@ -1,0 +1,90 @@
+import { createHash } from "node:crypto";
+import { argon2idAsync } from "@noble/hashes/argon2";
+import { psql, sqlLiteral } from "../src/psql.js";
+
+const templeA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const templeB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const devPassword = "Password123!";
+const argonOptions = { t: 1, m: 1024, p: 1, dkLen: 32 };
+
+interface SeedUser {
+  tenantId: string;
+  email: string;
+  displayName: string;
+  role: "admin" | "finance" | "staff";
+}
+
+const users: SeedUser[] = [
+  { tenantId: templeA, email: "admin@wat-arun.example", displayName: "ผู้ดูแลวัดอรุณ", role: "admin" },
+  { tenantId: templeA, email: "finance@wat-arun.example", displayName: "การเงินวัดอรุณ", role: "finance" },
+  { tenantId: templeA, email: "staff@wat-arun.example", displayName: "เจ้าหน้าที่วัดอรุณ", role: "staff" },
+  { tenantId: templeB, email: "admin@wat-pho.example", displayName: "ผู้ดูแลวัดโพธิ์", role: "admin" },
+  { tenantId: templeB, email: "finance@wat-pho.example", displayName: "การเงินวัดโพธิ์", role: "finance" },
+  { tenantId: templeB, email: "staff@wat-pho.example", displayName: "เจ้าหน้าที่วัดโพธิ์", role: "staff" },
+];
+
+function base64Url(value: Uint8Array): string {
+  return Buffer.from(value).toString("base64url");
+}
+
+async function devPasswordHash(email: string): Promise<string> {
+  const salt = createHash("sha256").update(`wat-demo:${email}`).digest().subarray(0, 16);
+  const hash = await argon2idAsync(devPassword, salt, argonOptions);
+
+  return `$argon2id$v=19$m=${argonOptions.m},t=${argonOptions.t},p=${argonOptions.p}$${base64Url(salt)}$${base64Url(hash)}`;
+}
+
+const userValues = (
+  await Promise.all(
+    users.map(async (user) => {
+      const passwordHash = await devPasswordHash(user.email);
+
+      return `(${sqlLiteral(user.tenantId)}, ${sqlLiteral(user.email)}, ${sqlLiteral(user.displayName)}, ${sqlLiteral(user.role)}, ${sqlLiteral(passwordHash)})`;
+    }),
+  )
+).join(",\n    ");
+
+await psql(`
+  SET ROLE wat_migrate;
+
+  INSERT INTO temples (id, slug, name_th, name_en, status)
+  VALUES
+    ('${templeA}', 'wat-arun-demo', 'วัดอรุณเดโม', 'Wat Arun Demo', 'active'),
+    ('${templeB}', 'wat-pho-demo', 'วัดโพธิ์เดโม', 'Wat Pho Demo', 'active')
+  ON CONFLICT (id) DO UPDATE
+  SET slug = EXCLUDED.slug,
+      name_th = EXCLUDED.name_th,
+      name_en = EXCLUDED.name_en,
+      status = EXCLUDED.status,
+      updated_at = now();
+
+  -- Development seed credentials only. All seeded users use password: ${devPassword}
+  INSERT INTO users (tenant_id, email, display_name, role, password_hash)
+  VALUES
+    ${userValues}
+  ON CONFLICT (tenant_id, email) DO UPDATE
+  SET display_name = EXCLUDED.display_name,
+      role = EXCLUDED.role,
+      password_hash = EXCLUDED.password_hash,
+      updated_at = now();
+
+  INSERT INTO ledger_accounts (tenant_id, code, name_th, account_type)
+  VALUES
+    ('${templeA}', '1000', 'เงินสด', 'asset'),
+    ('${templeA}', '1100', 'เงินฝากธนาคาร', 'asset'),
+    ('${templeA}', '4000', 'รายรับเงินบริจาค', 'revenue'),
+    ('${templeA}', '5000', 'ค่าใช้จ่ายทั่วไป', 'expense'),
+    ('${templeB}', '1000', 'เงินสด', 'asset'),
+    ('${templeB}', '1100', 'เงินฝากธนาคาร', 'asset'),
+    ('${templeB}', '4000', 'รายรับเงินบริจาค', 'revenue'),
+    ('${templeB}', '5000', 'ค่าใช้จ่ายทั่วไป', 'expense')
+  ON CONFLICT (tenant_id, code) DO UPDATE
+  SET name_th = EXCLUDED.name_th,
+      account_type = EXCLUDED.account_type,
+      updated_at = now();
+
+  RESET ROLE;
+`);
+
+console.log("Seeded 2 active temples, tenant users, and ledger accounts.");
+console.log("Development login password for all seeded users: Password123!");

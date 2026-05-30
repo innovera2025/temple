@@ -1,0 +1,25 @@
+{
+  "name": "@wat/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint \"src/**/*.ts\"",
+    "prisma": "set -a; [ -f ../../.env ] && . ../../.env; set +a; prisma",
+    "rls:check": "node --experimental-specifier-resolution=node dist/scripts/rls-check.js",
+    "seed": "node --experimental-specifier-resolution=node dist/prisma/seed.js",
+    "test": "vitest run --passWithNoTests tests",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@noble/hashes": "1.8.0",
+    "@prisma/client": "^6.1.0"
+  },
+  "devDependencies": {
+    "prisma": "^6.1.0",
+    "vitest": "^2.1.8"
+  }
+}

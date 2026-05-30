@@ -1,0 +1,342 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TempleStatus {
+  active
+  suspended
+  archived
+
+  @@map("temple_status")
+}
+
+enum ApplicationStatus {
+  pending
+  approved
+  rejected
+
+  @@map("application_status")
+}
+
+enum TenantRole {
+  admin
+  finance
+  staff
+
+  @@map("tenant_role")
+}
+
+enum DonorType {
+  person
+  organization
+
+  @@map("donor_type")
+}
+
+enum DonationStatus {
+  pledged
+  confirmed
+  cancelled
+
+  @@map("donation_status")
+}
+
+enum ReceiptStatus {
+  issued
+  voided
+
+  @@map("receipt_status")
+}
+
+enum LedgerEntryStatus {
+  draft
+  posted
+  voided
+
+  @@map("ledger_entry_status")
+}
+
+enum LedgerAccountType {
+  asset
+  liability
+  equity
+  revenue
+  expense
+
+  @@map("ledger_account_type")
+}
+
+enum AttachmentOwnerType {
+  donation
+  receipt
+  ledger_entry
+  donor
+
+  @@map("attachment_owner_type")
+}
+
+model Temple {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug              String             @unique
+  nameTh            String             @map("name_th")
+  nameEn            String?            @map("name_en")
+  status            TempleStatus       @default(active)
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime           @default(now()) @map("updated_at") @db.Timestamptz(6)
+  users             User[]
+  donors            Donor[]
+  donations         Donation[]
+  receipts          Receipt[]
+  ledgerAccounts    LedgerAccount[]
+  ledgerEntries     LedgerEntry[]
+  reconciliationPeriods ReconciliationPeriod[]
+  docCounters       DocCounter[]
+  attachments       Attachment[]
+  auditLogs         AuditLog[]
+  refreshTokens     AuthRefreshToken[]
+
+  @@map("temples")
+}
+
+model PlatformUser {
+  id        String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email     String             @unique
+  displayName String           @map("display_name")
+  createdAt DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime           @default(now()) @map("updated_at") @db.Timestamptz(6)
+  reviews   TempleApplication[]
+  auditLogs PlatformAuditLog[]
+
+  @@map("platform_users")
+}
+
+model TempleApplication {
+  id                       String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  templeNameTh             String            @map("temple_name_th")
+  contactEmail             String            @map("contact_email")
+  status                   ApplicationStatus @default(pending)
+  reviewedByPlatformUserId String?           @map("reviewed_by_platform_user_id") @db.Uuid
+  reviewedByPlatformUser   PlatformUser?     @relation(fields: [reviewedByPlatformUserId], references: [id])
+  createdAt                DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime          @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@map("temple_applications")
+}
+
+model PlatformAuditLog {
+  id                  String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actorPlatformUserId String?       @map("actor_platform_user_id") @db.Uuid
+  actorPlatformUser   PlatformUser? @relation(fields: [actorPlatformUserId], references: [id])
+  action              String
+  entityType          String        @map("entity_type")
+  entityId            String?       @map("entity_id") @db.Uuid
+  metadata            Json          @default("{}")
+  createdAt           DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("platform_audit_logs")
+}
+
+model User {
+  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String     @map("tenant_id") @db.Uuid
+  tenant      Temple     @relation(fields: [tenantId], references: [id])
+  email       String     @unique
+  passwordHash String?   @map("password_hash")
+  displayName String     @map("display_name")
+  role        TenantRole
+  isActive    Boolean    @default(true) @map("is_active")
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime   @default(now()) @map("updated_at") @db.Timestamptz(6)
+  auditLogs   AuditLog[]
+  refreshTokens AuthRefreshToken[]
+
+  @@unique([tenantId, email])
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@map("users")
+}
+
+model Donor {
+  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String      @map("tenant_id") @db.Uuid
+  tenant      Temple      @relation(fields: [tenantId], references: [id])
+  displayName String      @map("display_name")
+  legalName   String?     @map("legal_name")
+  donorType   DonorType   @default(person) @map("donor_type")
+  email       String?
+  phone       String?
+  lineId      String?     @map("line_id")
+  address     String?
+  taxId       String?     @map("tax_id")
+  tags        String[]    @default([])
+  notes       String?
+  consent     Boolean     @default(false)
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime    @default(now()) @map("updated_at") @db.Timestamptz(6)
+  donations   Donation[]
+
+  @@index([tenantId])
+  @@map("donors")
+}
+
+model Donation {
+  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String         @map("tenant_id") @db.Uuid
+  tenant       Temple         @relation(fields: [tenantId], references: [id])
+  donorId      String?        @map("donor_id") @db.Uuid
+  donor        Donor?         @relation(fields: [donorId], references: [id])
+  amountSatang BigInt         @map("amount_satang")
+  currency     String         @default("THB") @db.Char(3)
+  donationDate DateTime       @map("donation_date") @db.Date
+  status       DonationStatus @default(confirmed)
+  note         String?
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime       @default(now()) @map("updated_at") @db.Timestamptz(6)
+  receipts     Receipt[]
+
+  @@index([tenantId])
+  @@map("donations")
+}
+
+model Receipt {
+  id        String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String        @map("tenant_id") @db.Uuid
+  tenant    Temple        @relation(fields: [tenantId], references: [id])
+  donationId String       @map("donation_id") @db.Uuid
+  donation  Donation      @relation(fields: [donationId], references: [id])
+  receiptNo String        @map("receipt_no")
+  status    ReceiptStatus @default(issued)
+  issuedAt  DateTime      @default(now()) @map("issued_at") @db.Timestamptz(6)
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime      @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, receiptNo])
+  @@index([tenantId])
+  @@map("receipts")
+}
+
+model LedgerAccount {
+  id            String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String            @map("tenant_id") @db.Uuid
+  tenant        Temple            @relation(fields: [tenantId], references: [id])
+  code          String
+  nameTh        String            @map("name_th")
+  accountType   LedgerAccountType @map("account_type")
+  isActive      Boolean           @default(true) @map("is_active")
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime          @default(now()) @map("updated_at") @db.Timestamptz(6)
+  ledgerEntries LedgerEntry[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("ledger_accounts")
+}
+
+model LedgerEntry {
+  id           String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String            @map("tenant_id") @db.Uuid
+  tenant       Temple            @relation(fields: [tenantId], references: [id])
+  entryNo      String            @map("entry_no")
+  accountId    String            @map("account_id") @db.Uuid
+  account      LedgerAccount     @relation(fields: [accountId], references: [id])
+  amountSatang BigInt            @map("amount_satang")
+  entryDate    DateTime          @map("entry_date") @db.Date
+  status       LedgerEntryStatus @default(posted)
+  description  String?
+  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime          @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, entryNo])
+  @@index([tenantId])
+  @@map("ledger_entries")
+}
+
+model ReconciliationPeriod {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  tenant      Temple    @relation(fields: [tenantId], references: [id])
+  periodStart DateTime  @map("period_start") @db.Date
+  periodEnd   DateTime  @map("period_end") @db.Date
+  closedAt    DateTime? @map("closed_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, periodStart, periodEnd])
+  @@index([tenantId])
+  @@map("reconciliation_periods")
+}
+
+model DocCounter {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  tenant    Temple   @relation(fields: [tenantId], references: [id])
+  docType   String   @map("doc_type")
+  nextValue BigInt   @default(1) @map("next_value")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, docType])
+  @@index([tenantId])
+  @@map("doc_counters")
+}
+
+model Attachment {
+  id         String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String              @map("tenant_id") @db.Uuid
+  tenant     Temple              @relation(fields: [tenantId], references: [id])
+  ownerType  AttachmentOwnerType @map("owner_type")
+  ownerId    String              @map("owner_id") @db.Uuid
+  fileName   String              @map("file_name")
+  mimeType   String              @map("mime_type")
+  storageKey String              @map("storage_key")
+  byteSize   BigInt              @map("byte_size")
+  createdAt  DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([tenantId])
+  @@map("attachments")
+}
+
+model AuditLog {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  tenant      Temple    @relation(fields: [tenantId], references: [id])
+  actorUserId String?   @map("actor_user_id") @db.Uuid
+  actorUser   User?     @relation(fields: [actorUserId], references: [id])
+  action      String
+  entityType  String    @map("entity_type")
+  entityId    String?   @map("entity_id") @db.Uuid
+  before      Json?
+  after       Json?
+  reason      String?
+  ip          String?
+  metadata    Json      @default("{}")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([tenantId])
+  @@map("audit_logs")
+}
+
+model AuthRefreshToken {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String    @map("tenant_id") @db.Uuid
+  tenant            Temple    @relation(fields: [tenantId], references: [id])
+  userId            String    @map("user_id") @db.Uuid
+  user              User      @relation(fields: [tenantId, userId], references: [tenantId, id])
+  tokenHash         String    @unique @map("token_hash")
+  expiresAt         DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt         DateTime? @map("revoked_at") @db.Timestamptz(6)
+  replacedByTokenId String?   @map("replaced_by_token_id") @db.Uuid
+  replacedByToken   AuthRefreshToken? @relation("RefreshTokenReplacement", fields: [tenantId, replacedByTokenId], references: [tenantId, id])
+  replacesTokens    AuthRefreshToken[] @relation("RefreshTokenReplacement")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@index([tenantId, userId])
+  @@map("auth_refresh_tokens")
+}

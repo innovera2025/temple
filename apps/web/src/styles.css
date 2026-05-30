@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: Inter, "Noto Sans Thai", "IBM Plex Sans Thai", system-ui, sans-serif;
+  color-scheme: light;
+  --paper: #f5f1e8;
+  --brand: #6f2f1f;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+}
+
+.metric-card {
+  border: 1px solid rgb(231 229 228);
+  border-radius: 1.25rem;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 1rem;
+  box-shadow: 0 1px 2px rgba(68, 64, 60, 0.05);
+}
+
+.metric-card span {
+  display: block;
+  color: rgb(120 113 108);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.metric-card strong {
+  display: block;
+  margin-top: 0.5rem;
+  color: rgb(28 25 23);
+  font-size: 1.875rem;
+  line-height: 2.25rem;
+}
+
+.metric-card small {
+  display: block;
+  margin-top: 0.25rem;
+  color: rgb(87 83 78);
+  font-size: 0.8125rem;
+}

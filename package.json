@@ -1,0 +1,20 @@
+{
+  "name": "wat-management-system",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "lint": "turbo lint",
+    "test": "pnpm --filter @wat/db test && pnpm --filter @wat/db seed && turbo test --filter=!@wat/db --concurrency=1",
+    "typecheck": "turbo typecheck"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "eslint": "^9.18.0",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.20.0",
+    "turbo": "^2.3.4"
+  }
+}
