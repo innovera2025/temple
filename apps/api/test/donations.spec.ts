@@ -501,6 +501,20 @@ describe("donations + auto-posted income ledger", () => {
     expect(ledgerActions).toContain("ledger:update");
   });
 
+  it("rejects a malformed :id path param with 422 (not a 500)", async () => {
+    await expectProjectHttpError(donations.getOne(templeA, "not-a-uuid"), 422, "UNPROCESSABLE_ENTITY");
+    await expectProjectHttpError(
+      donations.update(actorA, templeA, "127.0.0.1", "not-a-uuid", { amountSatang: 100 }),
+      422,
+      "UNPROCESSABLE_ENTITY",
+    );
+    await expectProjectHttpError(
+      donations.void(actorA, templeA, "127.0.0.1", "not-a-uuid", { reason: "x" }),
+      422,
+      "UNPROCESSABLE_ENTITY",
+    );
+  });
+
   it("restricts roles: create allows staff, void is admin/finance only", () => {
     expect(reflector.get<string[]>(ROLES_KEY, DonationsController.prototype.create)).toEqual([
       "admin",

@@ -8,6 +8,7 @@ import { validateEnv } from "./config/env.validation";
 import { DonationsModule } from "./donations/donations.module";
 import { DonorsModule } from "./donors/donors.module";
 import { HealthModule } from "./health/health.module";
+import { ReceiptsModule } from "./receipts/receipts.module";
 
 @Module({
   imports: [
@@ -27,7 +28,8 @@ import { HealthModule } from "./health/health.module";
     AuthModule,
     AuditModule,
     DonorsModule,
-    DonationsModule
+    DonationsModule,
+    ReceiptsModule
   ],
   providers: [
     {

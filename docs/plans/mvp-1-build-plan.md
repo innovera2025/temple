@@ -13,14 +13,14 @@
 | 2 | Auth + RBAC + audit | ✅ เสร็จ (Task 3) |
 | 3 | Donor registry | ✅ เสร็จ (Task 4) |
 | 4 | Donation create/edit/void + auto-post income ledger | ✅ เสร็จ (Task 5) |
-| 5 | Receipt / ใบอนุโมทนา | ⬜ ถัดไป |
-| 6 | Ledger income/expense | ⬜ |
+| 5 | Receipt / ใบอนุโมทนา (issue/void/reissue/preview + numbering) | ✅ เสร็จ (Task 6) |
+| 6 | Ledger income/expense | ⬜ ถัดไป |
 | 7 | Reconciliation / close period | ⬜ |
 | 8 | Finance dashboard | ⬜ |
 | 9 | Reports / export | ⬜ |
 | 10 | Platform admin | ⬜ |
 
-> Phase 0–3 อยู่ใน commit `af7afff` (MVP-1 foundation). Phase 4 (Task 5): atomic income posting + void reverse (receipt→ledger→donation) + composite tenant FK; ผ่าน api 32 + web 27 tests, `migrate reset`/seed/`rls:check`, และ global typecheck/lint/build ครบ
+> Phase 0–3 อยู่ใน commit `af7afff` (MVP-1 foundation). Phase 4 (Task 5): atomic income posting + void reverse (receipt→ledger→donation) + composite tenant FK. Phase 5 (Task 6): receipt issue/void/reissue (supersession) + RCPT numbering (atomic, unique/วัด) + printable preview ผ่าน `bahtText` + Task5↔Task6 void integration; ผ่าน api 46 + web 40 + db 7 tests, `migrate reset`/seed/`rls:check`, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings (reissue↔donation-void lock-ordering race, malformed-:id 500)
 
 ## Stack & หลักการบังคับ (ตัดสินแล้ว)
 
@@ -74,7 +74,7 @@
 - **Files/modules:** `apps/api/src/donations/**`, แตะ `apps/api/src/ledger/**` (post income), `apps/web/src/features/donations/**`, `packages/shared/src/schemas/donation.ts`
 - **Verify:** global • test:finance (atomic post, void reverse, audit แยก `donation:void`/`ledger:cancel`, reason ขาด → 422) • isolation
 
-### Phase 5 — Receipt / ใบอนุโมทนา (issue/preview/void/reissue + numbering + PDF)
+### Phase 5 — Receipt / ใบอนุโมทนา (issue/preview/void/reissue + numbering + PDF) ✅
 
 - **ส่งมอบ:** ออกใบ เลขที่ unique ต่อวัด (กัน concurrency), preview/PDF, void(reason), reissue(เลขใหม่ ใบเก่า superseded), `bahtText` แปลงจำนวนเป็นตัวอักษร
 - **Files/modules:** `apps/api/src/receipts/**`, `doc_counters` logic (ใน `packages/db` หรือ receipts service), `apps/web/src/features/receipts/**`, PDF util
@@ -119,7 +119,8 @@ Phase 0 → 1 → 2 เป็นรากฐาน (ทำเรียง ห้
 
 ## Open decisions (บล็อกบาง phase)
 
-- เลขใบอนุโมทนา: prefix/รีเซ็ตรายปี/เลขไทย? (บล็อก Phase 5) — และ **ต้องยืนยันข้อกำหนดทางกฎหมาย/ภาษีก่อน lock void/reissue**
+- เลขใบอนุโมทนา: prefix/รีเซ็ตรายปี/เลขไทย? — **Phase 5 ใช้ default (Task 6):** prefix `RCPT-` + เลขรันนิ่ง 6 หลัก เลขอารบิก unique/วัด (`doc_counters`), **ไม่รีเซ็ตรายปี**, เลขไม่ reuse หลัง void/supersede. ยังเปิดให้ปรับ (prefix/รีเซ็ตรายปี/เลขไทย) ถ้าวัดต้องการ — และ **ยังต้องยืนยันข้อกำหนดทางกฎหมาย/ภาษี** ก่อน lock void/reissue
+- PDF ใบอนุโมทนา: Task 6 ส่ง **printable preview (HTML)** สำหรับ print-to-PDF จากเบราว์เซอร์ (มี `bahtText`); binary PDF (pdfkit/หัวเอกสาร+ตราวัด) เลื่อนไปทำเมื่อยืนยันรูปแบบเอกสาร
 - chart of funds / หมวดบริจาค-บัญชีตั้งต้น — **Phase 4 ตัดสินแล้ว (Task 5 D2):** post เข้าบัญชี revenue `4000` ตั้งต้น (`fundAccountId` optional, default = 4000, resolve ใน tenant tx + 422 ถ้าไม่ใช่ revenue/inactive/ข้ามวัด); full chart-of-funds UI ยังค้างไว้ Phase 6
 - วิธีรับเงิน — **ตัดสินแล้ว (Task 5 D1):** enum `donation_method = cash | bank_transfer | qr | other` (Thai labels ใน `packages/shared`)
 - นิยาม "ปิดงวด" + แก้ย้อนหลังได้แค่ไหน (Phase 7)

@@ -91,6 +91,18 @@ const DONATION_WRITE_ROLES = ["admin", "finance", "staff"] as const;
 // Voiding reverses posted financial entries — restricted to admin/finance.
 const DONATION_VOID_ROLES = ["admin", "finance"] as const;
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Reject a malformed :id path param with 422 before it hits Postgres as an
+ *  invalid-uuid cast (which would otherwise surface as an unhandled 500). */
+function assertUuidParam(id: string): void {
+  if (!UUID_RE.test(id)) {
+    throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ข้อมูลไม่ถูกต้อง", [
+      { field: "id", message: "รูปแบบรหัสไม่ถูกต้อง" },
+    ]);
+  }
+}
+
 @Controller("donations")
 @UseGuards(AuthGuard, TenantGuard, RolesGuard)
 export class DonationsController {
@@ -132,6 +144,7 @@ export class DonationsController {
     @CurrentTenant() tenantId: string,
     @Param("id") id: string,
   ): Promise<{ donation: SerializedDonation }> {
+    assertUuidParam(id);
     const donation = await this.donations.getById(tenantId, id);
     return { donation: serializeDonation(donation) };
   }
@@ -145,6 +158,7 @@ export class DonationsController {
     @Param("id") id: string,
     @Body() body: unknown,
   ): Promise<{ donation: SerializedDonation }> {
+    assertUuidParam(id);
     const result = validateUpdateDonation(body);
     if (!result.success) {
       throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ข้อมูลไม่ถูกต้อง", result.errors);
@@ -163,6 +177,7 @@ export class DonationsController {
     @Param("id") id: string,
     @Body() body: unknown,
   ): Promise<{ donation: SerializedDonation }> {
+    assertUuidParam(id);
     const result = validateVoidDonation(body);
     if (!result.success) {
       throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ข้อมูลไม่ถูกต้อง", result.errors);
