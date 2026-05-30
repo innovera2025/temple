@@ -46,6 +46,15 @@ enum DonationStatus {
   @@map("donation_status")
 }
 
+enum DonationMethod {
+  cash
+  bank_transfer
+  qr
+  other
+
+  @@map("donation_method")
+}
+
 enum ReceiptStatus {
   issued
   voided
@@ -192,12 +201,16 @@ model Donation {
   donor        Donor?         @relation(fields: [donorId], references: [id])
   amountSatang BigInt         @map("amount_satang")
   currency     String         @default("THB") @db.Char(3)
+  method       DonationMethod @default(cash)
   donationDate DateTime       @map("donation_date") @db.Date
   status       DonationStatus @default(confirmed)
   note         String?
+  fundAccountId String?       @map("fund_account_id") @db.Uuid
+  fundAccount  LedgerAccount? @relation(fields: [fundAccountId], references: [id])
   createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime       @default(now()) @map("updated_at") @db.Timestamptz(6)
   receipts     Receipt[]
+  ledgerEntries LedgerEntry[]
 
   @@index([tenantId])
   @@map("donations")
@@ -231,6 +244,7 @@ model LedgerAccount {
   createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime          @default(now()) @map("updated_at") @db.Timestamptz(6)
   ledgerEntries LedgerEntry[]
+  fundedDonations Donation[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -248,11 +262,14 @@ model LedgerEntry {
   entryDate    DateTime          @map("entry_date") @db.Date
   status       LedgerEntryStatus @default(posted)
   description  String?
+  donationId   String?           @map("donation_id") @db.Uuid
+  donation     Donation?         @relation(fields: [donationId], references: [id])
   createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime          @default(now()) @map("updated_at") @db.Timestamptz(6)
 
   @@unique([tenantId, entryNo])
   @@index([tenantId])
+  @@index([donationId])
   @@map("ledger_entries")
 }
 

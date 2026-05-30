@@ -4,6 +4,24 @@
 > ขอบเขต: **MVP-1 = finance-first** — Claude Design ใช้เป็น "product target" ไม่ใช่ backend architecture
 > **ยังไม่ implement โค้ดในเอกสารนี้** — เป็นแผน; การลงมือดู [`../prompts/codex-mvp-1-tasks.md`](../prompts/codex-mvp-1-tasks.md)
 
+## สถานะปัจจุบัน (progress)
+
+| Phase | งาน | สถานะ |
+|------|------|-------|
+| 0 | Project scaffold | ✅ เสร็จ (Task 1) |
+| 1 | DB schema + RLS + tenant context + seed | ✅ เสร็จ (Task 2) |
+| 2 | Auth + RBAC + audit | ✅ เสร็จ (Task 3) |
+| 3 | Donor registry | ✅ เสร็จ (Task 4) |
+| 4 | Donation create/edit/void + auto-post income ledger | ✅ เสร็จ (Task 5) |
+| 5 | Receipt / ใบอนุโมทนา | ⬜ ถัดไป |
+| 6 | Ledger income/expense | ⬜ |
+| 7 | Reconciliation / close period | ⬜ |
+| 8 | Finance dashboard | ⬜ |
+| 9 | Reports / export | ⬜ |
+| 10 | Platform admin | ⬜ |
+
+> Phase 0–3 อยู่ใน commit `af7afff` (MVP-1 foundation). Phase 4 (Task 5): atomic income posting + void reverse (receipt→ledger→donation) + composite tenant FK; ผ่าน api 32 + web 27 tests, `migrate reset`/seed/`rls:check`, และ global typecheck/lint/build ครบ
+
 ## Stack & หลักการบังคับ (ตัดสินแล้ว)
 
 - TypeScript end-to-end • NestJS (api) • Prisma • PostgreSQL **Row-Level Security** • React + Tailwind (web) • pnpm monorepo
@@ -50,7 +68,7 @@
 - **Files/modules:** `apps/api/src/donors/**`, `apps/web/src/features/donors/**`, `packages/shared/src/schemas/donor.ts`
 - **Verify:** global • API test: create/search, validation 422, isolation (donor ข้ามวัดไม่เห็น), audit เมื่อแก้ไข
 
-### Phase 4 — Donation create/edit/void (+ auto-post income ledger)
+### Phase 4 — Donation create/edit/void (+ auto-post income ledger) ✅
 
 - **ส่งมอบ:** บันทึก/แก้/void บริจาค; บันทึกบริจาค → post income ledger entry **atomic (1 transaction)**; void = void receipt(ถ้ามี)+reverse ledger+void donation ใน transaction เดียว
 - **Files/modules:** `apps/api/src/donations/**`, แตะ `apps/api/src/ledger/**` (post income), `apps/web/src/features/donations/**`, `packages/shared/src/schemas/donation.ts`
@@ -102,8 +120,8 @@ Phase 0 → 1 → 2 เป็นรากฐาน (ทำเรียง ห้
 ## Open decisions (บล็อกบาง phase)
 
 - เลขใบอนุโมทนา: prefix/รีเซ็ตรายปี/เลขไทย? (บล็อก Phase 5) — และ **ต้องยืนยันข้อกำหนดทางกฎหมาย/ภาษีก่อน lock void/reissue**
-- chart of funds / หมวดบริจาค-บัญชีตั้งต้น (บล็อก Phase 4/6)
-- วิธีรับเงิน: cash/transfer พอ หรือ QR ด้วย (Phase 4)
+- chart of funds / หมวดบริจาค-บัญชีตั้งต้น — **Phase 4 ตัดสินแล้ว (Task 5 D2):** post เข้าบัญชี revenue `4000` ตั้งต้น (`fundAccountId` optional, default = 4000, resolve ใน tenant tx + 422 ถ้าไม่ใช่ revenue/inactive/ข้ามวัด); full chart-of-funds UI ยังค้างไว้ Phase 6
+- วิธีรับเงิน — **ตัดสินแล้ว (Task 5 D1):** enum `donation_method = cash | bank_transfer | qr | other` (Thai labels ใน `packages/shared`)
 - นิยาม "ปิดงวด" + แก้ย้อนหลังได้แค่ไหน (Phase 7)
 - หัวเอกสาร/ตราวัดใน PDF (Phase 5)
 - ขอบเขต platform admin ใน MVP-1 (Phase 10) เท่าไรถึงพอ
