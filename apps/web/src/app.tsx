@@ -1,5 +1,8 @@
-import { FormEvent, ReactElement, useEffect, useMemo, useState } from "react";
+import { FormEvent, ReactElement, useEffect, useState } from "react";
 import { SmokeShell } from "./smoke/SmokeShell";
+import { Card } from "./design-system";
+import { RoleShell } from "./layout/RoleShell";
+import { defaultPageFor, PAGE_TITLES, PageId, TempleRole } from "./layout/nav";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000";
 
@@ -39,24 +42,6 @@ const seedAccounts = [
   { email: "staff@wat-arun.example", role: "staff", label: "เจ้าหน้าที่วัดอรุณ" },
   { email: "admin@wat-pho.example", role: "admin", label: "ผู้ดูแลวัดโพธิ์" },
 ] as const;
-
-// Temple-console information architecture taken from the design inventory
-// (docs/reviews/claude-design-function-inventory.md §B). These are the real menu
-// labels; the design-backed screens are ported in later slices, so here they are
-// shown as an honest "being built" preview — not a finished implementation.
-const consoleSections: Array<{ key: string; label: string; roles: TenantRole[] }> = [
-  { key: "dashboard", label: "แดชบอร์ดภาพรวม", roles: ["admin", "finance", "staff"] },
-  { key: "donations", label: "บันทึก/แก้ไขการบริจาค", roles: ["admin", "finance", "staff"] },
-  { key: "donors", label: "ทะเบียนผู้บริจาค", roles: ["admin", "finance", "staff"] },
-  { key: "receipts", label: "ออกใบอนุโมทนาบัตร", roles: ["admin", "finance"] },
-  { key: "ledger", label: "บัญชีรายรับ-รายจ่าย", roles: ["admin", "finance"] },
-  { key: "reconcile", label: "กระทบยอด/ปิดงวด", roles: ["admin", "finance"] },
-  { key: "ceremonies", label: "จัดการกิจกรรม/พิธี", roles: ["admin", "finance", "staff"] },
-  { key: "personnel", label: "ทะเบียนพระ-เจ้าหน้าที่", roles: ["admin", "finance", "staff"] },
-  { key: "reports", label: "รายงานและส่งออกข้อมูล", roles: ["admin", "finance"] },
-  { key: "users", label: "จัดการสิทธิ์ผู้ใช้", roles: ["admin"] },
-  { key: "audit", label: "บันทึกการใช้งาน (Audit)", roles: ["admin"] },
-];
 
 async function parseJson(response: Response): Promise<unknown> {
   const text = await response.text();
@@ -144,46 +129,39 @@ function LoginScreen(props: { onAuthenticated: (session: Session) => void }): Re
   );
 }
 
-function ConsoleHome(props: { session: Session; onLogout: () => void }): ReactElement {
-  const { session } = props;
-  const sections = useMemo(
-    () => consoleSections.filter((section) => section.roles.includes(session.user.role)),
-    [session.user.role],
-  );
-
+// Per-page content placeholder. The real design-backed screens (and the existing
+// feature views) get wired into this slot in web Task 5; for now each page shows
+// an honest "being ported" card so the shell is usable without faking screens.
+function PagePlaceholder({ page }: { page: PageId }): ReactElement {
   return (
-    <main className="min-h-screen bg-[var(--paper)] text-stone-950">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-5 py-6 lg:px-8">
-        <header className="flex flex-col gap-4 rounded-3xl border border-stone-200 bg-white p-6 shadow-sm lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="text-sm font-semibold text-[var(--brand)]">ระบบจัดการวัด</p>
-            <h1 className="mt-1 text-2xl font-bold tracking-tight">ยินดีต้อนรับ {session.user.displayName}</h1>
-            <p className="mt-1 text-sm text-stone-500">บทบาท: {session.user.role} · วัด: {session.user.tenantId}</p>
-          </div>
-          <button className="self-start rounded-xl border border-stone-300 px-4 py-2 text-sm font-semibold" type="button" onClick={props.onLogout}>
-            ออกจากระบบ
-          </button>
-        </header>
-
-        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
-          หน้าจอแต่ละส่วนกำลัง port จาก Design จริง (artifacts/claude-design) ทีละ slice — รายการด้านล่างคือผังเมนูตาม Design ที่จะทยอยเปิดใช้งาน
-        </section>
-
-        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {sections.map((section) => (
-            <div key={section.key} className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
-              <h2 className="font-semibold text-stone-900">{section.label}</h2>
-              <p className="mt-2 text-xs font-medium uppercase tracking-wide text-stone-400">กำลังพัฒนาตาม Design</p>
-            </div>
-          ))}
-        </section>
-      </div>
-    </main>
+    <div style={{ maxWidth: 760 }}>
+      <h1 style={{ margin: "0 0 4px", fontSize: 22, fontWeight: 700, color: "var(--ink)" }}>
+        {PAGE_TITLES[page]}
+      </h1>
+      <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--ink-3)" }}>
+        โครงระบบ (RoleShell) พร้อมแล้ว — หน้าจอนี้กำลัง port จาก Design ทีละ slice (web Task 5)
+      </p>
+      <Card pad>
+        <p style={{ margin: 0, fontSize: 13, lineHeight: 1.7, color: "var(--ink-2)" }}>
+          เมนู สิทธิ์ตามบทบาท และหัวข้อหน้า เป็นไปตาม Design จริง (design-ui-map.md §2.1) ส่วนเนื้อหาของ
+          “{PAGE_TITLES[page]}” จะเชื่อมกับ API และคอมโพเนนต์ตาม Design ในขั้นถัดไป
+        </p>
+      </Card>
+    </div>
   );
 }
 
 function TempleApp(): ReactElement {
   const [session, setSession] = useState<Session | null>(() => loadSession());
+  const [page, setPage] = useState<PageId>(() => {
+    const role = (loadSession()?.user.role ?? "admin") as TempleRole;
+    return defaultPageFor(role);
+  });
+
+  function onAuthenticated(next: Session): void {
+    setSession(next);
+    setPage(defaultPageFor(next.user.role as TempleRole));
+  }
 
   function logout(): void {
     if (typeof window !== "undefined") window.localStorage.removeItem("wat-session");
@@ -191,9 +169,19 @@ function TempleApp(): ReactElement {
   }
 
   if (!session) {
-    return <LoginScreen onAuthenticated={setSession} />;
+    return <LoginScreen onAuthenticated={onAuthenticated} />;
   }
-  return <ConsoleHome session={session} onLogout={logout} />;
+  return (
+    <RoleShell
+      userName={session.user.displayName}
+      role={session.user.role as TempleRole}
+      page={page}
+      onNavigate={setPage}
+      onLogout={logout}
+    >
+      <PagePlaceholder page={page} />
+    </RoleShell>
+  );
 }
 
 export function App(): ReactElement {
