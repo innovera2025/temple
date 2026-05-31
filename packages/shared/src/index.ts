@@ -9,4 +9,5 @@ export * from "./schemas/dashboard";
 export * from "./schemas/report";
 export * from "./schemas/platform";
 export * from "./schemas/temple-profile";
+export * from "./schemas/personnel";
 export * from "./baht-text";

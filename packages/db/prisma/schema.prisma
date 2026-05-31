@@ -30,6 +30,21 @@ enum PlatformRole {
   @@map("platform_role")
 }
 
+enum PersonnelType {
+  monk
+  novice
+  staff
+
+  @@map("personnel_type")
+}
+
+enum PersonnelStatus {
+  active
+  inactive
+
+  @@map("personnel_status")
+}
+
 enum TenantRole {
   admin
   finance
@@ -134,6 +149,7 @@ model Temple {
   refreshTokens     AuthRefreshToken[]
   applicationsCreated TempleApplication[] @relation("ApplicationCreatedTemple")
   breakGlassGrants  BreakGlassGrant[]
+  personnel         Personnel[]
 
   @@map("temples")
 }
@@ -258,6 +274,35 @@ model Donor {
 
   @@index([tenantId])
   @@map("donors")
+}
+
+model Personnel {
+  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String          @map("tenant_id") @db.Uuid
+  tenant           Temple          @relation(fields: [tenantId], references: [id])
+  personnelType    PersonnelType   @map("personnel_type")
+  status           PersonnelStatus @default(active)
+  displayName      String          @map("display_name")
+  dharmaName       String?         @map("dharma_name")
+  secularName      String?         @map("secular_name")
+  rank             String?
+  position         String?
+  ordinationDate   DateTime?       @map("ordination_date") @db.Date
+  ordinationTemple String?         @map("ordination_temple")
+  preceptor        String?
+  phansaCount      Int?            @map("phansa_count")
+  dateOfBirth      DateTime?       @map("date_of_birth") @db.Date
+  nationalId       String?         @map("national_id")
+  phone            String?
+  note             String?
+  joinedAt         DateTime?       @map("joined_at") @db.Date
+  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime        @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@index([tenantId, personnelType])
+  @@map("personnel")
 }
 
 model Donation {

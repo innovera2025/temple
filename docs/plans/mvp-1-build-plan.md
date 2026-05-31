@@ -20,6 +20,7 @@
 | 9 | Reports / export | ✅ เสร็จ (Task 10) |
 | 10 | Platform admin | ✅ เสร็จ (Task 11) — MVP-1 ครบ |
 | 11 (post-MVP-1) | Temple profile / master data | ✅ เสร็จ (Task 12) |
+| 12 (post-MVP-1) | Monk/staff (personnel) management | ✅ เสร็จ (Task 13) |
 
 > Phase 0–3 อยู่ใน commit `af7afff` (MVP-1 foundation). Phase 4 (Task 5): atomic income posting + void reverse (receipt→ledger→donation) + composite tenant FK. Phase 5 (Task 6): receipt issue/void/reissue (supersession) + RCPT numbering (atomic, unique/วัด) + printable preview ผ่าน `bahtText` + Task5↔Task6 void integration; ผ่าน api 46 + web 40 + db 7 tests, `migrate reset`/seed/`rls:check`, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings (reissue↔donation-void lock-ordering race, malformed-:id 500)
 
@@ -61,6 +62,12 @@
 > - **ต่อยอดของที่ ship แล้ว:** ใบอนุโมทนา (receipt preview) แสดง หัวเอกสาร/ที่อยู่/ท้ายเอกสาร จาก profile (field optional — ไม่กระทบ flow เดิม)
 > - web: หน้า `ข้อมูลวัด` (view เป็น section + ฟอร์มแก้เฉพาะ admin, empty state, ส่งเฉพาะ field ที่เปลี่ยนผ่าน diff)
 > - ผ่าน api 114 (temple 6) + web 97 + db 7 + shared 12 tests, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings: P2025 จาก update race → `notFound` (กัน raw 500), reject ฟิลด์นอก whitelist เป็น 422 (เดิม drop เงียบ), เพิ่ม test mass-assignment/non-string
+
+> **Post-MVP-1 (Task 13) — Monk/staff (personnel) management** — decisions:
+> - ทะเบียน พระ/สามเณร/บุคลากร เป็น **tenant table ปกติ** (`personnel`, tenant_id + RLS enable/force + 4 policies) แก้ผ่าน `withTenant` (wat_app, RLS net จริง) — ต่างจาก temple/platform ที่ใช้ withSystemAccess. `GET/POST/PATCH /personnel(/:id)`; write = admin/staff, read = +finance; audit `personnel:create`/`personnel:update` (before/after) ใน tx เดียวกัน
+> - **ไม่มี hard delete** — archive ด้วย `status=inactive` (wat_app ไม่มีสิทธิ์ DELETE; wat_migrate มี TRUNCATE สำหรับ cascade จาก temples). validator partial-patch + reject ฟิลด์นอก whitelist (กัน mass-assignment); date เป็น YYYY-MM-DD (isValidIsoDate) → แปลงเป็น Date ใน service; phansaCount int 0-200; nationalId 13 หลัก; `:id` malformed/ข้ามวัด → 404 (uuid guard + P2025→notFound)
+> - web: หน้า `พระ/สามเณร/บุคลากร` (ตาราง + filter ประเภท/สถานะ/ค้นหา + ฟอร์ม add/edit, empty state)
+> - ผ่าน api 120 (personnel 6) + web 106 (+9) + db 7 + shared 12 tests, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings (ทั้ง low): create spread `tenantId` ท้ายสุด (context-wins), `phansaCount` กัน loose Number() coercion, **mask nationalId ใน audit snapshot** (เก็บ 4 ตัวท้าย), เพิ่ม test mass-assignment tenant_id/id→422
 
 ## Stack & หลักการบังคับ (ตัดสินแล้ว)
 
