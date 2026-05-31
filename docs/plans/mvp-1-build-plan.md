@@ -17,8 +17,8 @@
 | 6 | Ledger income/expense | ✅ เสร็จ (Task 7) |
 | 7 | Reconciliation / close period | ✅ เสร็จ (Task 8) |
 | 8 | Finance dashboard | ✅ เสร็จ (Task 9) |
-| 9 | Reports / export | ⬜ ถัดไป |
-| 10 | Platform admin | ⬜ |
+| 9 | Reports / export | ✅ เสร็จ (Task 10) |
+| 10 | Platform admin | ⬜ ถัดไป |
 
 > Phase 0–3 อยู่ใน commit `af7afff` (MVP-1 foundation). Phase 4 (Task 5): atomic income posting + void reverse (receipt→ledger→donation) + composite tenant FK. Phase 5 (Task 6): receipt issue/void/reissue (supersession) + RCPT numbering (atomic, unique/วัด) + printable preview ผ่าน `bahtText` + Task5↔Task6 void integration; ผ่าน api 46 + web 40 + db 7 tests, `migrate reset`/seed/`rls:check`, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings (reissue↔donation-void lock-ordering race, malformed-:id 500)
 
@@ -39,6 +39,12 @@
 > - `GET /dashboard` **role-aware**: ยอดเงิน (รับ/จ่าย/คงเหลือเดือนนี้) + รายการบริจาคล่าสุด เห็นเฉพาะ admin/finance (`includeFinancials = role∈{admin,finance}`); staff เห็นแค่ counts/คิว (operational ไม่มีเงิน). ไม่มี migration/lock/audit (read-only)
 > - การ์ด: รับ/จ่าย/คงเหลือ (reuse `LedgerEntriesService.summary` → ตรง ledger เป๊ะ), ผู้บริจาคใหม่เดือนนี้; คิว: รอออกใบ (confirmed ไม่มี issued receipt) / รอกระทบยอด (posted, reconciledAt null); recent = 5 ล่าสุด **เฉพาะ confirmed** (ไม่โชว์ที่ยกเลิก); empty state ไทย
 > - ผ่าน api 82 (dashboard 7) + web 81 (dashboard 8) + db 7 + shared 6 tests, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings (recent ไม่กรอง cancelled, staff-gating test coverage)
+
+> **Phase 9 (Task 10) — Reports / export** — decisions:
+> - `GET /reports/:type` (`donations`|`receipts`|`ledger`) **admin/finance เท่านั้น** (มีเงิน+ข้อมูลผู้บริจาค); type ไม่ถูกต้อง → 422. สร้างรายงานเป็น columns + rows(string[][]) + CSV (RFC-4180, CRLF, escape `",\r\n`) ฝั่ง web ดาวน์โหลดพร้อม UTF-8 BOM ให้ Excel อ่านไทยถูก. ทุกครั้ง audit `report:export` (actor + type + filters + count) ใน tx เดียวกับการอ่าน — อ่านใต้ RLS จึงข้ามวัดไม่ได้
+> - **D1 ส่งมอบ CSV (+printable preview ฝั่ง web) ไม่ใช่ binary PDF/Excel** — เลื่อน binary export ไปจนกว่าจะมี lib/ระบบ template (เหมือน binary-PDF ของ Phase 5)
+> - **D2 วันที่แบบ ICT (UTC+7):** ตัวกรองวันของ `receipt.issuedAt` (timestamptz) ใช้ช่วงครึ่งเปิด `[dateFrom 00:00 ICT, (dateTo+1) 00:00 ICT)` + แสดงวันที่เป็นวัน ICT ให้ตรงกับช่วงกรอง (คอลัมน์ `@db.Date` donationDate/entryDate ยังเทียบ UTC-midnight ตามชนิด date เดิม)
+> - ผ่าน api 92 (reports 10) + web 88 (reports 7) + db 7 + shared 12 tests, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings: **CSV formula-injection** (neutralize free-text ขึ้นต้น `= + - @` ด้วย leading `'` เฉพาะ donor name/note/payee, ไม่แตะ cell ตัวเลข/วันที่), **status ไม่ถูกต้อง → Prisma enum 500** (drop เงียบแบบ parseLedgerQuery ไม่ใช่ throw), **receipts date filter UTC→ICT**, audit เพิ่ม `accountId`/`direction`
 
 ## Stack & หลักการบังคับ (ตัดสินแล้ว)
 
@@ -116,9 +122,9 @@
 - **Files/modules:** `apps/api/src/dashboard/**` (หรือ aggregate ใน existing modules), `apps/web/src/features/dashboard/**`
 - **Verify:** global • API test: ตัวเลขตรงกับ ledger • role ไม่พอไม่เห็นเมตริกการเงิน
 
-### Phase 9 — Reports / export
+### Phase 9 — Reports / export ✅
 
-- **ส่งมอบ:** รายงานบริจาค/ใบอนุโมทนา/ledger + export CSV/PDF (Excel ถ้าทำได้)
+- **ส่งมอบ:** รายงานบริจาค/ใบอนุโมทนา/ledger + export CSV (printable preview; binary PDF/Excel เลื่อน)
 - **Files/modules:** `apps/api/src/reports/**`, `apps/web/src/features/reports/**`
 - **Verify:** global • API test: export มีข้อมูลตรง, audit `*:export` • isolation (export เฉพาะวัดตน)
 

@@ -11,6 +11,7 @@ import { DonorsModule } from "./donors/donors.module";
 import { HealthModule } from "./health/health.module";
 import { LedgerModule } from "./ledger/ledger.module";
 import { ReceiptsModule } from "./receipts/receipts.module";
+import { ReportsModule } from "./reports/reports.module";
 
 @Module({
   imports: [
@@ -33,7 +34,8 @@ import { ReceiptsModule } from "./receipts/receipts.module";
     DonationsModule,
     ReceiptsModule,
     LedgerModule,
-    DashboardModule
+    DashboardModule,
+    ReportsModule
   ],
   providers: [
     {
