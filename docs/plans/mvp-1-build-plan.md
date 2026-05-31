@@ -23,6 +23,7 @@
 | 12 (post-MVP-1) | Monk/staff (personnel) management | ✅ เสร็จ (Task 13) |
 | 13 (post-MVP-1) | Ceremonies / งานบุญ-พิธี (basic records) | ✅ เสร็จ (Task 14) |
 | 14 (post-MVP-1) | Inventory / คลังของบริจาค-พัสดุ (items + movements) | ✅ เสร็จ (Task 15) |
+| — (hardening) | Global Prisma-error filter (ปิด @Catch(HttpException)-only gap) | ✅ เสร็จ (Task 16) |
 
 > Phase 0–3 อยู่ใน commit `af7afff` (MVP-1 foundation). Phase 4 (Task 5): atomic income posting + void reverse (receipt→ledger→donation) + composite tenant FK. Phase 5 (Task 6): receipt issue/void/reissue (supersession) + RCPT numbering (atomic, unique/วัด) + printable preview ผ่าน `bahtText` + Task5↔Task6 void integration; ผ่าน api 46 + web 40 + db 7 tests, `migrate reset`/seed/`rls:check`, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings (reissue↔donation-void lock-ordering race, malformed-:id 500)
 
@@ -85,6 +86,12 @@
 > - web: หน้า `คลังของบริจาค/พัสดุ` (รายการ+filter + detail ยอดคงเหลือ + ฟอร์มรับเข้า/เบิกออก + ประวัติ)
 > - ผ่าน api 135 (inventory 9) + web 123 (+8) + db 7 + shared 12 tests, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings: DB CHECK constraints, int4-overflow cap→409, tenant_id ในคำสั่ง lock/update (defense-in-depth), ใช้ผล update แทน re-read, ordering tiebreaker, movementSnapshot ครบ field
 > - **ค้าง (recurring, เลื่อน task เฉพาะ):** `ProjectExceptionFilter` เป็น `@Catch(HttpException)` อย่างเดียว → raw Prisma error (serialization/deadlock/unmapped) หลุดเป็น 500 — ควรทำ global Prisma-error filter ครั้งเดียวทั้งแอป (paths ที่ถึงได้ใน module ปิดด้วย guard/uuid/cap แล้ว)
+
+> **Hardening (Task 16) — Global Prisma-error filter** — decisions:
+> - แก้ recurring finding ที่ adversarial review ชี้ทุก task: `ProjectExceptionFilter` เดิม `@Catch(HttpException)` อย่างเดียว → raw Prisma/driver error หลุดเป็น **500 ดิบ (leak stack)**. เปลี่ยนเป็น `@Catch()` catch-all ตัวเดียว (ไม่มีปัญหา ordering): HttpException = logic เดิม (4xx byte-for-byte); Prisma `PrismaClientKnownRequestError` map ตาม code (P2025→404, P2002·P2003→409, P2000→422, อื่น→500); validation/unknown/non-Error → **500 enveloped + log server-side, ไม่ leak ข้อความ/stack ให้ client**
+> - **ทุก ≥500 ถูก sanitise** ไม่ว่ามาจาก HttpException หรือไม่ (caller-supplied 500 message ไม่หลุด) + log ทุกตัว; guard `host.getType()!=='http'`
+> - เป็น backstop ทั้งแอป — service ที่ catch P2025 เองอยู่แล้ว (temple/personnel/ceremonies/inventory) ยังทำงานเหมือนเดิม
+> - ผ่าน api 145 (filter spec 10) + web 123 + db 7 + shared 12 tests, global typecheck/lint/build ครบ — แก้ adversarial-review findings: ≥500 HttpException force generic message + log, non-HTTP-context guard, เพิ่ม test no-leak (string/Prisma/Error)
 
 ## Stack & หลักการบังคับ (ตัดสินแล้ว)
 
