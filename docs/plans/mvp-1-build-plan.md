@@ -25,6 +25,7 @@
 | 14 (post-MVP-1) | Inventory / คลังของบริจาค-พัสดุ (items + movements) | ✅ เสร็จ (Task 15) |
 | — (hardening) | Global Prisma-error filter (ปิด @Catch(HttpException)-only gap) | ✅ เสร็จ (Task 16) |
 | 15 (post-MVP-1) | In-tenant user management (admin จัดการผู้ใช้+สิทธิ์) | ✅ เสร็จ (Task 17) |
+| 16 (post-MVP-1) | Attachments / แนบหลักฐาน (DB-stored, รับ-ดาวน์โหลด-ลบ) | ✅ เสร็จ (Task 18) |
 
 > Phase 0–3 อยู่ใน commit `af7afff` (MVP-1 foundation). Phase 4 (Task 5): atomic income posting + void reverse (receipt→ledger→donation) + composite tenant FK. Phase 5 (Task 6): receipt issue/void/reissue (supersession) + RCPT numbering (atomic, unique/วัด) + printable preview ผ่าน `bahtText` + Task5↔Task6 void integration; ผ่าน api 46 + web 40 + db 7 tests, `migrate reset`/seed/`rls:check`, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings (reissue↔donation-void lock-ordering race, malformed-:id 500)
 
@@ -100,6 +101,14 @@
 > - **AuthGuard เป็น stateful แล้ว (hardening คู่กัน):** re-check `isActive`+role จาก DB ต่อ request (เหมือน platform plane) → disable/demote มีผล **ทันที** ไม่ต้องรอ access token หมดอายุ; disable/เปลี่ยนรหัส revoke refresh tokens ด้วย
 > - web: หน้า `ผู้ใช้และสิทธิ์` (รายการ+filter + ฟอร์ม create/edit, email read-only ตอนแก้, toggle เปิด/ปิด)
 > - ผ่าน api 154 (users 9) + web 130 (+7) + db 7 + shared 12 tests, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings: role-demotion escalation (→ stateful AuthGuard ปิดทั้ง disable+demote ทันที), create mass-assignment → 422
+
+> **Post-MVP-1 (Task 18) — Attachments / แนบหลักฐาน** — decisions:
+> - **เก็บไฟล์ใน DB (bytea)** บน `attachments` (TOAST out-of-line — list metadata ไม่ดึง blob); upload แบบ base64-JSON (main.ts body limit 12MB); `POST /attachments` · `GET ?ownerType&ownerId` (metadata ไม่มี blob) · `GET /:id/download` (StreamableFile) · `DELETE /:id`. admin/finance/staff. audit `attachment:create`/`attachment:delete`. ผูกกับ donation/receipt/ledger_entry/donor (ตรวจ owner มีจริงในวัด → 404)
+> - **D1 เลือก DB-bytea** (ไม่ใช่ S3) — self-contained, ไม่ต้อง cloud/creds, durable, RLS คุ้มครอง; เพิ่ม DELETE RLS policy ให้ attachments (foundation มีแต่ grant ไม่มี policy)
+> - validation: MIME allowlist (jpeg/png/webp/pdf), cap 5MB (คำนวณจาก base64 ก่อนเก็บ), sanitizeFileName (strip control/separator/quote), per-owner quota ≤20
+> - web: `AttachmentsPanel` (upload→base64 + list + download/delete) reusable ต่อ owner
+> - ผ่าน api 163 (attachments 9) + web 138 (+8) + db 7 + shared 12 tests, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings: **ชื่อไฟล์ไทย → Content-Disposition 500** (RFC 5987 `filename*` + ASCII fallback — ระบบ Thai-first!), `nosniff` header, sanitize เพิ่ม DEL/C1/Unicode-sep, reject ชื่อ all-underscore, byteSize→string, per-owner quota
+> - **ค้าง (infra hardening task):** rate-limiting (@nestjs/throttler) บน upload + scope body limit เฉพาะ route + per-tenant quota — DoS เป็น authenticated-trusted-role (medium)
 
 ## Stack & หลักการบังคับ (ตัดสินแล้ว)
 

@@ -13,4 +13,5 @@ export * from "./schemas/personnel";
 export * from "./schemas/ceremony";
 export * from "./schemas/inventory";
 export * from "./schemas/user";
+export * from "./schemas/attachment";
 export * from "./baht-text";

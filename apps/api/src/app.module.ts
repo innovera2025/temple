@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { APP_FILTER } from "@nestjs/core";
+import { AttachmentsModule } from "./attachments/attachments.module";
 import { AuditModule } from "./audit/audit.module";
 import { AuthModule } from "./auth/auth.module";
 import { CeremoniesModule } from "./ceremonies/ceremonies.module";
@@ -47,6 +48,7 @@ import { UsersModule } from "./users/users.module";
     CeremoniesModule,
     InventoryModule,
     UsersModule,
+    AttachmentsModule,
     PlatformModule
   ],
   providers: [
