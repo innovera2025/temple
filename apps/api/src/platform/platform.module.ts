@@ -12,6 +12,7 @@ import { PlatformUsersController } from "./platform-users.controller";
 import { PlatformUsersService } from "./platform-users.service";
 import { PlatformAuthGuard } from "./guards/platform-auth.guard";
 import { PlatformRolesGuard } from "./guards/platform-roles.guard";
+import { RateLimitGuard } from "../common/guards/rate-limit.guard";
 import { TemplesController } from "./temples.controller";
 import { TemplesService } from "./temples.service";
 import { TenantUsersController } from "./tenant-users.controller";
@@ -38,6 +39,7 @@ import { TenantUsersService } from "./tenant-users.service";
     BreakGlassService,
     PlatformAuthGuard,
     PlatformRolesGuard,
+    RateLimitGuard,
   ],
 })
 export class PlatformModule {}

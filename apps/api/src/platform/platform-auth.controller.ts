@@ -1,5 +1,7 @@
-import { Body, Controller, Inject, Ip, Post } from "@nestjs/common";
+import { Body, Controller, Inject, Ip, Post, UseGuards } from "@nestjs/common";
 import { validatePlatformLogin } from "@wat/shared";
+import { RateLimit } from "../common/decorators/rate-limit.decorator";
+import { RateLimitGuard } from "../common/guards/rate-limit.guard";
 import { projectHttpException } from "../common/errors/project-error";
 import { PlatformAuthService, TokenPair } from "./platform-auth.service";
 
@@ -20,6 +22,8 @@ export class PlatformAuthController {
   constructor(@Inject(PlatformAuthService) private readonly authService: PlatformAuthService) {}
 
   @Post("login")
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ limit: 10, windowMs: 60_000 })
   async login(@Ip() ip: string, @Body() body: unknown): Promise<TokenPair> {
     const result = validatePlatformLogin(body);
     if (!result.success) {
@@ -29,6 +33,8 @@ export class PlatformAuthController {
   }
 
   @Post("refresh")
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ limit: 60, windowMs: 60_000 })
   async refresh(@Body() body: unknown): Promise<TokenPair> {
     return this.authService.refresh(readRefreshToken(body));
   }

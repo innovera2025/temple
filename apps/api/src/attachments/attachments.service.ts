@@ -5,9 +5,10 @@ import { type AttachmentOwnerType, type UploadAttachmentInput } from "@wat/share
 import { conflict, notFound } from "../common/errors/project-error";
 import { PrismaService } from "../common/prisma/prisma.service";
 
-// Bounds per-entity storage growth (a fuller per-tenant quota + upload rate
-// limiting are tracked as a separate infra-hardening task).
+// Bounds storage growth: per-entity and per-tenant totals (upload rate limiting
+// is enforced separately by RateLimitGuard on the controller).
 const MAX_ATTACHMENTS_PER_OWNER = 20;
+const MAX_ATTACHMENTS_PER_TENANT = 10_000;
 
 export interface AttachmentRecord {
   id: string;
@@ -81,6 +82,10 @@ export class AttachmentsService {
   ): Promise<AttachmentRecord> {
     const buffer = Buffer.from(input.contentBase64, "base64");
     return this.prisma.withTenant(tenantId, async (tx) => {
+      // Serialise concurrent uploads to the SAME owner so the per-owner cap is a
+      // hard bound (count-then-create would otherwise race under READ COMMITTED).
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${tenantId} || ':att:' || ${input.ownerId})::bigint)`;
+
       if (!(await this.ownerExists(tx, input.ownerType, input.ownerId))) {
         throw notFound("ไม่พบรายการที่จะแนบไฟล์");
       }
@@ -90,6 +95,12 @@ export class AttachmentsService {
       });
       if (existing >= MAX_ATTACHMENTS_PER_OWNER) {
         throw conflict(`แนบไฟล์ได้สูงสุด ${MAX_ATTACHMENTS_PER_OWNER} ไฟล์ต่อรายการ`);
+      }
+      // RLS-scoped: counts only this tenant's attachments. Best-effort ceiling (the
+      // per-owner lock does not serialise across owners), which is fine for a
+      // defensive bound — a tiny overshoot under heavy concurrency is acceptable.
+      if ((await tx.attachment.count({})) >= MAX_ATTACHMENTS_PER_TENANT) {
+        throw conflict("เกินจำนวนไฟล์แนบสูงสุดของวัด");
       }
 
       const created = (await tx.attachment.create({

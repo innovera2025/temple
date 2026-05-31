@@ -99,6 +99,23 @@ describe("attachments (แนบหลักฐาน)", () => {
   });
 
   afterAll(async () => {
+    // Clean up this spec's uploads so they don't accumulate toward the per-tenant cap.
+    await execFileAsync(
+      "docker",
+      [
+        "exec",
+        "-i",
+        process.env.POSTGRES_CONTAINER ?? "wat-dev-db",
+        "psql",
+        "-U",
+        process.env.POSTGRES_USER ?? "wat_dev",
+        "-d",
+        process.env.POSTGRES_DB ?? "wat_dev",
+        "-c",
+        `DELETE FROM attachments WHERE tenant_id = '${templeA}'`,
+      ],
+      { maxBuffer: 1024 * 1024 },
+    ).catch(() => undefined);
     await app.close();
   });
 

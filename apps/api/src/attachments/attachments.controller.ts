@@ -15,9 +15,11 @@ import {
 import { isAttachmentOwnerType, isUuid, sanitizeFileName, validateUploadAttachment, type AttachmentOwnerType } from "@wat/shared";
 import { CurrentTenant } from "../common/decorators/current-tenant.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
+import { RateLimit } from "../common/decorators/rate-limit.decorator";
 import { Roles } from "../common/decorators/roles.decorator";
 import { notFound, projectHttpException } from "../common/errors/project-error";
 import { AuthGuard } from "../common/guards/auth.guard";
+import { RateLimitGuard } from "../common/guards/rate-limit.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
 import { TenantGuard } from "../common/guards/tenant.guard";
 import { AuthenticatedUser } from "../common/types/authenticated-request";
@@ -57,12 +59,15 @@ function assertUuid(id: string): void {
 
 // Evidence files for finance/operations entities -> any tenant member may manage.
 @Controller("attachments")
-@UseGuards(AuthGuard, TenantGuard, RolesGuard)
+@UseGuards(AuthGuard, TenantGuard, RolesGuard, RateLimitGuard)
 @Roles("admin", "finance", "staff")
 export class AttachmentsController {
   constructor(@Inject(AttachmentsService) private readonly attachments: AttachmentsService) {}
 
+  // Upload is the heaviest endpoint (a ~6.7MB body buffered per call) -> rate-limit
+  // per user. RateLimitGuard runs after AuthGuard, so the key is the user id.
   @Post()
+  @RateLimit({ limit: 30, windowMs: 60_000 })
   async upload(
     @CurrentUser() actor: AuthenticatedUser,
     @CurrentTenant() tenantId: string,

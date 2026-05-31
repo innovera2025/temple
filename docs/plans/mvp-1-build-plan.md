@@ -26,6 +26,7 @@
 | — (hardening) | Global Prisma-error filter (ปิด @Catch(HttpException)-only gap) | ✅ เสร็จ (Task 16) |
 | 15 (post-MVP-1) | In-tenant user management (admin จัดการผู้ใช้+สิทธิ์) | ✅ เสร็จ (Task 17) |
 | 16 (post-MVP-1) | Attachments / แนบหลักฐาน (DB-stored, รับ-ดาวน์โหลด-ลบ) | ✅ เสร็จ (Task 18) |
+| — (hardening) | Rate-limit guard (hand-rolled) + attachment quota | ✅ เสร็จ (Task 19) |
 
 > Phase 0–3 อยู่ใน commit `af7afff` (MVP-1 foundation). Phase 4 (Task 5): atomic income posting + void reverse (receipt→ledger→donation) + composite tenant FK. Phase 5 (Task 6): receipt issue/void/reissue (supersession) + RCPT numbering (atomic, unique/วัด) + printable preview ผ่าน `bahtText` + Task5↔Task6 void integration; ผ่าน api 46 + web 40 + db 7 tests, `migrate reset`/seed/`rls:check`, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings (reissue↔donation-void lock-ordering race, malformed-:id 500)
 
@@ -109,6 +110,13 @@
 > - web: `AttachmentsPanel` (upload→base64 + list + download/delete) reusable ต่อ owner
 > - ผ่าน api 163 (attachments 9) + web 138 (+8) + db 7 + shared 12 tests, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings: **ชื่อไฟล์ไทย → Content-Disposition 500** (RFC 5987 `filename*` + ASCII fallback — ระบบ Thai-first!), `nosniff` header, sanitize เพิ่ม DEL/C1/Unicode-sep, reject ชื่อ all-underscore, byteSize→string, per-owner quota
 > - **ค้าง (infra hardening task):** rate-limiting (@nestjs/throttler) บน upload + scope body limit เฉพาะ route + per-tenant quota — DoS เป็น authenticated-trusted-role (medium)
+
+> **Hardening (Task 19) — Rate-limit guard + attachment quota** — decisions:
+> - **hand-rolled `RateLimitGuard`** (ไม่เพิ่ม dep ตาม ethos): in-memory fixed-window ต่อ (route + user.sub|IP) + `@RateLimit({limit,windowMs})`; เกิน → 429 ผ่าน envelope. ใช้กับ login (10/min/IP), platform login (10/min/IP), token refresh (60/min/IP), attachment upload (30/min/user — guard อยู่ท้าย @UseGuards ให้ req.user ถูกตั้งก่อน)
+> - per-owner attachment cap (≤20) **hard** ด้วย `pg_advisory_xact_lock` ต่อ owner (กัน TOCTOU); per-tenant cap (≤10,000) best-effort
+> - prune เฉพาะ entry หมดอายุ (ไม่ wipe ทั้ง Map); NOTE trust-proxy (req.ip spoof-safe ที่ default false; ถ้าหลัง proxy ต้องตั้ง trust proxy เป็น hop/subnet เฉพาะ ไม่ใช่ `true`)
+> - ผ่าน api 169 (rate-limit 4 + quota 2) + web 138 + db 7 + shared 12 tests, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings (ทั้ง low): advisory-lock TOCTOU, prune-not-clear, reset-window test, refresh rate-limit, per-tenant cap test, afterAll cleanup
+> - **ค้าง (note):** single-instance in-memory (multi-instance ต้องใช้ Redis store); body-limit route-scoping ยังเลื่อน
 
 ## Stack & หลักการบังคับ (ตัดสินแล้ว)
 
