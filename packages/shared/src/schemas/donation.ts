@@ -114,15 +114,22 @@ export function satangToBaht(satang: number | bigint): number {
 }
 
 /** Format integer satang as a grouped baht string, e.g. 100050 -> "1,000.50". */
-export function formatSatang(satang: number | bigint): string {
-  const value = Number(satang);
-  const negative = value < 0;
-  const abs = Math.abs(value);
-  const baht = Math.floor(abs / 100);
-  const cents = abs % 100;
-  const grouped = baht.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+export function formatSatang(satang: number | bigint | string): string {
+  // Work in BigInt so large satang totals (e.g. server-side _sum aggregates,
+  // which can exceed 2^53) never lose precision through a JS double. Accepts the
+  // integer-satang string the API serializes, a bigint, or an integer number.
+  const value =
+    typeof satang === "bigint"
+      ? satang
+      : typeof satang === "string"
+        ? BigInt(satang.trim() || "0")
+        : BigInt(Math.round(satang));
+  const negative = value < 0n;
+  const abs = negative ? -value : value;
+  const baht = (abs / 100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const cents = (abs % 100n).toString().padStart(2, "0");
 
-  return `${negative ? "-" : ""}${grouped}.${cents.toString().padStart(2, "0")}`;
+  return `${negative ? "-" : ""}${baht}.${cents}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -354,7 +361,7 @@ export function parseDonationSearchQuery(
   }
   const skip = Number(raw.skip);
   if (Number.isFinite(skip) && skip >= 0) {
-    query.skip = Math.floor(skip);
+    query.skip = Math.min(Math.floor(skip), 1_000_000);
   }
 
   return query;

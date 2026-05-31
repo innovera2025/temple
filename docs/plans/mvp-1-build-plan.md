@@ -14,13 +14,20 @@
 | 3 | Donor registry | ✅ เสร็จ (Task 4) |
 | 4 | Donation create/edit/void + auto-post income ledger | ✅ เสร็จ (Task 5) |
 | 5 | Receipt / ใบอนุโมทนา (issue/void/reissue/preview + numbering) | ✅ เสร็จ (Task 6) |
-| 6 | Ledger income/expense | ⬜ ถัดไป |
-| 7 | Reconciliation / close period | ⬜ |
+| 6 | Ledger income/expense | ✅ เสร็จ (Task 7) |
+| 7 | Reconciliation / close period | ⬜ ถัดไป |
 | 8 | Finance dashboard | ⬜ |
 | 9 | Reports / export | ⬜ |
 | 10 | Platform admin | ⬜ |
 
 > Phase 0–3 อยู่ใน commit `af7afff` (MVP-1 foundation). Phase 4 (Task 5): atomic income posting + void reverse (receipt→ledger→donation) + composite tenant FK. Phase 5 (Task 6): receipt issue/void/reissue (supersession) + RCPT numbering (atomic, unique/วัด) + printable preview ผ่าน `bahtText` + Task5↔Task6 void integration; ผ่าน api 46 + web 40 + db 7 tests, `migrate reset`/seed/`rls:check`, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings (reissue↔donation-void lock-ordering race, malformed-:id 500)
+
+> **Phase 6 (Task 7) — Ledger income/expense manual entries + summary** — decisions:
+> - **D1 ทิศทาง (direction) มาจากชนิดบัญชี** ไม่เก็บคอลัมน์ direction ซ้ำซ้อน: รายการที่ post เข้าบัญชี `revenue` = รายรับ, `expense` = รายจ่าย. manual entry ต้อง post เข้าบัญชี active ที่เป็น `revenue`/`expense` เท่านั้น (อื่น ๆ → 422). สรุปยอด income/expense/balance นับเฉพาะ `status = posted` (ไม่นับ `voided`).
+> - **D2 เลขเอกสารใช้ counter เดียวกับ donation income** (`doc_type = ledger_entry`, prefix `LEDG-`) ผ่าน util `allocateLedgerEntryNo` ที่ใช้ร่วมกันทั้ง donation auto-post และ manual entry → ลำดับเลขเดียว, ไม่ชน `(tenant_id, entry_no)`.
+> - **D3 void manual entry เท่านั้นทาง `/ledger/entries/:id/void`** (reason บังคับ → 422, lock-row กัน TOCTOU, no hard delete). รายการที่ผูก donation (`donation_id` ≠ null) **ห้าม void ทางนี้ → 409** ให้ไป void ที่ donation เพื่อรักษา invariant donation↔ledger↔receipt ให้ atomic.
+> - **D4 payee** เพิ่มคอลัมน์ `payee` (nullable) บน `ledger_entries` (additive migration, RLS แถวเดิมครอบคลุม, DELETE ยังถูก revoke). **แนบหลักฐาน (attachment) เลื่อน** ไปทำเมื่อมี storage backend (เหมือน binary-PDF) — schema `attachments` พร้อมแล้วแต่ยังไม่มี upload pipeline.
+> - **D5 สิทธิ์:** create/void/summary = admin/finance; list/get/accounts = admin/finance/staff. ผ่าน api 18 + web 18 tests, `migrate deploy`/`rls:check`, global typecheck/lint/test/build ครบ
 
 ## Stack & หลักการบังคับ (ตัดสินแล้ว)
 

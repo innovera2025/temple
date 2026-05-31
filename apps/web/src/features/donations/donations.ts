@@ -68,8 +68,9 @@ export function statusLabel(status: string): string {
 
 /** Render integer satang (string or number) as a Thai baht amount, e.g. "฿1,000.50". */
 export function displayBaht(amountSatang: string | number | bigint): string {
-  const satang = typeof amountSatang === "string" ? Number(amountSatang) : amountSatang;
-  return `฿${formatSatang(satang)}`;
+  // Pass the integer-satang value straight to formatSatang (BigInt-safe); never
+  // coerce through Number() so large totals keep full precision.
+  return `฿${formatSatang(amountSatang)}`;
 }
 
 /** Raw create-form values; `amountBaht` is the string straight from the input. */

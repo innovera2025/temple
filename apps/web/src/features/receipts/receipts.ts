@@ -34,8 +34,9 @@ export function receiptStatusLabel(status: string): string {
 
 /** Format integer satang (string/number) as Thai baht, e.g. "฿500.00". */
 export function displayBaht(amountSatang: string | number | bigint): string {
-  const satang = typeof amountSatang === "string" ? Number(amountSatang) : amountSatang;
-  return `฿${formatSatang(satang)}`;
+  // Pass the integer-satang value straight to formatSatang (BigInt-safe); never
+  // coerce through Number() so large totals keep full precision.
+  return `฿${formatSatang(amountSatang)}`;
 }
 
 export function validateVoidReason(reason: string): ValidationResult<{ reason: string }> {

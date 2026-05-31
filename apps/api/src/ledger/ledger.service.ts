@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import { projectHttpException } from "../common/errors/project-error";
+import { allocateLedgerEntryNo } from "./ledger-numbering";
 
 /**
  * Minimal income-posting + reversal helpers for Task 5. Full ledger CRUD is
@@ -48,33 +48,6 @@ function entrySnapshot(entry: LedgerEntryRecord): Prisma.InputJsonObject {
 
 @Injectable()
 export class LedgerService {
-  /**
-   * Allocate the next ledger entry number for a tenant, atomically, inside the
-   * caller's transaction. `INSERT ... ON CONFLICT DO UPDATE` row-locks the
-   * tenant's `doc_counters` row, so concurrent allocations serialize and can
-   * never hand out the same value; the `(tenant_id, entry_no)` unique index is
-   * the backstop. Mirrors the sequence math of `@wat/db`'s `nextDocumentNumber`
-   * but stays inside the Prisma transaction instead of spawning a psql process.
-   */
-  private async allocateEntryNo(
-    tx: Prisma.TransactionClient,
-    tenantId: string,
-  ): Promise<string> {
-    const rows = await tx.$queryRaw<Array<{ allocated_value: bigint }>>`
-      INSERT INTO doc_counters (tenant_id, doc_type, next_value)
-      VALUES (${tenantId}::uuid, 'ledger_entry', 2)
-      ON CONFLICT (tenant_id, doc_type)
-      DO UPDATE SET next_value = doc_counters.next_value + 1, updated_at = now()
-      RETURNING next_value - 1 AS allocated_value
-    `;
-    const allocated = rows[0]?.allocated_value;
-    if (allocated === undefined || allocated === null) {
-      throw projectHttpException(409, "CONFLICT", "ไม่สามารถออกเลขที่รายการบัญชีได้");
-    }
-
-    return `LEDG-${String(allocated).padStart(6, "0")}`;
-  }
-
   /** Post a confirmed donation as a single `posted` income ledger entry. */
   async postDonationIncome(
     tx: Prisma.TransactionClient,
@@ -88,7 +61,7 @@ export class LedgerService {
     },
     audit: LedgerAuditContext,
   ): Promise<LedgerEntryRecord> {
-    const entryNo = await this.allocateEntryNo(tx, params.tenantId);
+    const entryNo = await allocateLedgerEntryNo(tx, params.tenantId);
 
     const entry = (await tx.ledgerEntry.create({
       data: {

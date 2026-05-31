@@ -6,3 +6,6 @@ coverage/
 .env
 .env.local
 *.log
+
+# Claude Code session/agent data
+.claude/

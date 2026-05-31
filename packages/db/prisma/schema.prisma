@@ -266,6 +266,7 @@ model LedgerEntry {
   entryDate    DateTime          @map("entry_date") @db.Date
   status       LedgerEntryStatus @default(posted)
   description  String?
+  payee        String?
   donationId   String?           @map("donation_id") @db.Uuid
   donation     Donation?         @relation(fields: [donationId], references: [id])
   createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -273,6 +274,7 @@ model LedgerEntry {
 
   @@unique([tenantId, entryNo])
   @@index([tenantId])
+  @@index([tenantId, entryDate])
   @@index([donationId])
   @@map("ledger_entries")
 }
