@@ -19,6 +19,7 @@
 | 8 | Finance dashboard | ✅ เสร็จ (Task 9) |
 | 9 | Reports / export | ✅ เสร็จ (Task 10) |
 | 10 | Platform admin | ✅ เสร็จ (Task 11) — MVP-1 ครบ |
+| 11 (post-MVP-1) | Temple profile / master data | ✅ เสร็จ (Task 12) |
 
 > Phase 0–3 อยู่ใน commit `af7afff` (MVP-1 foundation). Phase 4 (Task 5): atomic income posting + void reverse (receipt→ledger→donation) + composite tenant FK. Phase 5 (Task 6): receipt issue/void/reissue (supersession) + RCPT numbering (atomic, unique/วัด) + printable preview ผ่าน `bahtText` + Task5↔Task6 void integration; ผ่าน api 46 + web 40 + db 7 tests, `migrate reset`/seed/`rls:check`, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings (reissue↔donation-void lock-ordering race, malformed-:id 500)
 
@@ -53,6 +54,13 @@
 > - **D2 break-glass = summary read-only:** grant (reason+ttl≤120m) → snapshot เป็นยอดรวม/นับ + receipt ล่าสุดแบบ metadata (ไม่มี PII), บังคับ owner + ยังไม่หมดอายุ/ไม่ถูก revoke ตอนใช้, ทุก open/access/revoke audit; ไม่มี write path ใด ๆ ผ่าน grant
 > - **D3 API-only** (ไม่มี web console — เลื่อนเป็น task แยก)
 > - ผ่าน api 108 (platform 16) + web 88 + db 7 + shared 12 tests, clean `migrate reset`+seed+`rls:check`, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings: **directory fail-open** (tenantId malformed→422 + audit ทุก cross-tenant read), **disable = kill-switch ทันที** (guard re-check `isActive`/role จาก DB ต่อ request + revoke refresh tokens), **refresh-reuse → revoke ทั้ง family**, **reject เลิก findUniqueOrThrow** (กัน P2025 500), FK `ON DELETE SET NULL`, seed demo app ไม่ปลุก approved row
+
+> **Post-MVP-1 (Task 12) — Temple profile / master data** — decisions:
+> - `GET /temple` (admin/finance/staff) + `PATCH /temple` (admin) แก้ข้อมูลหลักของวัดตน: ที่อยู่ไทย/ติดต่อ/เจ้าอาวาส/เลขทะเบียน-ภาษี/นิกาย/logo/หัว-ท้ายใบอนุโมทนา (16 คอลัมน์ nullable เพิ่มบน `temples`). อ่าน/เขียนผ่าน `withSystemAccess` scoped `id=tenantId` (temples ไม่มี RLS + wat_app ไม่มีสิทธิ์ — เหมือน idiom ที่ receipts ใช้). audit `temple:update` (before/after) ใน tx เดียวกัน
+> - **Mass-assignment safe:** validator เป็น partial-patch ที่ whitelist เฉพาะฟิลด์แก้ได้ + **reject** id/slug/status/ฟิลด์แปลกปลอม → 422 (status เป็นของ platform suspend/resume เท่านั้น); nameTh ห้ามเคลียร์; ฟิลด์ optional ส่ง "" = ล้างเป็น null
+> - **ต่อยอดของที่ ship แล้ว:** ใบอนุโมทนา (receipt preview) แสดง หัวเอกสาร/ที่อยู่/ท้ายเอกสาร จาก profile (field optional — ไม่กระทบ flow เดิม)
+> - web: หน้า `ข้อมูลวัด` (view เป็น section + ฟอร์มแก้เฉพาะ admin, empty state, ส่งเฉพาะ field ที่เปลี่ยนผ่าน diff)
+> - ผ่าน api 114 (temple 6) + web 97 + db 7 + shared 12 tests, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings: P2025 จาก update race → `notFound` (กัน raw 500), reject ฟิลด์นอก whitelist เป็น 422 (เดิม drop เงียบ), เพิ่ม test mass-assignment/non-string
 
 ## Stack & หลักการบังคับ (ตัดสินแล้ว)
 

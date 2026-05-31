@@ -19,8 +19,12 @@ export function ReceiptPreviewCard({ preview }: { preview: ReceiptPreview }): Re
   return (
     <article className="mx-auto max-w-xl rounded-2xl border border-stone-300 bg-white p-8 text-stone-900 shadow-sm">
       <header className="border-b border-stone-200 pb-4 text-center">
+        {preview.templeReceiptHeaderTh ? (
+          <p className="mb-1 text-xs text-stone-500">{preview.templeReceiptHeaderTh}</p>
+        ) : null}
         <h2 className="text-xl font-bold">{preview.templeNameTh}</h2>
         {preview.templeNameEn ? <p className="text-sm text-stone-500">{preview.templeNameEn}</p> : null}
+        {preview.templeAddressTh ? <p className="mt-1 text-xs text-stone-500">{preview.templeAddressTh}</p> : null}
         <p className="mt-3 text-lg font-semibold">ใบอนุโมทนาบุญ</p>
       </header>
 
@@ -57,6 +61,12 @@ export function ReceiptPreviewCard({ preview }: { preview: ReceiptPreview }): Re
       <p className="mt-6 text-center text-xs text-stone-500">
         ขออนุโมทนาบุญ ขอให้เจริญรุ่งเรืองด้วยจตุรพิธพรชัยทุกประการ
       </p>
+
+      {preview.templeReceiptFooterTh ? (
+        <p className="mt-3 border-t border-stone-200 pt-3 text-center text-xs text-stone-500">
+          {preview.templeReceiptFooterTh}
+        </p>
+      ) : null}
     </article>
   );
 }

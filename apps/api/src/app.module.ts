@@ -13,6 +13,7 @@ import { LedgerModule } from "./ledger/ledger.module";
 import { PlatformModule } from "./platform/platform.module";
 import { ReceiptsModule } from "./receipts/receipts.module";
 import { ReportsModule } from "./reports/reports.module";
+import { TempleModule } from "./temple/temple.module";
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { ReportsModule } from "./reports/reports.module";
     LedgerModule,
     DashboardModule,
     ReportsModule,
+    TempleModule,
     PlatformModule
   ],
   providers: [

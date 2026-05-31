@@ -44,6 +44,22 @@ describe("receipt preview card", () => {
     expect(html).toContain("เงินสด");
   });
 
+  it("renders temple master-data (header, address, footer) on the document when present", () => {
+    const html = renderToStaticMarkup(
+      <ReceiptPreviewCard
+        preview={{
+          ...preview,
+          templeReceiptHeaderTh: "ในนามคณะสงฆ์วัดอรุณ",
+          templeAddressTh: "123 ถนนอรุณอมรินทร์ กรุงเทพมหานคร 10600",
+          templeReceiptFooterTh: "ขอบคุณที่ร่วมทำบุญ",
+        }}
+      />,
+    );
+    expect(html).toContain("ในนามคณะสงฆ์วัดอรุณ");
+    expect(html).toContain("123 ถนนอรุณอมรินทร์ กรุงเทพมหานคร 10600");
+    expect(html).toContain("ขอบคุณที่ร่วมทำบุญ");
+  });
+
   it("flags a voided/superseded preview as not usable", () => {
     const html = renderToStaticMarkup(<ReceiptPreviewCard preview={{ ...preview, status: "voided" }} />);
     expect(html).toContain("ไม่ใช่ใบที่ใช้งานได้");

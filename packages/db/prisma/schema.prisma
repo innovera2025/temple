@@ -103,6 +103,22 @@ model Temple {
   nameTh            String             @map("name_th")
   nameEn            String?            @map("name_en")
   status            TempleStatus       @default(active)
+  addressTh         String?            @map("address_th")
+  subdistrict       String?
+  district          String?
+  province          String?
+  postalCode        String?            @map("postal_code")
+  phone             String?
+  email             String?
+  lineId            String?            @map("line_id")
+  websiteUrl        String?            @map("website_url")
+  abbotName         String?            @map("abbot_name")
+  registrationNo    String?            @map("registration_no")
+  taxId             String?            @map("tax_id")
+  denomination      String?
+  logoUrl           String?            @map("logo_url")
+  receiptHeaderTh   String?            @map("receipt_header_th")
+  receiptFooterTh   String?            @map("receipt_footer_th")
   createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime           @default(now()) @map("updated_at") @db.Timestamptz(6)
   users             User[]

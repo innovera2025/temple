@@ -52,6 +52,10 @@ export interface ReceiptPreview {
   issuedAt: string;
   templeNameTh: string;
   templeNameEn: string | null;
+  /** Optional temple master-data shown on the document (Task 12). */
+  templeAddressTh?: string | null;
+  templeReceiptHeaderTh?: string | null;
+  templeReceiptFooterTh?: string | null;
   donorName: string;
   amountSatang: string;
   amountText: string;

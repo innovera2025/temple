@@ -325,8 +325,29 @@ export class ReceiptsService {
     });
 
     const temple = await this.prisma.withSystemAccess((tx) =>
-      tx.temple.findFirst({ where: { id: tenantId }, select: { nameTh: true, nameEn: true } }),
+      tx.temple.findFirst({
+        where: { id: tenantId },
+        select: {
+          nameTh: true,
+          nameEn: true,
+          addressTh: true,
+          subdistrict: true,
+          district: true,
+          province: true,
+          postalCode: true,
+          receiptHeaderTh: true,
+          receiptFooterTh: true,
+        },
+      }),
     );
+
+    const addressParts = [
+      temple?.addressTh,
+      temple?.subdistrict,
+      temple?.district,
+      temple?.province,
+      temple?.postalCode,
+    ].filter((part): part is string => Boolean(part));
 
     return {
       receiptNo: receipt.receiptNo,
@@ -334,6 +355,9 @@ export class ReceiptsService {
       issuedAt: receipt.issuedAt.toISOString(),
       templeNameTh: temple?.nameTh ?? "",
       templeNameEn: temple?.nameEn ?? null,
+      templeAddressTh: addressParts.length > 0 ? addressParts.join(" ") : null,
+      templeReceiptHeaderTh: temple?.receiptHeaderTh ?? null,
+      templeReceiptFooterTh: temple?.receiptFooterTh ?? null,
       donorName,
       amountSatang: donation.amountSatang.toString(),
       amountText: bahtText(donation.amountSatang),
