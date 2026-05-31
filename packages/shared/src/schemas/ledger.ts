@@ -117,6 +117,7 @@ export interface LedgerEntryView {
   status: LedgerEntryStatus;
   payee: string | null;
   description: string | null;
+  reconciledAt: string | null;
   donationId: string | null;
   createdAt: string;
   updatedAt: string;

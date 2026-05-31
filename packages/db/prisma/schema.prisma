@@ -267,6 +267,7 @@ model LedgerEntry {
   status       LedgerEntryStatus @default(posted)
   description  String?
   payee        String?
+  reconciledAt DateTime?         @map("reconciled_at") @db.Timestamptz(6)
   donationId   String?           @map("donation_id") @db.Uuid
   donation     Donation?         @relation(fields: [donationId], references: [id])
   createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -286,6 +287,7 @@ model ReconciliationPeriod {
   periodStart DateTime  @map("period_start") @db.Date
   periodEnd   DateTime  @map("period_end") @db.Date
   closedAt    DateTime? @map("closed_at") @db.Timestamptz(6)
+  closedByUserId String? @map("closed_by_user_id") @db.Uuid
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
 

@@ -13,8 +13,11 @@ import {
   LEDGER_ACCOUNT_TYPE_LABELS_TH,
   LEDGER_DIRECTION_LABELS_TH,
   LEDGER_ENTRY_STATUS_LABELS_TH,
+  RECONCILIATION_PERIOD_STATUS_LABELS_TH,
+  validateClosePeriod,
   validateCreateLedgerEntry,
   validateVoidLedgerEntry,
+  type ClosePeriodInput,
   type CreateLedgerEntryInput,
   type FieldError,
   type LedgerAccountType,
@@ -24,15 +27,27 @@ import {
   type LedgerEntryStatus,
   type LedgerEntryView,
   type LedgerSummaryView,
+  type ReconciliationPeriodStatus,
+  type ReconciliationPeriodView,
   type ValidationResult,
 } from "@wat/shared";
 
 export type {
+  ClosePeriodInput,
   LedgerAccountView,
   LedgerEntrySearchQuery,
   LedgerEntryView,
   LedgerSummaryView,
+  ReconciliationPeriodView,
 } from "@wat/shared";
+
+export function periodStatusLabel(status: ReconciliationPeriodStatus): string {
+  return RECONCILIATION_PERIOD_STATUS_LABELS_TH[status];
+}
+
+export function validateClosePeriodForm(input: unknown): ValidationResult<ClosePeriodInput> {
+  return validateClosePeriod(input);
+}
 
 /** Render integer satang (string or number) as a Thai baht amount, e.g. "฿1,000.50". */
 export function displayBaht(amountSatang: string | number | bigint): string {
@@ -125,6 +140,9 @@ export interface LedgerApi {
   summary(query?: { month?: string; dateFrom?: string; dateTo?: string }): Promise<LedgerSummaryView>;
   create(input: CreateLedgerEntryInput): Promise<LedgerEntryView>;
   void(id: string, reason: string): Promise<LedgerEntryView>;
+  reconcile(id: string): Promise<LedgerEntryView>;
+  closePeriod(input: ClosePeriodInput): Promise<ReconciliationPeriodView>;
+  listPeriods(): Promise<ReconciliationPeriodView[]>;
 }
 
 export function buildLedgerQuery(query: LedgerEntrySearchQuery = {}): string {
@@ -211,6 +229,27 @@ export function createLedgerApiClient(options: LedgerApiClientOptions): LedgerAp
         body: JSON.stringify({ reason }),
       });
       return handle(response, (body) => body.entry as LedgerEntryView);
+    },
+    async reconcile(id) {
+      const response = await doFetch(`${options.baseUrl}/ledger/entries/${id}/reconcile`, {
+        method: "POST",
+        headers: headers(),
+      });
+      return handle(response, (body) => body.entry as LedgerEntryView);
+    },
+    async closePeriod(input) {
+      const response = await doFetch(`${options.baseUrl}/ledger/periods/close`, {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify(input),
+      });
+      return handle(response, (body) => body.period as ReconciliationPeriodView);
+    },
+    async listPeriods() {
+      const response = await doFetch(`${options.baseUrl}/ledger/periods`, {
+        headers: headers(),
+      });
+      return handle(response, (body) => (body.periods as ReconciliationPeriodView[]) ?? []);
     },
   };
 }

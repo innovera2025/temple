@@ -13,11 +13,14 @@ import {
   directionForAccountType,
   parseLedgerEntrySearchQuery,
   parseLedgerSummaryQuery,
+  periodStatus,
+  validateClosePeriod,
   validateCreateLedgerEntry,
   validateVoidLedgerEntry,
   type LedgerAccountType,
   type LedgerDirection,
   type LedgerEntryStatus,
+  type ReconciliationPeriodStatus,
 } from "@wat/shared";
 import { CurrentTenant } from "../common/decorators/current-tenant.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
@@ -33,6 +36,7 @@ import {
   LedgerEntryDetail,
   LedgerSummaryResult,
 } from "./ledger-entries.service";
+import { LedgerPeriodsService, ReconciliationPeriodRecord } from "./ledger-periods.service";
 
 /** Money fields are serialized as **strings** of integer satang (JSON has no BigInt). */
 interface SerializedLedgerEntry {
@@ -48,6 +52,7 @@ interface SerializedLedgerEntry {
   status: LedgerEntryStatus;
   payee: string | null;
   description: string | null;
+  reconciledAt: string | null;
   donationId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -86,6 +91,7 @@ function serializeEntry(entry: LedgerEntryDetail): SerializedLedgerEntry {
     status: entry.status as LedgerEntryStatus,
     payee: entry.payee,
     description: entry.description,
+    reconciledAt: entry.reconciledAt ? entry.reconciledAt.toISOString() : null,
     donationId: entry.donationId,
     createdAt: entry.createdAt.toISOString(),
     updatedAt: entry.updatedAt.toISOString(),
@@ -115,6 +121,27 @@ function serializeSummary(summary: LedgerSummaryResult): SerializedLedgerSummary
   };
 }
 
+interface SerializedPeriod {
+  id: string;
+  periodStart: string;
+  periodEnd: string;
+  status: ReconciliationPeriodStatus;
+  closedAt: string | null;
+  closedByUserId: string | null;
+}
+
+function serializePeriod(period: ReconciliationPeriodRecord): SerializedPeriod {
+  const closedAt = period.closedAt ? period.closedAt.toISOString() : null;
+  return {
+    id: period.id,
+    periodStart: period.periodStart.toISOString().slice(0, 10),
+    periodEnd: period.periodEnd.toISOString().slice(0, 10),
+    status: periodStatus(closedAt),
+    closedAt,
+    closedByUserId: period.closedByUserId,
+  };
+}
+
 // Recording/voiding ledger entries and reading aggregate financial metrics is
 // finance work; chart-of-accounts and entry reads are open to staff too.
 const LEDGER_WRITE_ROLES = ["admin", "finance"] as const;
@@ -135,7 +162,10 @@ function assertUuidParam(id: string): void {
 @Controller("ledger")
 @UseGuards(AuthGuard, TenantGuard, RolesGuard)
 export class LedgerController {
-  constructor(@Inject(LedgerEntriesService) private readonly ledger: LedgerEntriesService) {}
+  constructor(
+    @Inject(LedgerEntriesService) private readonly ledger: LedgerEntriesService,
+    @Inject(LedgerPeriodsService) private readonly periods: LedgerPeriodsService,
+  ) {}
 
   @Get("accounts")
   @Roles(...LEDGER_READ_ROLES)
@@ -211,5 +241,41 @@ export class LedgerController {
     }
     const entry = await this.ledger.void(tenantId, user.sub, id, result.data.reason, ip);
     return { entry: serializeEntry(entry) };
+  }
+
+  @Post("entries/:id/reconcile")
+  @Roles(...LEDGER_WRITE_ROLES)
+  async reconcile(
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentTenant() tenantId: string,
+    @Ip() ip: string,
+    @Param("id") id: string,
+  ): Promise<{ entry: SerializedLedgerEntry }> {
+    assertUuidParam(id);
+    const entry = await this.ledger.reconcile(tenantId, user.sub, id, ip);
+    return { entry: serializeEntry(entry) };
+  }
+
+  @Post("periods/close")
+  @Roles(...LEDGER_WRITE_ROLES)
+  async closePeriod(
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentTenant() tenantId: string,
+    @Ip() ip: string,
+    @Body() body: unknown,
+  ): Promise<{ period: SerializedPeriod }> {
+    const result = validateClosePeriod(body);
+    if (!result.success) {
+      throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ข้อมูลไม่ถูกต้อง", result.errors);
+    }
+    const period = await this.periods.closePeriod(tenantId, user.sub, result.data, ip);
+    return { period: serializePeriod(period) };
+  }
+
+  @Get("periods")
+  @Roles(...LEDGER_READ_ROLES)
+  async listPeriods(@CurrentTenant() tenantId: string): Promise<{ periods: SerializedPeriod[] }> {
+    const periods = await this.periods.listPeriods(tenantId);
+    return { periods: periods.map(serializePeriod) };
   }
 }

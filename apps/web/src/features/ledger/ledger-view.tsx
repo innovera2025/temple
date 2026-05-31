@@ -7,6 +7,7 @@ import {
   displayBaht,
   emptyLedgerForm,
   firstError,
+  periodStatusLabel,
   postableAccounts,
   statusLabel,
   validateLedgerEntryForm,
@@ -16,6 +17,7 @@ import {
   type LedgerEntryView,
   type LedgerFormValues,
   type LedgerSummaryView,
+  type ReconciliationPeriodView,
 } from "./ledger";
 
 const TODAY_FALLBACK = "2026-01-01";
@@ -159,9 +161,11 @@ export function LedgerEntryForm({
 export function LedgerTable({
   entries,
   onVoid,
+  onReconcile,
 }: {
   entries: LedgerEntryView[];
   onVoid: (entry: LedgerEntryView) => void;
+  onReconcile?: (entry: LedgerEntryView) => void;
 }): ReactElement {
   if (entries.length === 0) {
     return <LedgerEntriesEmptyState />;
@@ -197,8 +201,22 @@ export function LedgerTable({
               <td className="py-2 pr-3">{entry.payee ?? "—"}</td>
               <td className="py-2 pr-3">{directionLabel(entry.direction)}</td>
               <td className="py-2 pr-3 text-right font-medium">{displayBaht(entry.amountSatang)}</td>
-              <td className="py-2 pr-3">{statusLabel(entry.status)}</td>
+              <td className="py-2 pr-3">
+                {statusLabel(entry.status)}
+                {entry.reconciledAt ? (
+                  <span className="ml-1 rounded bg-teal-50 px-1.5 py-0.5 text-xs text-teal-700">กระทบยอดแล้ว</span>
+                ) : null}
+              </td>
               <td className="py-2 pr-3 text-right">
+                {onReconcile && entry.status === "posted" && !entry.reconciledAt ? (
+                  <button
+                    type="button"
+                    onClick={() => onReconcile(entry)}
+                    className="mr-2 text-xs font-semibold text-teal-700"
+                  >
+                    กระทบยอด
+                  </button>
+                ) : null}
                 {canVoidEntry(entry) ? (
                   <button
                     type="button"
@@ -212,6 +230,95 @@ export function LedgerTable({
             </tr>
           );
         })}
+      </tbody>
+    </table>
+  );
+}
+
+export interface ClosePeriodFormValues {
+  periodStart: string;
+  periodEnd: string;
+}
+
+export function ClosePeriodForm({
+  values,
+  errors,
+  submitting,
+  onChange,
+  onSubmit,
+}: {
+  values: ClosePeriodFormValues;
+  errors: FieldError[];
+  submitting: boolean;
+  onChange: (next: ClosePeriodFormValues) => void;
+  onSubmit: () => void;
+}): ReactElement {
+  const handleSubmit = (event: FormEvent): void => {
+    event.preventDefault();
+    onSubmit();
+  };
+
+  return (
+    <form className="grid gap-3 sm:grid-cols-3 sm:items-end" onSubmit={handleSubmit} aria-label="ปิดงวดบัญชี">
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="font-medium text-stone-700">ตั้งแต่วันที่</span>
+        <input
+          className="rounded-lg border border-stone-300 px-3 py-2"
+          type="date"
+          value={values.periodStart}
+          onChange={(event) => onChange({ ...values, periodStart: event.target.value })}
+        />
+        <FieldMessage message={firstError(errors, "periodStart")} />
+      </label>
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="font-medium text-stone-700">ถึงวันที่</span>
+        <input
+          className="rounded-lg border border-stone-300 px-3 py-2"
+          type="date"
+          value={values.periodEnd}
+          onChange={(event) => onChange({ ...values, periodEnd: event.target.value })}
+        />
+        <FieldMessage message={firstError(errors, "periodEnd")} />
+      </label>
+      <button
+        type="submit"
+        disabled={submitting}
+        className="rounded-lg bg-stone-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+      >
+        {submitting ? "กำลังปิดงวด…" : "ปิดงวดบัญชี"}
+      </button>
+    </form>
+  );
+}
+
+export function LedgerPeriodList({ periods }: { periods: ReconciliationPeriodView[] }): ReactElement {
+  if (periods.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-stone-300 bg-stone-50 p-4 text-center text-sm text-stone-500">
+        ยังไม่มีการปิดงวดบัญชี
+      </div>
+    );
+  }
+
+  return (
+    <table className="w-full border-collapse text-sm">
+      <thead>
+        <tr className="border-b border-stone-200 text-left text-xs text-stone-500">
+          <th className="py-2 pr-3">ช่วงงวด</th>
+          <th className="py-2 pr-3">สถานะ</th>
+          <th className="py-2 pr-3">ปิดเมื่อ</th>
+        </tr>
+      </thead>
+      <tbody>
+        {periods.map((period) => (
+          <tr key={period.id} className="border-b border-stone-100 text-stone-800">
+            <td className="py-2 pr-3">
+              {period.periodStart} – {period.periodEnd}
+            </td>
+            <td className="py-2 pr-3">{periodStatusLabel(period.status)}</td>
+            <td className="py-2 pr-3">{period.closedAt ? period.closedAt.slice(0, 10) : "—"}</td>
+          </tr>
+        ))}
       </tbody>
     </table>
   );

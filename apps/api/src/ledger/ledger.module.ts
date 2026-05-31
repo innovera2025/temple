@@ -6,12 +6,13 @@ import { TenantGuard } from "../common/guards/tenant.guard";
 import { PrismaModule } from "../common/prisma/prisma.module";
 import { LedgerController } from "./ledger.controller";
 import { LedgerEntriesService } from "./ledger-entries.service";
+import { LedgerPeriodsService } from "./ledger-periods.service";
 import { LedgerService } from "./ledger.service";
 
 @Module({
   imports: [AuthModule, AuditModule, PrismaModule],
   controllers: [LedgerController],
-  providers: [LedgerService, LedgerEntriesService, RolesGuard, TenantGuard],
+  providers: [LedgerService, LedgerEntriesService, LedgerPeriodsService, RolesGuard, TenantGuard],
   exports: [LedgerService],
 })
 export class LedgerModule {}

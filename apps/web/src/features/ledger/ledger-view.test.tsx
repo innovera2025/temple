@@ -1,11 +1,13 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { LedgerAccountView, LedgerEntryView, LedgerSummaryView } from "@wat/shared";
-import { emptyLedgerForm, type LedgerApi } from "./ledger";
+import { emptyLedgerForm, type LedgerApi, type ReconciliationPeriodView } from "./ledger";
 import {
+  ClosePeriodForm,
   LedgerEntriesEmptyState,
   LedgerEntryForm,
   LedgerPage,
+  LedgerPeriodList,
   LedgerSummaryCards,
   LedgerTable,
   LedgerVoidDialog,
@@ -24,6 +26,7 @@ const sampleEntry: LedgerEntryView = {
   status: "posted",
   payee: "ร้านดอกไม้",
   description: null,
+  reconciledAt: null,
   donationId: null,
   createdAt: "2026-05-20T00:00:00.000Z",
   updatedAt: "2026-05-20T00:00:00.000Z",
@@ -151,10 +154,64 @@ describe("ledger view", () => {
       summary: async () => sampleSummary,
       create: async () => sampleEntry,
       void: async () => sampleEntry,
+      reconcile: async () => sampleEntry,
+      closePeriod: async () => closedPeriod,
+      listPeriods: async () => [closedPeriod],
     };
     const html = renderToStaticMarkup(<LedgerPage api={api} today="2026-05-20" month="2026-05" />);
     expect(html).toContain("บัญชีรายรับรายจ่าย");
     expect(html).toContain("บันทึกรายรับ/รายจ่าย");
     expect(html).toContain("ยังไม่มีรายการบัญชี");
+  });
+});
+
+const closedPeriod: ReconciliationPeriodView = {
+  id: "99999999-9999-4999-8999-999999999999",
+  periodStart: "2026-05-01",
+  periodEnd: "2026-05-31",
+  status: "closed",
+  closedAt: "2026-06-01T00:00:00.000Z",
+  closedByUserId: "user-1",
+};
+
+describe("reconciliation view", () => {
+  it("renders a reconcile action and reconciled badge in the table", () => {
+    const withReconcile = renderToStaticMarkup(
+      <LedgerTable entries={[sampleEntry]} onVoid={() => undefined} onReconcile={() => undefined} />,
+    );
+    expect(withReconcile).toContain(">กระทบยอด</button>");
+
+    const reconciled = renderToStaticMarkup(
+      <LedgerTable
+        entries={[{ ...sampleEntry, reconciledAt: "2026-05-21T00:00:00.000Z" }]}
+        onVoid={() => undefined}
+        onReconcile={() => undefined}
+      />,
+    );
+    expect(reconciled).toContain("กระทบยอดแล้ว");
+    expect(reconciled).not.toContain(">กระทบยอด</button>"); // already reconciled
+  });
+
+  it("close-period form renders Thai date fields and a submit label", () => {
+    const html = renderToStaticMarkup(
+      <ClosePeriodForm
+        values={{ periodStart: "", periodEnd: "" }}
+        errors={[]}
+        submitting={false}
+        onChange={() => undefined}
+        onSubmit={() => undefined}
+      />,
+    );
+    expect(html).toContain("ตั้งแต่วันที่");
+    expect(html).toContain("ถึงวันที่");
+    expect(html).toContain("ปิดงวดบัญชี");
+  });
+
+  it("period list shows an empty state and closed-period rows", () => {
+    expect(renderToStaticMarkup(<LedgerPeriodList periods={[]} />)).toContain("ยังไม่มีการปิดงวดบัญชี");
+
+    const html = renderToStaticMarkup(<LedgerPeriodList periods={[closedPeriod]} />);
+    expect(html).toContain("2026-05-01 – 2026-05-31");
+    expect(html).toContain("ปิดงวดแล้ว");
   });
 });

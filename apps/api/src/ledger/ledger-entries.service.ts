@@ -10,6 +10,7 @@ import {
 import { projectHttpException } from "../common/errors/project-error";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { allocateLedgerEntryNo } from "./ledger-numbering";
+import { assertDateNotInClosedPeriod, lockTenantLedger } from "./ledger-periods";
 
 export interface LedgerAccountRecord {
   id: string;
@@ -30,6 +31,7 @@ export interface LedgerEntryDetail {
   status: string;
   payee: string | null;
   description: string | null;
+  reconciledAt: Date | null;
   donationId: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -73,6 +75,7 @@ function entrySnapshot(entry: LedgerEntryDetail): Prisma.InputJsonObject {
     status: entry.status,
     payee: entry.payee,
     description: entry.description,
+    reconciledAt: entry.reconciledAt ? entry.reconciledAt.toISOString() : null,
     donationId: entry.donationId,
   };
 }
@@ -123,6 +126,8 @@ export class LedgerEntriesService {
     const entryDate = toDateOnly(input.entryDate);
 
     return this.prisma.withTenant(tenantId, async (tx) => {
+      await lockTenantLedger(tx, tenantId);
+      await assertDateNotInClosedPeriod(tx, entryDate);
       await this.resolvePostableAccount(tx, input.accountId);
       const entryNo = await allocateLedgerEntryNo(tx, tenantId);
 
@@ -226,6 +231,7 @@ export class LedgerEntriesService {
     ip?: string,
   ): Promise<LedgerEntryDetail> {
     return this.prisma.withTenant(tenantId, async (tx) => {
+      await lockTenantLedger(tx, tenantId);
       await tx.$queryRaw`SELECT id FROM ledger_entries WHERE id = ${id}::uuid FOR UPDATE`;
 
       const before = (await tx.ledgerEntry.findFirst({
@@ -245,6 +251,7 @@ export class LedgerEntriesService {
       if (before.status !== "posted") {
         throw projectHttpException(409, "CONFLICT", "รายการบัญชีนี้ไม่อยู่ในสถานะที่ยกเลิกได้");
       }
+      await assertDateNotInClosedPeriod(tx, before.entryDate);
 
       const after = (await tx.ledgerEntry.update({
         where: { id },
@@ -262,6 +269,60 @@ export class LedgerEntriesService {
           before: entrySnapshot(before),
           after: entrySnapshot(after),
           reason,
+          metadata: {},
+          ip,
+        },
+      });
+
+      return after;
+    });
+  }
+
+  /**
+   * Mark a posted entry as reconciled (matched against the bank/statement).
+   * Sets `reconciledAt` and audits `ledger:reconcile`. Only a posted entry can
+   * be reconciled (else 409); an entry in a closed period is locked (409).
+   */
+  async reconcile(
+    tenantId: string,
+    actorUserId: string,
+    id: string,
+    ip?: string,
+  ): Promise<LedgerEntryDetail> {
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      await lockTenantLedger(tx, tenantId);
+      await tx.$queryRaw`SELECT id FROM ledger_entries WHERE id = ${id}::uuid FOR UPDATE`;
+
+      const before = (await tx.ledgerEntry.findFirst({
+        where: { id },
+        include: ENTRY_INCLUDE,
+      })) as unknown as LedgerEntryDetail | null;
+      if (!before) {
+        throw projectHttpException(404, "NOT_FOUND", "ไม่พบรายการบัญชี");
+      }
+      if (before.status !== "posted") {
+        throw projectHttpException(409, "CONFLICT", "กระทบยอดได้เฉพาะรายการที่บันทึกแล้ว");
+      }
+      if (before.reconciledAt) {
+        throw projectHttpException(409, "CONFLICT", "รายการนี้กระทบยอดแล้ว");
+      }
+      await assertDateNotInClosedPeriod(tx, before.entryDate);
+
+      const after = (await tx.ledgerEntry.update({
+        where: { id },
+        data: { reconciledAt: new Date(), updatedAt: new Date() },
+        include: ENTRY_INCLUDE,
+      })) as unknown as LedgerEntryDetail;
+
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          actorUserId,
+          action: "ledger:reconcile",
+          entityType: "ledger_entry",
+          entityId: after.id,
+          before: entrySnapshot(before),
+          after: entrySnapshot(after),
           metadata: {},
           ip,
         },

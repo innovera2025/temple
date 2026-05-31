@@ -7,8 +7,10 @@ import {
   createLedgerApiClient,
   directionLabel,
   displayBaht,
+  periodStatusLabel,
   postableAccounts,
   statusLabel,
+  validateClosePeriodForm,
   validateLedgerEntryForm,
   validateVoidReason,
 } from "./ledger";
@@ -119,6 +121,7 @@ describe("formatting, labels, and helpers", () => {
       status: "posted",
       payee: null,
       description: null,
+      reconciledAt: null,
       donationId: null,
       createdAt: "2026-05-20T00:00:00.000Z",
       updatedAt: "2026-05-20T00:00:00.000Z",
@@ -195,5 +198,72 @@ describe("ledger API client", () => {
     await expect(
       api.create({ accountId: account, amountSatang: 100, entryDate: "2026-05-20" }),
     ).rejects.toThrow("บัญชีไม่ถูกต้อง");
+  });
+});
+
+describe("reconciliation period logic + client", () => {
+  it("maps period status to Thai", () => {
+    expect(periodStatusLabel("open")).toBe("เปิดอยู่");
+    expect(periodStatusLabel("closed")).toBe("ปิดงวดแล้ว");
+  });
+
+  it("validates a close-period range (end must not precede start; real dates)", () => {
+    expect(validateClosePeriodForm({ periodStart: "2026-05-01", periodEnd: "2026-05-31" }).success).toBe(true);
+    expect(validateClosePeriodForm({ periodStart: "2026-05-31", periodEnd: "2026-05-01" }).success).toBe(false);
+    expect(validateClosePeriodForm({ periodStart: "2026-13-40", periodEnd: "2026-05-31" }).success).toBe(false);
+  });
+
+  it("reconcile posts to the reconcile endpoint", async () => {
+    const fetchFn = vi.fn().mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ entry: { id: "e1", reconciledAt: "2026-05-20T00:00:00.000Z" } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    const api = createLedgerApiClient({
+      baseUrl: "http://api.test",
+      getToken: () => "tok",
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+
+    const entry = await api.reconcile("e1");
+    expect(entry.id).toBe("e1");
+    expect(fetchFn.mock.calls[0]?.[0]).toContain("/ledger/entries/e1/reconcile");
+    expect(fetchFn.mock.calls[0]?.[1]?.method).toBe("POST");
+  });
+
+  it("closePeriod posts the range; listPeriods reads them", async () => {
+    const closeFn = vi.fn().mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ period: { id: "p1", status: "closed" } }), {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    const closeApi = createLedgerApiClient({
+      baseUrl: "http://api.test",
+      getToken: () => null,
+      fetchFn: closeFn as unknown as typeof fetch,
+    });
+    const period = await closeApi.closePeriod({ periodStart: "2026-05-01", periodEnd: "2026-05-31" });
+    expect(period.id).toBe("p1");
+    expect(closeFn.mock.calls[0]?.[0]).toContain("/ledger/periods/close");
+
+    const listFn = vi.fn().mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ periods: [{ id: "p1", status: "closed" }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    const listApi = createLedgerApiClient({
+      baseUrl: "http://api.test",
+      getToken: () => null,
+      fetchFn: listFn as unknown as typeof fetch,
+    });
+    const periods = await listApi.listPeriods();
+    expect(periods).toHaveLength(1);
+    expect(listFn.mock.calls[0]?.[0]).toContain("/ledger/periods");
   });
 });

@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { allocateLedgerEntryNo } from "./ledger-numbering";
+import { assertDateNotInClosedPeriod, lockTenantLedger } from "./ledger-periods";
 
 /**
  * Minimal income-posting + reversal helpers for Task 5. Full ledger CRUD is
@@ -61,6 +62,8 @@ export class LedgerService {
     },
     audit: LedgerAuditContext,
   ): Promise<LedgerEntryRecord> {
+    await lockTenantLedger(tx, params.tenantId);
+    await assertDateNotInClosedPeriod(tx, params.entryDate);
     const entryNo = await allocateLedgerEntryNo(tx, params.tenantId);
 
     const entry = (await tx.ledgerEntry.create({
@@ -117,10 +120,15 @@ export class LedgerService {
     },
     audit: LedgerAuditContext,
   ): Promise<void> {
+    await lockTenantLedger(tx, params.tenantId);
     const before = await this.findPostedEntry(tx, params.donationId);
     if (!before) {
       return;
     }
+    // The original posting must not be locked, and the edit must not move the
+    // entry into a closed period either.
+    await assertDateNotInClosedPeriod(tx, before.entryDate);
+    await assertDateNotInClosedPeriod(tx, params.entryDate);
 
     const after = (await tx.ledgerEntry.update({
       where: { id: before.id },
@@ -157,10 +165,13 @@ export class LedgerService {
     params: { tenantId: string; donationId: string; reason: string },
     audit: LedgerAuditContext,
   ): Promise<void> {
+    await lockTenantLedger(tx, params.tenantId);
     const before = await this.findPostedEntry(tx, params.donationId);
     if (!before) {
       return;
     }
+    // Cannot reverse a posting that lives in a closed period.
+    await assertDateNotInClosedPeriod(tx, before.entryDate);
 
     const after = (await tx.ledgerEntry.update({
       where: { id: before.id },

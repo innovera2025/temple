@@ -15,8 +15,8 @@
 | 4 | Donation create/edit/void + auto-post income ledger | ✅ เสร็จ (Task 5) |
 | 5 | Receipt / ใบอนุโมทนา (issue/void/reissue/preview + numbering) | ✅ เสร็จ (Task 6) |
 | 6 | Ledger income/expense | ✅ เสร็จ (Task 7) |
-| 7 | Reconciliation / close period | ⬜ ถัดไป |
-| 8 | Finance dashboard | ⬜ |
+| 7 | Reconciliation / close period | ✅ เสร็จ (Task 8) |
+| 8 | Finance dashboard | ⬜ ถัดไป |
 | 9 | Reports / export | ⬜ |
 | 10 | Platform admin | ⬜ |
 
@@ -28,6 +28,12 @@
 > - **D3 void manual entry เท่านั้นทาง `/ledger/entries/:id/void`** (reason บังคับ → 422, lock-row กัน TOCTOU, no hard delete). รายการที่ผูก donation (`donation_id` ≠ null) **ห้าม void ทางนี้ → 409** ให้ไป void ที่ donation เพื่อรักษา invariant donation↔ledger↔receipt ให้ atomic.
 > - **D4 payee** เพิ่มคอลัมน์ `payee` (nullable) บน `ledger_entries` (additive migration, RLS แถวเดิมครอบคลุม, DELETE ยังถูก revoke). **แนบหลักฐาน (attachment) เลื่อน** ไปทำเมื่อมี storage backend (เหมือน binary-PDF) — schema `attachments` พร้อมแล้วแต่ยังไม่มี upload pipeline.
 > - **D5 สิทธิ์:** create/void/summary = admin/finance; list/get/accounts = admin/finance/staff. ผ่าน api 18 + web 18 tests, `migrate deploy`/`rls:check`, global typecheck/lint/test/build ครบ
+
+> **Phase 7 (Task 8) — Reconciliation / close period** — decisions:
+> - **ปิดงวด** `POST /ledger/periods/close {periodStart,periodEnd}` สร้าง `reconciliation_periods` (closedAt + `closed_by_user_id` composite FK→users), audit `period:close`; ช่วงทับซ้อนงวดที่ปิดแล้ว → 409. **กระทบยอด** `POST /ledger/entries/:id/reconcile` ตั้ง `reconciled_at` (เฉพาะ posted, idempotent → 409 ถ้าทำซ้ำ), audit `ledger:reconcile`.
+> - **Lock:** หลังปิดงวด ทุก ledger mutation ที่ entry_date อยู่ในช่วง → 409 ผ่าน `assertDateNotInClosedPeriod` ฝังในทุกจุด **รวม donation-driven** (post/update/void) — recording/แก้/void บริจาคที่แตะงวดที่ปิด = 409
+> - **Concurrency:** `pg_advisory_xact_lock` ต่อ tenant ที่ต้นทุก ledger mutation + closePeriod → serialize กัน race (entry แทรกเข้างวดที่เพิ่งปิด / ปิดงวดทับซ้อน/ซ้ำ → 409 ไม่ใช่ 500)
+> - ผ่าน api 75 (reconciliation 14) + web 73 + db 7 + shared 6 tests, `migrate deploy`/seed/`rls:check`, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings (close↔mutation race [HIGH], overlapping-close, reconcile idempotency)
 
 ## Stack & หลักการบังคับ (ตัดสินแล้ว)
 
@@ -93,7 +99,7 @@
 - **Files/modules:** `apps/api/src/ledger/**`, `apps/web/src/features/ledger/**`, `packages/shared/src/schemas/ledger.ts`
 - **Verify:** global • test:finance (no-hard-delete, void audit, ยอดสรุปไม่นับ cancelled) • isolation
 
-### Phase 7 — Reconciliation / close period
+### Phase 7 — Reconciliation / close period ✅
 
 - **ส่งมอบ:** ทำเครื่องหมายกระทบยอดรายการ, ปิดงวด (`ReconciliationPeriod`), หลังปิดงวดห้ามแก้รายการในงวด (lock)
 - **Files/modules:** `apps/api/src/ledger/**` (reconcile/period), `apps/web/src/features/ledger/**`
