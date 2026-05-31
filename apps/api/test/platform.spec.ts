@@ -200,8 +200,8 @@ describe("platform admin", () => {
     const tenantCtx = {
       switchToHttp: () => ({ getRequest: () => ({ headers: { authorization: `Bearer ${superAccessToken}` } }) }),
     } as never;
-    // a platform token must NOT authenticate on the tenant plane
-    expect(() => tenantAuthGuard.canActivate(tenantCtx)).toThrow();
+    // a platform token must NOT authenticate on the tenant plane (typ mismatch)
+    await expect(tenantAuthGuard.canActivate(tenantCtx)).rejects.toThrow();
   });
 
   it("enforces the platform role matrix (support cannot approve)", () => {

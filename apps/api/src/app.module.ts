@@ -17,6 +17,7 @@ import { PlatformModule } from "./platform/platform.module";
 import { ReceiptsModule } from "./receipts/receipts.module";
 import { ReportsModule } from "./reports/reports.module";
 import { TempleModule } from "./temple/temple.module";
+import { UsersModule } from "./users/users.module";
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { TempleModule } from "./temple/temple.module";
     PersonnelModule,
     CeremoniesModule,
     InventoryModule,
+    UsersModule,
     PlatformModule
   ],
   providers: [

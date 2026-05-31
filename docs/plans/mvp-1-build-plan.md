@@ -24,6 +24,7 @@
 | 13 (post-MVP-1) | Ceremonies / งานบุญ-พิธี (basic records) | ✅ เสร็จ (Task 14) |
 | 14 (post-MVP-1) | Inventory / คลังของบริจาค-พัสดุ (items + movements) | ✅ เสร็จ (Task 15) |
 | — (hardening) | Global Prisma-error filter (ปิด @Catch(HttpException)-only gap) | ✅ เสร็จ (Task 16) |
+| 15 (post-MVP-1) | In-tenant user management (admin จัดการผู้ใช้+สิทธิ์) | ✅ เสร็จ (Task 17) |
 
 > Phase 0–3 อยู่ใน commit `af7afff` (MVP-1 foundation). Phase 4 (Task 5): atomic income posting + void reverse (receipt→ledger→donation) + composite tenant FK. Phase 5 (Task 6): receipt issue/void/reissue (supersession) + RCPT numbering (atomic, unique/วัด) + printable preview ผ่าน `bahtText` + Task5↔Task6 void integration; ผ่าน api 46 + web 40 + db 7 tests, `migrate reset`/seed/`rls:check`, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings (reissue↔donation-void lock-ordering race, malformed-:id 500)
 
@@ -92,6 +93,13 @@
 > - **ทุก ≥500 ถูก sanitise** ไม่ว่ามาจาก HttpException หรือไม่ (caller-supplied 500 message ไม่หลุด) + log ทุกตัว; guard `host.getType()!=='http'`
 > - เป็น backstop ทั้งแอป — service ที่ catch P2025 เองอยู่แล้ว (temple/personnel/ceremonies/inventory) ยังทำงานเหมือนเดิม
 > - ผ่าน api 145 (filter spec 10) + web 123 + db 7 + shared 12 tests, global typecheck/lint/build ครบ — แก้ adversarial-review findings: ≥500 HttpException force generic message + log, non-HTTP-context guard, เพิ่ม test no-leak (string/Prisma/Error)
+
+> **Post-MVP-1 (Task 17) — In-tenant user management** — decisions:
+> - `GET/POST/PATCH /users(/:id)` **admin-only ทั้ง controller** (class-level @Roles); withTenant+RLS. ไม่ต้อง migration (ตาราง `users` มีครบ). audit `user:create`/`user:update`. **ไม่คืน passwordHash** (select ตัดทิ้ง, ไม่อยู่ใน snapshot); password hash ผ่าน PasswordService; email **immutable** ตอนแก้
+> - **Security invariants:** last-admin protection (advisory lock ต่อ tenant + count active admin อื่น → ปิด/ลดสิทธิ์ admin คนสุดท้าย = 409), self-disable = 403, email ซ้ำ = 409 (pre-check + P2002 backstop), create reject mass-assignment (isActive/tenantId/id → 422), `:id` malformed/ข้ามวัด → 404
+> - **AuthGuard เป็น stateful แล้ว (hardening คู่กัน):** re-check `isActive`+role จาก DB ต่อ request (เหมือน platform plane) → disable/demote มีผล **ทันที** ไม่ต้องรอ access token หมดอายุ; disable/เปลี่ยนรหัส revoke refresh tokens ด้วย
+> - web: หน้า `ผู้ใช้และสิทธิ์` (รายการ+filter + ฟอร์ม create/edit, email read-only ตอนแก้, toggle เปิด/ปิด)
+> - ผ่าน api 154 (users 9) + web 130 (+7) + db 7 + shared 12 tests, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings: role-demotion escalation (→ stateful AuthGuard ปิดทั้ง disable+demote ทันที), create mass-assignment → 422
 
 ## Stack & หลักการบังคับ (ตัดสินแล้ว)
 

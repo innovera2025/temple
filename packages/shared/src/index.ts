@@ -12,4 +12,5 @@ export * from "./schemas/temple-profile";
 export * from "./schemas/personnel";
 export * from "./schemas/ceremony";
 export * from "./schemas/inventory";
+export * from "./schemas/user";
 export * from "./baht-text";

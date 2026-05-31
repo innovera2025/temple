@@ -201,7 +201,7 @@ describe("auth, RBAC, tenant context, and audit", () => {
     const handler = () => undefined;
     Reflect.defineMetadata(ROLES_KEY, ["admin"], handler);
 
-    expect(authGuard.canActivate(createHttpContext(request))).toBe(true);
+    expect(await authGuard.canActivate(createHttpContext(request))).toBe(true);
     await expectProjectHttpError(
       Promise.resolve().then(() => rolesGuard.canActivate(createHttpContext(request, handler))),
       403,
@@ -287,7 +287,7 @@ describe("auth, RBAC, tenant context, and audit", () => {
       handler,
     );
 
-    expect(authGuard.canActivate(createHttpContext(request))).toBe(true);
+    expect(await authGuard.canActivate(createHttpContext(request))).toBe(true);
     expect(request.currentTenantId).toBe(templeA);
 
     const response = await firstValueFrom(
