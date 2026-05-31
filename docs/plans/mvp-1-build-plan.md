@@ -21,6 +21,7 @@
 | 10 | Platform admin | ✅ เสร็จ (Task 11) — MVP-1 ครบ |
 | 11 (post-MVP-1) | Temple profile / master data | ✅ เสร็จ (Task 12) |
 | 12 (post-MVP-1) | Monk/staff (personnel) management | ✅ เสร็จ (Task 13) |
+| 13 (post-MVP-1) | Ceremonies / งานบุญ-พิธี (basic records) | ✅ เสร็จ (Task 14) |
 
 > Phase 0–3 อยู่ใน commit `af7afff` (MVP-1 foundation). Phase 4 (Task 5): atomic income posting + void reverse (receipt→ledger→donation) + composite tenant FK. Phase 5 (Task 6): receipt issue/void/reissue (supersession) + RCPT numbering (atomic, unique/วัด) + printable preview ผ่าน `bahtText` + Task5↔Task6 void integration; ผ่าน api 46 + web 40 + db 7 tests, `migrate reset`/seed/`rls:check`, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings (reissue↔donation-void lock-ordering race, malformed-:id 500)
 
@@ -68,6 +69,13 @@
 > - **ไม่มี hard delete** — archive ด้วย `status=inactive` (wat_app ไม่มีสิทธิ์ DELETE; wat_migrate มี TRUNCATE สำหรับ cascade จาก temples). validator partial-patch + reject ฟิลด์นอก whitelist (กัน mass-assignment); date เป็น YYYY-MM-DD (isValidIsoDate) → แปลงเป็น Date ใน service; phansaCount int 0-200; nationalId 13 หลัก; `:id` malformed/ข้ามวัด → 404 (uuid guard + P2025→notFound)
 > - web: หน้า `พระ/สามเณร/บุคลากร` (ตาราง + filter ประเภท/สถานะ/ค้นหา + ฟอร์ม add/edit, empty state)
 > - ผ่าน api 120 (personnel 6) + web 106 (+9) + db 7 + shared 12 tests, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings (ทั้ง low): create spread `tenantId` ท้ายสุด (context-wins), `phansaCount` กัน loose Number() coercion, **mask nationalId ใน audit snapshot** (เก็บ 4 ตัวท้าย), เพิ่ม test mass-assignment tenant_id/id→422
+
+> **Post-MVP-1 (Task 14) — Ceremonies / งานบุญ-พิธี (basic records)** — decisions:
+> - ทะเบียนงานบุญ/พิธี เป็น **tenant table ปกติ** (`ceremonies`, tenant_id + RLS) แก้ผ่าน `withTenant`. `GET/POST/PATCH /ceremonies(/:id)`; write = admin/staff, read = +finance; audit `ceremony:create`/`ceremony:update` (before/after) ใน tx เดียว. filter: ประเภท/สถานะ/ค้นหาชื่อ/ช่วงวันที่ (dateFrom-dateTo)
+> - field: ประเภท (ทำบุญ/งานศพ/อุปสมบท/ขึ้นบ้านใหม่/กฐิน-ผ้าป่า/อื่น ๆ), สถานะ (กำหนดการ/เสร็จสิ้น/ยกเลิก), ชื่องาน, วันที่, เวลา, สถานที่/ศาลา, เจ้าภาพ+โทร, พระที่นิมนต์ (free text), จำนวนพระ, หมายเหตุ. **ไม่มี hard delete** — ยกเลิกด้วย status; mass-assignment safe (reject ฟิลด์นอก whitelist); `:id` malformed/ข้ามวัด → 404
+> - **ขอบเขต = basic records เท่านั้น** — full booking/ปฏิทิน/จองศาลา/นิมนต์พระ (link personnel) + public calendar **เลื่อน MVP-2** ตาม cowork doc
+> - web: หน้า `งานบุญ/พิธี` (ตาราง + filter + ฟอร์ม add/edit + status workflow)
+> - ผ่าน api 126 (ceremonies 6) + web 115 (+9) + db 7 + shared 12 tests, global typecheck/lint/build ครบ — รวมแก้ adversarial-review finding (low): เพิ่ม test ตรวจ audit before/after **content + serialization** (ceremonyDate เป็น YYYY-MM-DD, ไม่ leak Date/updatedAt ลง jsonb) ไม่ใช่แค่ row count
 
 ## Stack & หลักการบังคับ (ตัดสินแล้ว)
 
