@@ -22,6 +22,7 @@
 | 11 (post-MVP-1) | Temple profile / master data | ✅ เสร็จ (Task 12) |
 | 12 (post-MVP-1) | Monk/staff (personnel) management | ✅ เสร็จ (Task 13) |
 | 13 (post-MVP-1) | Ceremonies / งานบุญ-พิธี (basic records) | ✅ เสร็จ (Task 14) |
+| 14 (post-MVP-1) | Inventory / คลังของบริจาค-พัสดุ (items + movements) | ✅ เสร็จ (Task 15) |
 
 > Phase 0–3 อยู่ใน commit `af7afff` (MVP-1 foundation). Phase 4 (Task 5): atomic income posting + void reverse (receipt→ledger→donation) + composite tenant FK. Phase 5 (Task 6): receipt issue/void/reissue (supersession) + RCPT numbering (atomic, unique/วัด) + printable preview ผ่าน `bahtText` + Task5↔Task6 void integration; ผ่าน api 46 + web 40 + db 7 tests, `migrate reset`/seed/`rls:check`, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings (reissue↔donation-void lock-ordering race, malformed-:id 500)
 
@@ -76,6 +77,14 @@
 > - **ขอบเขต = basic records เท่านั้น** — full booking/ปฏิทิน/จองศาลา/นิมนต์พระ (link personnel) + public calendar **เลื่อน MVP-2** ตาม cowork doc
 > - web: หน้า `งานบุญ/พิธี` (ตาราง + filter + ฟอร์ม add/edit + status workflow)
 > - ผ่าน api 126 (ceremonies 6) + web 115 (+9) + db 7 + shared 12 tests, global typecheck/lint/build ครบ — รวมแก้ adversarial-review finding (low): เพิ่ม test ตรวจ audit before/after **content + serialization** (ceremonyDate เป็น YYYY-MM-DD, ไม่ leak Date/updatedAt ลง jsonb) ไม่ใช่แค่ row count
+
+> **Post-MVP-1 (Task 15) — Inventory / คลังของบริจาค-พัสดุ-สังฆทาน** — decisions:
+> - **2 entity:** `inventory_items` (master + ยอดคงเหลือ denormalized) + `inventory_movements` (รับเข้า/เบิกออก append-only). ทั้งคู่ tenant + RLS, แก้ผ่าน `withTenant`. ยอดเปลี่ยน **ผ่าน movement เท่านั้น** (validator ห้ามตั้ง quantity ตรง). `GET/POST/PATCH /inventory/items(/:id)` + `GET/POST /inventory/items/:id/movements`; write=admin/staff, read=+finance; audit `inventory:item:create/update` + `inventory:movement:create` ใน tx เดียว
+> - **Atomic stock + concurrency:** recordMovement ล็อกแถว item ด้วย `SELECT ... FOR UPDATE` (RLS-scoped + tenant_id ในคำสั่ง) → คำนวณ newBalance → เบิกเกิน = 409 → อัปเดต quantity + insert movement(balance_after) + audit ใน tx เดียว. ทดสอบ concurrency: 4 เบิกพร้อมกัน (เกินสต็อก) → สำเร็จ 3 fail 1 ยอดไม่ติดลบ. **ไม่มี hard delete** (archive ด้วย status; movement append-only แก้ด้วยรายการใหม่)
+> - DB backstop: CHECK (quantity≥0, balance_after≥0, movement qty>0); cap newBalance ≤ 2e9 กัน int4 overflow→500; `:id` malformed/ข้ามวัด → 404
+> - web: หน้า `คลังของบริจาค/พัสดุ` (รายการ+filter + detail ยอดคงเหลือ + ฟอร์มรับเข้า/เบิกออก + ประวัติ)
+> - ผ่าน api 135 (inventory 9) + web 123 (+8) + db 7 + shared 12 tests, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings: DB CHECK constraints, int4-overflow cap→409, tenant_id ในคำสั่ง lock/update (defense-in-depth), ใช้ผล update แทน re-read, ordering tiebreaker, movementSnapshot ครบ field
+> - **ค้าง (recurring, เลื่อน task เฉพาะ):** `ProjectExceptionFilter` เป็น `@Catch(HttpException)` อย่างเดียว → raw Prisma error (serialization/deadlock/unmapped) หลุดเป็น 500 — ควรทำ global Prisma-error filter ครั้งเดียวทั้งแอป (paths ที่ถึงได้ใน module ปิดด้วย guard/uuid/cap แล้ว)
 
 ## Stack & หลักการบังคับ (ตัดสินแล้ว)
 

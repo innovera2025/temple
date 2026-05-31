@@ -64,6 +64,29 @@ enum CeremonyStatus {
   @@map("ceremony_status")
 }
 
+enum InventoryCategory {
+  sangha_offering
+  supplies
+  equipment
+  other
+
+  @@map("inventory_category")
+}
+
+enum InventoryStatus {
+  active
+  inactive
+
+  @@map("inventory_status")
+}
+
+enum InventoryMovementType {
+  receive
+  issue
+
+  @@map("inventory_movement_type")
+}
+
 enum TenantRole {
   admin
   finance
@@ -170,6 +193,8 @@ model Temple {
   breakGlassGrants  BreakGlassGrant[]
   personnel         Personnel[]
   ceremonies        Ceremony[]
+  inventoryItems    InventoryItem[]
+  inventoryMovements InventoryMovement[]
 
   @@map("temples")
 }
@@ -347,6 +372,46 @@ model Ceremony {
   @@index([tenantId])
   @@index([tenantId, ceremonyDate])
   @@map("ceremonies")
+}
+
+model InventoryItem {
+  id        String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String              @map("tenant_id") @db.Uuid
+  tenant    Temple              @relation(fields: [tenantId], references: [id])
+  name      String
+  category  InventoryCategory   @default(other)
+  unit      String?
+  quantity  Int                 @default(0)
+  status    InventoryStatus     @default(active)
+  note      String?
+  movements InventoryMovement[]
+  createdAt DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime            @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@index([tenantId, category])
+  @@map("inventory_items")
+}
+
+model InventoryMovement {
+  id           String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String                @map("tenant_id") @db.Uuid
+  tenant       Temple                @relation(fields: [tenantId], references: [id])
+  itemId       String                @map("item_id") @db.Uuid
+  item         InventoryItem         @relation(fields: [tenantId, itemId], references: [tenantId, id])
+  movementType InventoryMovementType @map("movement_type")
+  quantity     Int
+  balanceAfter Int                   @map("balance_after")
+  movementDate DateTime              @map("movement_date") @db.Date
+  reason       String?
+  reference    String?
+  note         String?
+  createdAt    DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([tenantId])
+  @@index([tenantId, itemId])
+  @@map("inventory_movements")
 }
 
 model Donation {

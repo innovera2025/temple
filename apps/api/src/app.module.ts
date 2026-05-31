@@ -10,6 +10,7 @@ import { DashboardModule } from "./dashboard/dashboard.module";
 import { DonationsModule } from "./donations/donations.module";
 import { DonorsModule } from "./donors/donors.module";
 import { HealthModule } from "./health/health.module";
+import { InventoryModule } from "./inventory/inventory.module";
 import { LedgerModule } from "./ledger/ledger.module";
 import { PersonnelModule } from "./personnel/personnel.module";
 import { PlatformModule } from "./platform/platform.module";
@@ -43,6 +44,7 @@ import { TempleModule } from "./temple/temple.module";
     TempleModule,
     PersonnelModule,
     CeremoniesModule,
+    InventoryModule,
     PlatformModule
   ],
   providers: [
