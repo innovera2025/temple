@@ -57,3 +57,11 @@ export function unauthorized(message = "Unauthorized"): HttpException {
 export function forbidden(message = "Forbidden"): HttpException {
   return projectHttpException(HttpStatus.FORBIDDEN, "FORBIDDEN", message);
 }
+
+export function notFound(message = "Not found"): HttpException {
+  return projectHttpException(HttpStatus.NOT_FOUND, "NOT_FOUND", message);
+}
+
+export function conflict(message = "Conflict"): HttpException {
+  return projectHttpException(HttpStatus.CONFLICT, "CONFLICT", message);
+}

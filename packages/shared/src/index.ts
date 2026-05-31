@@ -7,4 +7,5 @@ export * from "./schemas/ledger";
 export * from "./schemas/reconciliation";
 export * from "./schemas/dashboard";
 export * from "./schemas/report";
+export * from "./schemas/platform";
 export * from "./baht-text";

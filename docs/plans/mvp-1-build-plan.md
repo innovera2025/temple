@@ -18,7 +18,7 @@
 | 7 | Reconciliation / close period | ✅ เสร็จ (Task 8) |
 | 8 | Finance dashboard | ✅ เสร็จ (Task 9) |
 | 9 | Reports / export | ✅ เสร็จ (Task 10) |
-| 10 | Platform admin | ⬜ ถัดไป |
+| 10 | Platform admin | ✅ เสร็จ (Task 11) — MVP-1 ครบ |
 
 > Phase 0–3 อยู่ใน commit `af7afff` (MVP-1 foundation). Phase 4 (Task 5): atomic income posting + void reverse (receipt→ledger→donation) + composite tenant FK. Phase 5 (Task 6): receipt issue/void/reissue (supersession) + RCPT numbering (atomic, unique/วัด) + printable preview ผ่าน `bahtText` + Task5↔Task6 void integration; ผ่าน api 46 + web 40 + db 7 tests, `migrate reset`/seed/`rls:check`, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings (reissue↔donation-void lock-ordering race, malformed-:id 500)
 
@@ -45,6 +45,14 @@
 > - **D1 ส่งมอบ CSV (+printable preview ฝั่ง web) ไม่ใช่ binary PDF/Excel** — เลื่อน binary export ไปจนกว่าจะมี lib/ระบบ template (เหมือน binary-PDF ของ Phase 5)
 > - **D2 วันที่แบบ ICT (UTC+7):** ตัวกรองวันของ `receipt.issuedAt` (timestamptz) ใช้ช่วงครึ่งเปิด `[dateFrom 00:00 ICT, (dateTo+1) 00:00 ICT)` + แสดงวันที่เป็นวัน ICT ให้ตรงกับช่วงกรอง (คอลัมน์ `@db.Date` donationDate/entryDate ยังเทียบ UTC-midnight ตามชนิด date เดิม)
 > - ผ่าน api 92 (reports 10) + web 88 (reports 7) + db 7 + shared 12 tests, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings: **CSV formula-injection** (neutralize free-text ขึ้นต้น `= + - @` ด้วย leading `'` เฉพาะ donor name/note/payee, ไม่แตะ cell ตัวเลข/วันที่), **status ไม่ถูกต้อง → Prisma enum 500** (drop เงียบแบบ parseLedgerQuery ไม่ใช่ throw), **receipts date filter UTC→ICT**, audit เพิ่ม `accountId`/`direction`
+
+> **Phase 10 (Task 11) — Minimal Innovera platform admin** — decisions (MVP-1 ครบ):
+> - **Plane แยกจาก tenant อย่างสมบูรณ์:** platform token type แยก (`typ=platform_access`, **ไม่มี tenant_id**, claim `platform_role` super_admin/support) ใช้ HMAC secret เดียวกับ tenant แต่แยกด้วยการ assert `typ` ทั้งสองฝั่ง; `PlatformAuthGuard` ไม่ตั้ง tenant context. ทุก endpoint อ่าน/เขียนผ่าน `withSystemAccess` (wat_migrate, นอก RLS) จึงต้องใส่ `where:{tenantId}` ชัดเจนทุก query ที่แตะ tenant table. platform action audit ลง `platform_audit_logs` (reason/expiry/ip อยู่ใน metadata) ใน tx เดียวกับ mutation
+> - **Endpoints:** applications list/approve/reject; temples suspend/resume; platform-users disable/enable; cross-tenant users directory; break-glass. approve/reject/suspend/resume/disable/enable = **super_admin**; list/directory/break-glass = super_admin+support. reject/suspend/resume บังคับ `reason`
+> - **D1 approve สร้าง temple(active) + admin user แรก** (รับ adminEmail[+default=contactEmail]/adminPassword) → วัดใช้งานได้ทันที; claim ใบสมัครแบบ conditional updateMany กัน double-approve (loser→409); ทั้ง temple+user+link+audit atomic; P2002 → 409 ไม่ใช่ 500. ผูก `temple_applications.created_temple_id` (FK ON DELETE SET NULL)
+> - **D2 break-glass = summary read-only:** grant (reason+ttl≤120m) → snapshot เป็นยอดรวม/นับ + receipt ล่าสุดแบบ metadata (ไม่มี PII), บังคับ owner + ยังไม่หมดอายุ/ไม่ถูก revoke ตอนใช้, ทุก open/access/revoke audit; ไม่มี write path ใด ๆ ผ่าน grant
+> - **D3 API-only** (ไม่มี web console — เลื่อนเป็น task แยก)
+> - ผ่าน api 108 (platform 16) + web 88 + db 7 + shared 12 tests, clean `migrate reset`+seed+`rls:check`, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings: **directory fail-open** (tenantId malformed→422 + audit ทุก cross-tenant read), **disable = kill-switch ทันที** (guard re-check `isActive`/role จาก DB ต่อ request + revoke refresh tokens), **refresh-reuse → revoke ทั้ง family**, **reject เลิก findUniqueOrThrow** (กัน P2025 500), FK `ON DELETE SET NULL`, seed demo app ไม่ปลุก approved row
 
 ## Stack & หลักการบังคับ (ตัดสินแล้ว)
 
@@ -128,11 +136,11 @@
 - **Files/modules:** `apps/api/src/reports/**`, `apps/web/src/features/reports/**`
 - **Verify:** global • API test: export มีข้อมูลตรง, audit `*:export` • isolation (export เฉพาะวัดตน)
 
-### Phase 10 — Minimal Innovera platform admin
+### Phase 10 — Minimal Innovera platform admin ✅
 
-- **ส่งมอบ:** platform plane ขั้นต่ำ: review/approve/reject `TempleApplication`, จัดการวัด (suspend/resume), จัดการผู้ใช้ข้ามวัด (disable/enable), platform audit — **ไม่เข้าถึงข้อมูลการเงิน tenant โดย default** (break-glass เท่านั้น)
-- **Files/modules:** `apps/api/src/platform/**`, `apps/web` (console minimal หรือ route แยก), platform audit
-- **Verify:** global • API test: platform role แยกจาก tenant role, ห้ามอ่านข้อมูลการเงินวัด (เว้น break-glass: reason+expiry+audit+read-only), platform actions → platform audit
+- **ส่งมอบ:** platform plane ขั้นต่ำ: review/approve/reject `TempleApplication`, จัดการวัด (suspend/resume), จัดการ platform user (disable/enable), directory ผู้ใช้ข้ามวัด, platform audit — **ไม่เข้าถึงข้อมูลการเงิน tenant โดย default** (break-glass read-only เท่านั้น)
+- **Files/modules:** `apps/api/src/platform/**`, platform audit (web console เลื่อนเป็น task แยก — API-only)
+- **Verify:** global • API test: platform role แยกจาก tenant role (token plane แยกด้วย `typ`), ห้ามอ่านข้อมูลการเงินวัด (เว้น break-glass: reason+expiry+audit+read-only), platform actions → platform audit ✅
 
 ---
 

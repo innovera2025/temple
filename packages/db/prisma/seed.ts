@@ -44,6 +44,38 @@ const userValues = (
   )
 ).join(",\n    ");
 
+interface SeedPlatformUser {
+  id: string;
+  email: string;
+  displayName: string;
+  platformRole: "super_admin" | "support";
+}
+
+const platformUsers: SeedPlatformUser[] = [
+  {
+    id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    email: "super@innovera.example",
+    displayName: "Innovera Super Admin",
+    platformRole: "super_admin",
+  },
+  {
+    id: "cccccccc-cccc-4ccc-8ccc-cccccccccccd",
+    email: "support@innovera.example",
+    displayName: "Innovera Support",
+    platformRole: "support",
+  },
+];
+
+const platformUserValues = (
+  await Promise.all(
+    platformUsers.map(async (user) => {
+      const passwordHash = await devPasswordHash(user.email);
+
+      return `(${sqlLiteral(user.id)}, ${sqlLiteral(user.email)}, ${sqlLiteral(user.displayName)}, ${sqlLiteral(user.platformRole)}, ${sqlLiteral(passwordHash)})`;
+    }),
+  )
+).join(",\n    ");
+
 await psql(`
   SET ROLE wat_migrate;
 
@@ -83,8 +115,32 @@ await psql(`
       account_type = EXCLUDED.account_type,
       updated_at = now();
 
+  -- Innovera platform operators (separate plane, no tenant). Password: ${devPassword}
+  -- is_active relies on its column DEFAULT true on insert; re-seed re-enables it.
+  INSERT INTO platform_users (id, email, display_name, platform_role, password_hash)
+  VALUES
+    ${platformUserValues}
+  ON CONFLICT (id) DO UPDATE
+  SET display_name = EXCLUDED.display_name,
+      platform_role = EXCLUDED.platform_role,
+      password_hash = EXCLUDED.password_hash,
+      is_active = true,
+      updated_at = now();
+
+  -- One demo pending application (manual/demo only — tests insert their own).
+  INSERT INTO temple_applications (id, temple_name_th, contact_email, status)
+  VALUES
+    ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'วัดขอสมัครเดโม', 'apply@example.com', 'pending')
+  -- Only refresh the demo row while it is still pending; never resurrect an
+  -- application that was already approved/rejected (that would orphan its temple).
+  ON CONFLICT (id) DO UPDATE
+  SET temple_name_th = EXCLUDED.temple_name_th,
+      contact_email = EXCLUDED.contact_email,
+      updated_at = now()
+  WHERE temple_applications.status = 'pending';
+
   RESET ROLE;
 `);
 
-console.log("Seeded 2 active temples, tenant users, and ledger accounts.");
+console.log("Seeded 2 active temples, tenant users, ledger accounts, 2 platform operators, and a demo application.");
 console.log("Development login password for all seeded users: Password123!");
