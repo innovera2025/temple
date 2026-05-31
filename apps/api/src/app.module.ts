@@ -5,6 +5,7 @@ import { AuditModule } from "./audit/audit.module";
 import { AuthModule } from "./auth/auth.module";
 import { ProjectExceptionFilter } from "./common/filters/project-exception.filter";
 import { validateEnv } from "./config/env.validation";
+import { DashboardModule } from "./dashboard/dashboard.module";
 import { DonationsModule } from "./donations/donations.module";
 import { DonorsModule } from "./donors/donors.module";
 import { HealthModule } from "./health/health.module";
@@ -31,7 +32,8 @@ import { ReceiptsModule } from "./receipts/receipts.module";
     DonorsModule,
     DonationsModule,
     ReceiptsModule,
-    LedgerModule
+    LedgerModule,
+    DashboardModule
   ],
   providers: [
     {

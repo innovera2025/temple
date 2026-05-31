@@ -16,8 +16,8 @@
 | 5 | Receipt / ใบอนุโมทนา (issue/void/reissue/preview + numbering) | ✅ เสร็จ (Task 6) |
 | 6 | Ledger income/expense | ✅ เสร็จ (Task 7) |
 | 7 | Reconciliation / close period | ✅ เสร็จ (Task 8) |
-| 8 | Finance dashboard | ⬜ ถัดไป |
-| 9 | Reports / export | ⬜ |
+| 8 | Finance dashboard | ✅ เสร็จ (Task 9) |
+| 9 | Reports / export | ⬜ ถัดไป |
 | 10 | Platform admin | ⬜ |
 
 > Phase 0–3 อยู่ใน commit `af7afff` (MVP-1 foundation). Phase 4 (Task 5): atomic income posting + void reverse (receipt→ledger→donation) + composite tenant FK. Phase 5 (Task 6): receipt issue/void/reissue (supersession) + RCPT numbering (atomic, unique/วัด) + printable preview ผ่าน `bahtText` + Task5↔Task6 void integration; ผ่าน api 46 + web 40 + db 7 tests, `migrate reset`/seed/`rls:check`, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings (reissue↔donation-void lock-ordering race, malformed-:id 500)
@@ -34,6 +34,11 @@
 > - **Lock:** หลังปิดงวด ทุก ledger mutation ที่ entry_date อยู่ในช่วง → 409 ผ่าน `assertDateNotInClosedPeriod` ฝังในทุกจุด **รวม donation-driven** (post/update/void) — recording/แก้/void บริจาคที่แตะงวดที่ปิด = 409
 > - **Concurrency:** `pg_advisory_xact_lock` ต่อ tenant ที่ต้นทุก ledger mutation + closePeriod → serialize กัน race (entry แทรกเข้างวดที่เพิ่งปิด / ปิดงวดทับซ้อน/ซ้ำ → 409 ไม่ใช่ 500)
 > - ผ่าน api 75 (reconciliation 14) + web 73 + db 7 + shared 6 tests, `migrate deploy`/seed/`rls:check`, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings (close↔mutation race [HIGH], overlapping-close, reconcile idempotency)
+
+> **Phase 8 (Task 9) — Finance dashboard** — decisions:
+> - `GET /dashboard` **role-aware**: ยอดเงิน (รับ/จ่าย/คงเหลือเดือนนี้) + รายการบริจาคล่าสุด เห็นเฉพาะ admin/finance (`includeFinancials = role∈{admin,finance}`); staff เห็นแค่ counts/คิว (operational ไม่มีเงิน). ไม่มี migration/lock/audit (read-only)
+> - การ์ด: รับ/จ่าย/คงเหลือ (reuse `LedgerEntriesService.summary` → ตรง ledger เป๊ะ), ผู้บริจาคใหม่เดือนนี้; คิว: รอออกใบ (confirmed ไม่มี issued receipt) / รอกระทบยอด (posted, reconciledAt null); recent = 5 ล่าสุด **เฉพาะ confirmed** (ไม่โชว์ที่ยกเลิก); empty state ไทย
+> - ผ่าน api 82 (dashboard 7) + web 81 (dashboard 8) + db 7 + shared 6 tests, global typecheck/lint/build ครบ — รวมแก้ adversarial-review findings (recent ไม่กรอง cancelled, staff-gating test coverage)
 
 ## Stack & หลักการบังคับ (ตัดสินแล้ว)
 
@@ -105,7 +110,7 @@
 - **Files/modules:** `apps/api/src/ledger/**` (reconcile/period), `apps/web/src/features/ledger/**`
 - **Verify:** global • API test: close period → รายการในงวด edit ไม่ได้ (409/403) • audit `ledger:reconcile` / `period:close`
 
-### Phase 8 — Finance dashboard
+### Phase 8 — Finance dashboard ✅
 
 - **ส่งมอบ:** การ์ดรับเดือนนี้/จ่ายเดือนนี้/คงเหลือ/ผู้บริจาคใหม่, รายการล่าสุด, คิวงาน (รอออกใบ/รอกระทบยอด), respects permission
 - **Files/modules:** `apps/api/src/dashboard/**` (หรือ aggregate ใน existing modules), `apps/web/src/features/dashboard/**`

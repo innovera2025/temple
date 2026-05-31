@@ -13,6 +13,6 @@ import { LedgerService } from "./ledger.service";
   imports: [AuthModule, AuditModule, PrismaModule],
   controllers: [LedgerController],
   providers: [LedgerService, LedgerEntriesService, LedgerPeriodsService, RolesGuard, TenantGuard],
-  exports: [LedgerService],
+  exports: [LedgerService, LedgerEntriesService],
 })
 export class LedgerModule {}
