@@ -1,15 +1,21 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { App } from "./app";
 import { SmokeShell } from "./smoke/SmokeShell";
 
+afterEach(() => {
+  window.localStorage.clear();
+  window.location.hash = "";
+});
+
 describe("App (default temple product)", () => {
-  it("renders the temple login screen as the default route", () => {
+  it("renders the design-backed temple login screen as the default route", () => {
     const html = renderToStaticMarkup(<App />);
 
-    expect(html).toContain("ระบบจัดการวัด");
+    // Design-backed brand + Thai copy (admin-app.jsx LoginScreen).
+    expect(html).toContain("วัดธรรมสถิตวนาราม");
+    expect(html).toContain("ยินดีต้อนรับกลับ");
     expect(html).toContain("เข้าสู่ระบบ");
-    expect(html).toContain("Temple Management System");
   });
 
   it("is the temple product, not the Agent Control Tower", () => {
@@ -27,6 +33,29 @@ describe("App (default temple product)", () => {
     expect(html).not.toContain("API response preview");
     expect(html).not.toContain("Run quick smoke");
   });
+
+  it("renders the RoleShell product (not the login screen) once a session exists", () => {
+    window.localStorage.setItem(
+      "wat-session",
+      JSON.stringify({
+        accessToken: "tok",
+        user: {
+          email: "admin@wat-arun.example",
+          displayName: "ผู้ดูแลวัดอรุณ",
+          role: "admin",
+          tenantId: "wat-arun",
+        },
+      }),
+    );
+
+    const html = renderToStaticMarkup(<App />);
+
+    // RoleShell chrome (a NAV group label exists only in the shell sidebar).
+    expect(html).toContain("การเงินและบริจาค");
+    expect(html).toContain("ผู้ดูแลวัดอรุณ");
+    // The login welcome is gone — we transitioned to the product shell.
+    expect(html).not.toContain("ยินดีต้อนรับกลับ");
+  });
 });
 
 describe("SmokeShell (dev-only, separated from the product)", () => {
@@ -36,5 +65,17 @@ describe("SmokeShell (dev-only, separated from the product)", () => {
     expect(html).toContain("เมนูระบบวัด");
     expect(html).toContain("API response preview");
     expect(html).toContain("Backend smoke test");
+  });
+
+  it("is reachable through the App #/smoke route (and the default route is not smoke)", () => {
+    window.location.hash = "#/smoke";
+    const smoke = renderToStaticMarkup(<App />);
+    expect(smoke).toContain("เมนูระบบวัด");
+    expect(smoke).not.toContain("ยินดีต้อนรับกลับ");
+
+    window.location.hash = "";
+    const def = renderToStaticMarkup(<App />);
+    expect(def).toContain("ยินดีต้อนรับกลับ");
+    expect(def).not.toContain("เมนูระบบวัด");
   });
 });
