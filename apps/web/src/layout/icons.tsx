@@ -19,7 +19,9 @@ export type IconName =
   | "menu"
   | "search"
   | "logout"
-  | "chevR";
+  | "chevR"
+  | "building"
+  | "box";
 
 const PATHS: Record<IconName, ReactElement> = {
   dashboard: <path d="M4 13h7V4H4v9Zm0 7h7v-5H4v5Zm9 0h7v-9h-7v9Zm0-16v5h7V4h-7Z" />,
@@ -102,6 +104,18 @@ const PATHS: Record<IconName, ReactElement> = {
     </>
   ),
   chevR: <path d="m9 6 6 6-6 6" />,
+  building: (
+    <>
+      <path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16" />
+      <path d="M15 9h4a1 1 0 0 1 1 1v11M3 21h18M8 8h3M8 12h3M8 16h3" />
+    </>
+  ),
+  box: (
+    <>
+      <path d="M21 8 12 3 3 8v8l9 5 9-5V8Z" />
+      <path d="m3 8 9 5 9-5M12 13v8" />
+    </>
+  ),
 };
 
 export interface IconProps extends SVGProps<SVGSVGElement> {

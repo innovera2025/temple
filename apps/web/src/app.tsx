@@ -1,8 +1,8 @@
 import { FormEvent, ReactElement, useEffect, useState } from "react";
 import { SmokeShell } from "./smoke/SmokeShell";
-import { Card } from "./design-system";
 import { RoleShell } from "./layout/RoleShell";
-import { defaultPageFor, PAGE_TITLES, PageId, TempleRole } from "./layout/nav";
+import { defaultPageFor, PageId, TempleRole } from "./layout/nav";
+import { PageContent } from "./features/page-content";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000";
 
@@ -129,26 +129,9 @@ function LoginScreen(props: { onAuthenticated: (session: Session) => void }): Re
   );
 }
 
-// Per-page content placeholder. The real design-backed screens (and the existing
-// feature views) get wired into this slot in web Task 5; for now each page shows
-// an honest "being ported" card so the shell is usable without faking screens.
-function PagePlaceholder({ page }: { page: PageId }): ReactElement {
-  return (
-    <div style={{ maxWidth: 760 }}>
-      <h1 style={{ margin: "0 0 4px", fontSize: 22, fontWeight: 700, color: "var(--ink)" }}>
-        {PAGE_TITLES[page]}
-      </h1>
-      <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--ink-3)" }}>
-        โครงระบบ (RoleShell) พร้อมแล้ว — หน้าจอนี้กำลัง port จาก Design ทีละ slice (web Task 5)
-      </p>
-      <Card pad>
-        <p style={{ margin: 0, fontSize: 13, lineHeight: 1.7, color: "var(--ink-2)" }}>
-          เมนู สิทธิ์ตามบทบาท และหัวข้อหน้า เป็นไปตาม Design จริง (design-ui-map.md §2.1) ส่วนเนื้อหาของ
-          “{PAGE_TITLES[page]}” จะเชื่อมกับ API และคอมโพเนนต์ตาม Design ในขั้นถัดไป
-        </p>
-      </Card>
-    </div>
-  );
+function todayIso(): string {
+  if (typeof window === "undefined") return "2026-01-01";
+  return new Date().toISOString().slice(0, 10);
 }
 
 function TempleApp(): ReactElement {
@@ -179,7 +162,13 @@ function TempleApp(): ReactElement {
       onNavigate={setPage}
       onLogout={logout}
     >
-      <PagePlaceholder page={page} />
+      <PageContent
+        page={page}
+        baseUrl={API_BASE_URL}
+        getToken={() => session.accessToken}
+        role={session.user.role as TempleRole}
+        today={todayIso()}
+      />
     </RoleShell>
   );
 }

@@ -50,6 +50,10 @@ describe("Sidebar (role-filtered NAV from shell.jsx)", () => {
     expect(html).toContain("วัดธรรมสถิตวนาราม");
     expect(html).toContain("sb-item active");
     expect(html).toContain("แดชบอร์ด");
+    // EXTRA_NAV (Core Modules outside the design NAV) appears as a labelled group.
+    expect(html).toContain("เพิ่มเติม (นอกเหนือดีไซน์)");
+    expect(html).toContain("ข้อมูลวัด");
+    expect(html).toContain("คลังของบริจาค/พัสดุ");
   });
 
   it("hides items a staff user cannot access", () => {

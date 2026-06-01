@@ -1,6 +1,6 @@
 import { ReactElement } from "react";
 import { Icon, IconName } from "./icons";
-import { NAV, PageId, TempleRole } from "./nav";
+import { EXTRA_NAV, NAV, PageId, TempleRole } from "./nav";
 
 // Ported from shell.jsx Sidebar: brand seal + name, nav groups filtered by `can`,
 // footer with the signed-in user + logout.
@@ -39,7 +39,7 @@ export function Sidebar({ page, goto, open, onClose, counts, user, can, onLogout
       </div>
 
       <nav className="sb-nav">
-        {NAV.map((group) => {
+        {[...NAV, ...EXTRA_NAV].map((group) => {
           const items = group.items.filter((item) => can(item.id));
           if (!items.length) return null;
           return (
