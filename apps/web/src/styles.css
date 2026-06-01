@@ -215,6 +215,113 @@ body {
   padding: 16px;
 }
 
+.muted {
+  color: var(--ink-3);
+}
+
+/* Overlays: Modal + Drawer share the scrim. (design: shell.jsx Modal/Drawer) */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(20, 17, 13, 0.42);
+}
+.modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  transform: translate(-50%, -50%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: 0 16px 48px rgba(20, 17, 13, 0.22);
+  overflow: hidden;
+}
+.modal-head,
+.drawer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.modal-head h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.modal-body,
+.drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+.modal-foot,
+.drawer-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+}
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  width: min(440px, 100vw);
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  box-shadow: -16px 0 48px rgba(20, 17, 13, 0.18);
+}
+.drawer-head h2 {
+  margin: 0;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* Transient confirmation toast (design: shell.jsx Toast, checkCircle). */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  z-index: 80;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transform: translateX(-50%);
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--paper);
+  background: var(--ink);
+  border-radius: var(--r);
+  box-shadow: 0 8px 24px rgba(20, 17, 13, 0.28);
+}
+.toast .ico {
+  display: inline-flex;
+  color: #7fd1a8;
+}
+
+/* Horizontal control group above tables/lists (design: shell.jsx Toolbar). */
+.t-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
 /* ===========================================================================
  * Layout: RoleShell / Sidebar / Topbar (ported from shell.jsx class names).
  * ======================================================================== */
