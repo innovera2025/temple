@@ -4,7 +4,7 @@
 Build a Thai-first temple management system (ระบบจัดการวัด) for real-world temple operations.
 
 ## Current Repository Status
-This repository was cloned from `https://github.com/innovera2025/temple.git` and is currently empty at the time of initial review. There are no implemented routes, models, UI screens, tests, or build configuration yet.
+This repository now contains the MVP foundation for the Thai-first temple management system, including database schema/migrations, API modules, web feature views, design-backed shell/login UI, tests, and build configuration. Inspect actual files before relying on older planning docs.
 
 ## Product Scope
 The system should eventually cover:
@@ -24,7 +24,7 @@ The system should eventually cover:
 - Financial records must never be hard-deleted; use void/cancel with reason.
 - Donations, receipts, expenses, and permission changes must create audit logs.
 - Every financial document needs a unique traceable document number.
-- Separate permissions for admin, finance, temple staff, monk/staff viewer, and auditor/report viewer.
+- Canonical product access has 3 top-level groups: `platform_owner` (platform plane via `/platform/auth`), `temple_owner` (tenant `admin`), and `temple_user` (tenant `finance`/`staff` capability subroles). Do not reintroduce `auditor`/`viewer` into product runtime unless DB schema, seed, API, and tests are updated first.
 - Design for non-technical temple staff: clear forms, tables, empty states, and guided workflows.
 
 ## Suggested Development Workflow
