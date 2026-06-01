@@ -1,7 +1,18 @@
-// Navigation + permission model ported VERBATIM from the captured design
-// (shell.jsx NAV/PAGE_TITLES; admin-app.jsx PAGE_PERM/permOf; data.jsx
-// permMatrix/roleDefs). Confirmed source of truth per the user's decision.
-// See docs/product/design-ui-map.md §2.1.
+// Navigation + permission model ported from the captured design (shell.jsx NAV/
+// PAGE_TITLES; admin-app.jsx PAGE_PERM/permOf; data.jsx permMatrix). Confirmed source
+// of truth per the user's decision. See docs/product/design-ui-map.md §2.1.
+//
+// Roles use the canonical access model (packages/shared access-model): the tenant plane
+// has `admin` (= temple_owner) and `finance`/`staff` (= temple_user). The design's
+// prototype `auditor` is NOT a product role (no DB enum/seed/API) and is intentionally
+// absent here — do not reintroduce it.
+import {
+  type TenantRole,
+  TENANT_ROLE_LABELS_TH,
+  accessGroupForTenantRole,
+  ACCESS_GROUP_LABELS_TH,
+  type AccessGroup,
+} from "@wat/shared";
 import type { BadgeKind } from "../design-system";
 
 export type PageId =
@@ -21,7 +32,9 @@ export type PageId =
   | "temple"
   | "inventory";
 
-export type TempleRole = "admin" | "finance" | "staff" | "auditor";
+// The tenant operational roles, aliased to the shared canonical TenantRole (single
+// source of truth). No `auditor`.
+export type TempleRole = TenantRole;
 export type PermLevel = "none" | "view" | "edit" | "full";
 
 export interface NavItem {
@@ -107,35 +120,41 @@ const PAGE_PERM: Partial<Record<PageId, string>> = {
   audit: "audit",
 };
 
-// data.jsx permMatrix — permission level per role for each function row.
+// data.jsx permMatrix — permission level per role for each function row. The design's
+// `auditor` column is dropped (not a product role); admin/finance/staff are preserved.
 const PERM_MATRIX: Record<string, Record<TempleRole, PermLevel>> = {
-  dash: { admin: "full", finance: "full", staff: "full", auditor: "view" },
-  don: { admin: "full", finance: "full", staff: "none", auditor: "view" },
-  rcpt: { admin: "full", finance: "full", staff: "none", auditor: "view" },
-  ledg: { admin: "full", finance: "full", staff: "none", auditor: "view" },
-  recon: { admin: "full", finance: "edit", staff: "none", auditor: "view" },
-  evt: { admin: "full", finance: "view", staff: "edit", auditor: "view" },
-  ppl: { admin: "full", finance: "none", staff: "edit", auditor: "view" },
-  rep: { admin: "full", finance: "full", staff: "view", auditor: "full" },
-  role: { admin: "full", finance: "none", staff: "none", auditor: "none" },
-  audit: { admin: "full", finance: "view", staff: "none", auditor: "full" },
+  dash: { admin: "full", finance: "full", staff: "full" },
+  don: { admin: "full", finance: "full", staff: "none" },
+  rcpt: { admin: "full", finance: "full", staff: "none" },
+  ledg: { admin: "full", finance: "full", staff: "none" },
+  recon: { admin: "full", finance: "edit", staff: "none" },
+  evt: { admin: "full", finance: "view", staff: "edit" },
+  ppl: { admin: "full", finance: "none", staff: "edit" },
+  rep: { admin: "full", finance: "full", staff: "view" },
+  role: { admin: "full", finance: "none", staff: "none" },
+  audit: { admin: "full", finance: "view", staff: "none" },
 };
 
-// data.jsx roleDefs — display names.
-export const ROLE_NAMES: Record<TempleRole, string> = {
-  admin: "ผู้ดูแลระบบ",
-  finance: "เจ้าหน้าที่การเงิน",
-  staff: "เจ้าหน้าที่ทั่วไป",
-  auditor: "ผู้ตรวจสอบ",
-};
+// Role display names — the shared, taxonomy-aware tenant-role labels (admin = temple_owner;
+// finance/staff = temple_user). Single source of truth in @wat/shared.
+export const ROLE_NAMES: Record<TempleRole, string> = TENANT_ROLE_LABELS_TH;
 
 // Topbar role badge colour (shell.jsx Topbar roleMeta).
 export const ROLE_BADGE_KIND: Record<TempleRole, BadgeKind> = {
   admin: "reconciled",
   finance: "credit",
   staff: "pending",
-  auditor: "neutral",
 };
+
+/** The canonical access group for a tenant role (admin = temple_owner; else temple_user). */
+export function accessGroupForRole(role: TempleRole): AccessGroup {
+  return accessGroupForTenantRole(role);
+}
+
+/** Thai label for the access group a tenant role belongs to. */
+export function accessGroupLabel(role: TempleRole): string {
+  return ACCESS_GROUP_LABELS_TH[accessGroupForRole(role)];
+}
 
 // admin-app.jsx permOf().
 export function permOf(role: TempleRole, pageId: PageId): PermLevel {

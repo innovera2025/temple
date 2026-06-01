@@ -188,7 +188,12 @@ export function SmokeShell(): ReactElement {
 
         <section className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
           <form onSubmit={login} className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-            <h2 className="text-base font-semibold">เข้าสู่ระบบทดสอบ</h2>
+            <h2 className="text-base font-semibold">เข้าสู่ระบบทดสอบ (ฝั่งวัด)</h2>
+            <p className="mt-2 text-xs leading-5 text-stone-500">
+              โมเดลสิทธิ์มี 3 กลุ่มหลัก: เจ้าของแพลตฟอร์ม · เจ้าของวัด · คนใช้งานวัด. บัญชี seed ด้านล่างเป็นฝั่งวัด
+              (เจ้าของวัด = admin, คนใช้งานวัด = finance/staff) ผ่าน <code>/auth/login</code>. ส่วนเจ้าของแพลตฟอร์ม
+              เข้าผ่าน <code>/platform/auth</code> คนละ plane — smoke นี้ยังไม่ครอบคลุม (ไม่ทำปลอม)
+            </p>
             <label className="mt-4 block text-sm font-medium text-stone-700">บัญชี seed</label>
             <select className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2" value={email} onChange={(event) => setEmail(event.target.value)}>
               {seedAccounts.map((account) => (

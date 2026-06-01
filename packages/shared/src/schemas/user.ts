@@ -7,10 +7,12 @@
 import { type FieldError, type ValidationResult } from "./donor";
 import { TENANT_ROLES, type TenantRole } from "./platform";
 
+// Labels group the tenant capability roles under the canonical access taxonomy
+// (see ./access-model): admin = temple_owner; finance/staff = temple_user subroles.
 export const TENANT_ROLE_LABELS_TH: Record<TenantRole, string> = {
-  admin: "ผู้ดูแล (admin)",
-  finance: "การเงิน",
-  staff: "เจ้าหน้าที่",
+  admin: "เจ้าของวัด / ผู้ดูแล",
+  finance: "คนใช้งานวัด · การเงิน",
+  staff: "คนใช้งานวัด · งานทั่วไป",
 };
 
 export const USER_LIMITS = {

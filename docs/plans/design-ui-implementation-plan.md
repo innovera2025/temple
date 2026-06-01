@@ -151,7 +151,7 @@ pnpm --filter @wat/web build
 **Acceptance criteria:**
 
 - Thai labels match design inventory.
-- Admin/finance/staff/auditor navigation differs by role where design requires it.
+- Admin/finance/staff navigation differs by role where design requires it. (No `auditor` — it is not a product role; see design-ui-map §1 canonical access model: platform_owner / temple_owner / temple_user.)
 - No Agent Control Tower text appears in temple routes.
 - Default route is temple product, not smoke shell.
 

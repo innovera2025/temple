@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { RoleShell } from "./RoleShell";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
-import { can, defaultPageFor, permOf } from "./nav";
+import { accessGroupForRole, accessGroupLabel, can, defaultPageFor, permOf, ROLE_NAMES } from "./nav";
 
 describe("nav permission model (design permMatrix)", () => {
   it("matches the design matrix for finance (no people, no roles)", () => {
@@ -25,12 +25,21 @@ describe("nav permission model (design permMatrix)", () => {
     expect(can("staff", "audit")).toBe(false);
   });
 
-  it("gives admin everything and auditor everything except roles", () => {
+  it("gives admin full access and exposes no phantom auditor role", () => {
     expect(can("admin", "roles")).toBe(true);
-    expect(can("auditor", "roles")).toBe(false);
-    expect(can("auditor", "audit")).toBe(true);
-    expect(permOf("auditor", "reports")).toBe("full");
+    expect(permOf("admin", "audit")).toBe("full");
     expect(permOf("staff", "dashboard")).toBe("full");
+    // The role model is exactly admin/finance/staff — auditor is not a product role.
+    expect(Object.keys(ROLE_NAMES).sort()).toEqual(["admin", "finance", "staff"]);
+    expect((ROLE_NAMES as Record<string, string>).auditor).toBeUndefined();
+  });
+
+  it("maps the tenant roles to the canonical access groups (platform/temple owner/user)", () => {
+    expect(accessGroupForRole("admin")).toBe("temple_owner");
+    expect(accessGroupForRole("finance")).toBe("temple_user");
+    expect(accessGroupForRole("staff")).toBe("temple_user");
+    expect(accessGroupLabel("admin")).toBe("เจ้าของวัด");
+    expect(accessGroupLabel("finance")).toBe("คนใช้งานวัด");
   });
 
   it("defaults every role to an allowed landing page", () => {

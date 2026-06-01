@@ -1,5 +1,6 @@
 export const sharedPackageName = "@wat/shared";
 
+export * from "./schemas/access-model";
 export * from "./schemas/donor";
 export * from "./schemas/donation";
 export * from "./schemas/receipt";

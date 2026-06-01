@@ -11,16 +11,24 @@
 
 ## 1. บทบาทและ Personas (Roles & Personas)
 
-ดีไซน์แบ่งผู้ใช้เป็น 3 กลุ่มใหญ่ ตามที่พบใน `admin-app.jsx` (`ACCOUNTS`, `VIEWS`, `roleNameOf()`, `permOf()`) และ `data.jsx` (role definitions):
+ดีไซน์แบ่งผู้ใช้เป็น 3 กลุ่มใหญ่ ตามที่พบใน `admin-app.jsx` (`ACCOUNTS`, `VIEWS`, `roleNameOf()`, `permOf()`) และ `data.jsx` (role definitions).
+
+> **โมเดลสิทธิ์จริงของ product (canonical — product decision):** มี **3 กลุ่มระดับบนสุด**
+> 1. `platform_owner` — **เจ้าของแพลตฟอร์ม** (Innovera plane; เข้าผ่าน `/platform/auth`, ไม่มี tenant context โดยปริยาย; map จาก `PlatformRole` super_admin/support)
+> 2. `temple_owner` — **เจ้าของวัด / ผู้ดูแลวัด** (tenant `admin`; สิทธิ์เต็มภายในวัดของตน)
+> 3. `temple_user` — **คนใช้งานวัด** (tenant `finance`/`staff` เป็น capability subroles ของกลุ่มนี้)
+>
+> โมเดลนี้อยู่ที่ `packages/shared` (`access-model.ts`: `ACCESS_GROUPS`, `accessGroupForTenantRole`, `accessGroupForPlatformRole`) — เป็นการ map role ที่ backend รองรับจริงเข้า 3 กลุ่ม **ไม่ได้เพิ่ม DB enum ใหม่**.
+> ⚠️ **`auditor` เป็น role ใน design prototype เท่านั้น** — ไม่มีใน DB enum (`TenantRole = admin|finance|staff`), seed, หรือ API จึงถูกถอดออกจาก product role model (`apps/web/src/layout/nav.ts`) แล้ว **ห้ามนำกลับเข้ามาใน UI/runtime** เว้นแต่จะมี backend/schema/seed รองรับจริง.
 
 ### 1.1 ฝั่งวัด (Temple staff — เข้าผ่าน `RoleShell` + `Sidebar`/`Topbar`)
 
-| role id | ป้ายภาษาไทย (พบในดีไซน์) | ขอบเขต (จาก data.jsx) | สี badge (จาก Topbar) |
-|---|---|---|---|
-| `admin` | ผู้ดูแลระบบ | เข้าถึงและจัดการทุกส่วน | `reconciled` (น้ำเงิน) |
-| `finance` | เจ้าหน้าที่การเงิน | บันทึกบริจาค บัญชี ออกใบอนุโมทนา | `credit` (เขียว) |
-| `staff` | เจ้าหน้าที่ทั่วไป | งานทะเบียน กิจกรรม สมาชิก | `pending` (เหลือง-น้ำตาล) |
-| `auditor` | ผู้ตรวจสอบ | ดูข้อมูลและรายงาน (อ่านอย่างเดียว) | `neutral` |
+| role id | access group (canonical) | ป้ายภาษาไทย (ปัจจุบัน) | ขอบเขต | สี badge (จาก Topbar) |
+|---|---|---|---|---|
+| `admin` | `temple_owner` — เจ้าของวัด | เจ้าของวัด / ผู้ดูแล | เข้าถึงและจัดการทุกส่วนภายในวัดของตน | `reconciled` (น้ำเงิน) |
+| `finance` | `temple_user` — คนใช้งานวัด | คนใช้งานวัด · การเงิน | บันทึกบริจาค บัญชี ออกใบอนุโมทนา | `credit` (เขียว) |
+| `staff` | `temple_user` — คนใช้งานวัด | คนใช้งานวัด · งานทั่วไป | งานทะเบียน กิจกรรม สมาชิก | `pending` (เหลือง-น้ำตาล) |
+| ~~`auditor`~~ | — | _(design prototype เท่านั้น — ถอดออกจาก product แล้ว)_ | _ไม่มีใน product runtime_ | — |
 
 ผู้ใช้ตัวอย่างในดีไซน์: **ประยูร พงษ์ศักดิ์** (role = ผู้ดูแลระบบ), อีเมล `prayoon@wat.local`
 

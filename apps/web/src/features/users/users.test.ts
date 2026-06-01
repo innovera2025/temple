@@ -17,7 +17,7 @@ describe("users helpers", () => {
     const params = new URLSearchParams(buildUserQuery({ role: "admin", isActive: false }));
     expect(params.get("role")).toBe("admin");
     expect(params.get("isActive")).toBe("false");
-    expect(roleLabel("finance")).toBe("การเงิน");
+    expect(roleLabel("finance")).toBe("คนใช้งานวัด · การเงิน");
   });
 });
 

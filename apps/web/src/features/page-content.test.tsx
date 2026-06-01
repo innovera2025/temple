@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { PageContent } from "./page-content";
 import type { PageId } from "../layout/nav";
 
-function render(page: PageId, role: "admin" | "finance" | "staff" | "auditor" = "admin"): string {
+function render(page: PageId, role: "admin" | "finance" | "staff" = "admin"): string {
   return renderToStaticMarkup(
     <PageContent page={page} baseUrl="http://api" getToken={() => "tok"} role={role} today="2026-06-01" />,
   );
@@ -49,11 +49,11 @@ describe("PageContent — page → view routing", () => {
     expect(html).toContain("btn btn-primary");
   });
 
-  it("hides the donor create form for a read-only role (auditor)", () => {
-    // auditor has view (not edit/full) on donors -> canWrite false -> no create button
-    const auditor = render("donors", "auditor");
+  it("hides the donor create form for a role without donor write access (staff)", () => {
+    // staff has no donor permission -> canWrite false -> no create button.
+    const staff = render("donors", "staff");
     const admin = render("donors", "admin");
     expect(admin).toContain("เพิ่มผู้บริจาค");
-    expect(auditor).not.toContain("เพิ่มผู้บริจาค");
+    expect(staff).not.toContain("เพิ่มผู้บริจาค");
   });
 });
