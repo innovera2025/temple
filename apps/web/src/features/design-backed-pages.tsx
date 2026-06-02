@@ -30,6 +30,7 @@ import {
   validateDonationForm,
 } from "./donations/donations";
 import { type ReceiptsApi, type ReceiptView, receiptStatusLabel } from "./receipts/receipts";
+import { type ReportsApi, type ReportType, downloadCsv, reportFilename } from "./reports/reports";
 
 /*
  * Design-backed temple-admin pages, ported faithfully from the design source of
@@ -858,11 +859,41 @@ const REPORTS: Array<{ id: string; icon: IconName; name: string; desc: string }>
   { id: "fund", icon: "building", name: "รายงานความคืบหน้ากองทุน", desc: "ยอดระดมทุนเทียบเป้าหมายแต่ละกองทุน" },
 ];
 
-export function DesignReports(): ReactElement {
+// Design report cards -> real ReportType (donations/receipts/ledger). The remaining design
+// reports (donors/events/fund) have no export endpoint yet and are flagged unsupported.
+const REPORT_TYPE_BY_ID: Record<string, ReportType | undefined> = { donations: "donations", ledger: "ledger", tax: "receipts" };
+
+export function DesignReports({ api, today }: { api?: ReportsApi; today?: string }): ReactElement {
+  const todayIso = today ?? "2026-06-04";
   const [sel, setSel] = useState("donations");
-  const [fmt, setFmt] = useState("pdf");
+  const [fmt, setFmt] = useState("csv");
+  const [dateFrom, setDateFrom] = useState(`${todayIso.slice(0, 7)}-01`);
+  const [dateTo, setDateTo] = useState(todayIso);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const cur = REPORTS.find((r) => r.id === sel) ?? REPORTS[0];
+  const reportType = REPORT_TYPE_BY_ID[sel];
   if (!cur) return <div className="content-wrap" />;
+
+  async function generate(): Promise<void> {
+    if (!api) return;
+    setResult(null);
+    setError(null);
+    if (!reportType) { setError("รายงานนี้ยังไม่พร้อมส่งออก (ยังไม่มีปลายทางข้อมูล)"); return; }
+    if (fmt !== "csv") { setError("ขณะนี้รองรับการส่งออกเป็น CSV เท่านั้น"); return; }
+    setBusy(true);
+    try {
+      const report = await api.get(reportType, { dateFrom, dateTo });
+      downloadCsv(reportFilename(reportType, todayIso), report.csv);
+      setResult(`สร้างรายงานแล้ว ${report.count} รายการ — ดาวน์โหลด CSV เรียบร้อย`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "สร้างรายงานไม่สำเร็จ");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="content-wrap">
       <PageHead eyebrow="รายงาน" title="รายงานและส่งออกข้อมูล" desc="สร้างและส่งออกรายงานการเงิน การบริจาค และกิจกรรม สำหรับการตรวจสอบและจัดเก็บ" />
@@ -870,11 +901,12 @@ export function DesignReports(): ReactElement {
         <div className="grid g-2">
           {REPORTS.map((r) => {
             const active = sel === r.id;
+            const ready = REPORT_TYPE_BY_ID[r.id] !== undefined;
             return (
               <button key={r.id} type="button" className="card" onClick={() => setSel(r.id)} style={{ textAlign: "left", padding: 18, cursor: "pointer", borderColor: active ? "var(--accent)" : "var(--border)", background: active ? "var(--accent-tint-2)" : "var(--surface)", boxShadow: active ? "0 0 0 1px var(--accent) inset" : "none" }}>
                 <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
                   <span className="av" style={{ background: active ? "var(--accent)" : "var(--surface-3)", color: active ? "#fff" : "var(--ink-2)" }}><Icon name={r.icon} size={18} /></span>
-                  {active ? <Icon name="checkCircle" size={18} style={{ color: "var(--accent)" }} /> : null}
+                  {active ? <Icon name="checkCircle" size={18} style={{ color: "var(--accent)" }} /> : !ready ? <Badge kind="neutral">เร็ว ๆ นี้</Badge> : null}
                 </div>
                 <div style={{ fontWeight: 600, marginTop: 11 }}>{r.name}</div>
                 <div className="muted" style={{ fontSize: 12.5, marginTop: 3 }}>{r.desc}</div>
@@ -887,17 +919,18 @@ export function DesignReports(): ReactElement {
             <div className="card-head"><h3>ตั้งค่ารายงาน</h3></div>
             <div className="card-pad">
               <label className="field"><span className="label">รายงานที่เลือก</span><div className="control" style={{ display: "flex", alignItems: "center", background: "var(--surface-2)" }}>{cur.name}</div></label>
-              <label className="field"><span className="label">ช่วงเวลา</span><div style={{ display: "flex", gap: 8, alignItems: "center" }}><input className="control tnum" defaultValue="2569-05-01" /><span className="muted">ถึง</span><input className="control tnum" defaultValue="2569-06-04" /></div></label>
-              <div style={{ display: "flex", gap: 7, marginBottom: 18, flexWrap: "wrap" }}>{["เดือนนี้", "ไตรมาสนี้", "ปีนี้ (พ.ศ.)"].map((p) => <button key={p} type="button" className="chip">{p}</button>)}</div>
+              <label className="field"><span className="label">ช่วงเวลา</span><div style={{ display: "flex", gap: 8, alignItems: "center" }}><input className="control tnum" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} /><span className="muted">ถึง</span><input className="control tnum" value={dateTo} onChange={(e) => setDateTo(e.target.value)} /></div></label>
               <div className="field"><span className="label">รูปแบบไฟล์</span>
-                <div className="opt-row">{([["pdf", "PDF", "เหมาะสำหรับพิมพ์และจัดเก็บ"], ["xlsx", "Excel (.xlsx)", "เปิดแก้ไขและคำนวณต่อได้"], ["csv", "CSV", "นำเข้าระบบอื่น"]] as Array<[string, string, string]>).map(([k, t, d]) => (
+                <div className="opt-row">{([["pdf", "PDF", "เหมาะสำหรับพิมพ์และจัดเก็บ"], ["xlsx", "Excel (.xlsx)", "เปิดแก้ไขและคำนวณต่อได้"], ["csv", "CSV", "นำเข้าระบบอื่น (พร้อมใช้งาน)"]] as Array<[string, string, string]>).map(([k, t, d]) => (
                   <label key={k} className={`opt ${fmt === k ? "sel" : ""}`} onClick={() => setFmt(k)}>
                     <input type="radio" checked={fmt === k} readOnly style={{ marginTop: 2 }} />
                     <span><span className="o-title">{t}</span><span className="o-desc" style={{ display: "block" }}>{d}</span></span>
                   </label>
                 ))}</div>
               </div>
-              <Button variant="primary" className="btn-block" icon={<Icon name="download" size={15} />}>สร้างและดาวน์โหลด</Button>
+              <Button variant="primary" className="btn-block" icon={<Icon name="download" size={15} />} disabled={busy} onClick={() => void generate()}>{busy ? "กำลังสร้าง…" : "สร้างและดาวน์โหลด"}</Button>
+              {result ? <p style={{ margin: "10px 0 0", fontSize: 12.5, color: "var(--credit)", textAlign: "center" }}>{result}</p> : null}
+              {error ? <p className="error-text" style={{ textAlign: "center" }}>{error}</p> : null}
               <div className="muted" style={{ fontSize: 12, marginTop: 10, textAlign: "center" }}>การสร้างรายงานจะถูกบันทึกในบันทึกการใช้งาน</div>
             </div>
           </Card>

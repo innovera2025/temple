@@ -13,6 +13,7 @@ import { createUsersApiClient } from "./users/users";
 import { createDonorsApiClient } from "./donors/donors";
 import { createDonationsApiClient } from "./donations/donations";
 import { createReceiptsApiClient } from "./receipts/receipts";
+import { createReportsApiClient } from "./reports/reports";
 import {
   DesignAudit,
   DesignDashboard,
@@ -81,7 +82,7 @@ export function PageContent({ page, baseUrl, getToken, role, today, onNavigate }
       content = <DesignPeople api={createPersonnelApiClient(opts)} />;
       break;
     case "reports":
-      content = <DesignReports />;
+      content = <DesignReports api={createReportsApiClient(opts)} today={today} />;
       break;
     case "roles":
       content = <DesignRoles role={role} api={createUsersApiClient(opts)} />;
