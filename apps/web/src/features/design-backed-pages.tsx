@@ -148,7 +148,7 @@ export function DesignDashboard({ api, goto }: { api?: DashboardApi; goto?: (pag
     <div className="content-wrap">
       <PageHead eyebrow="ภาพรวม" title="แดชบอร์ด" desc="สรุปสถานะการเงิน การบริจาค และงานที่ต้องดำเนินการของวัด"
         actions={<>
-          <Button variant="secondary" icon={<Icon name="download" size={15} />}>ส่งออกสรุป</Button>
+          <Button variant="secondary" icon={<Icon name="download" size={15} />} disabled title="เร็ว ๆ นี้">ส่งออกสรุป</Button>
           <Button variant="primary" icon={<Icon name="plus" size={15} />} onClick={() => goto?.("donations")}>บันทึกการบริจาค</Button>
         </>} />
 
@@ -516,7 +516,7 @@ export function DesignReceipt({ api, donationsApi, donorsApi }: { api?: Receipts
     <div className="content-wrap">
       <PageHead eyebrow="การบริจาค" title="ใบอนุโมทนาบัตร" desc="ดูตัวอย่าง พิมพ์ หรือยกเลิกใบอนุโมทนาบัตร รูปแบบเอกสารทางการของวัด"
         actions={<>
-          <Button variant="secondary" icon={<Icon name="print" size={15} />}>พิมพ์</Button>
+          <Button variant="secondary" icon={<Icon name="print" size={15} />} onClick={() => { if (typeof window !== "undefined") window.print(); }}>พิมพ์</Button>
           {sel && sel.status === "issued" ? <Button variant="danger" icon={<Icon name="x" size={15} />} onClick={() => setVoiding(true)}>ยกเลิกใบ</Button> : null}
         </>} />
       {error ? <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: "var(--r)", background: "var(--danger-tint)", color: "var(--danger)", fontSize: 13 }}>โหลดข้อมูลใบอนุโมทนาบัตรไม่สำเร็จ: {error}</div> : null}
@@ -639,7 +639,7 @@ export function DesignLedger({ api, today }: { api?: LedgerApi; today?: string }
   return (
     <div className="content-wrap">
       <PageHead eyebrow="การเงิน" title="บัญชีรายรับ-รายจ่าย" desc="สมุดบัญชีของวัด บันทึกและกระทบยอดรายการเงินเข้า-ออกทุกประเภท"
-        actions={<><Button variant="secondary" icon={<Icon name="download" size={15} />}>ส่งออก</Button><Button variant="primary" icon={<Icon name="plus" size={15} />}>เพิ่มรายการ</Button></>} />
+        actions={<><Button variant="secondary" icon={<Icon name="download" size={15} />} disabled title="เร็ว ๆ นี้">ส่งออก</Button><Button variant="primary" icon={<Icon name="plus" size={15} />} disabled title="เร็ว ๆ นี้">เพิ่มรายการ</Button></>} />
       {error ? <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: "var(--r)", background: "var(--danger-tint)", color: "var(--danger)", fontSize: 13 }}>โหลดข้อมูลบัญชีไม่สำเร็จ: {error}</div> : null}
       <div className="grid g-3" style={{ marginBottom: 16 }}>
         <KPI label="รายรับรวม (เดือนนี้)" value={money(summary?.incomeSatang)} tone="credit" />
@@ -711,7 +711,7 @@ export function DesignEvents({ api }: { api?: CeremoniesApi }): ReactElement {
   return (
     <div className="content-wrap">
       <PageHead eyebrow="งานวัด" title="กิจกรรมและพิธี" desc="จองและจัดการกิจกรรม งานบุญ พิธีอุปสมบท ฌาปนกิจ และการปฏิบัติธรรม"
-        actions={<Button variant="primary" icon={<Icon name="plus" size={15} />}>จองกิจกรรม</Button>} />
+        actions={<Button variant="primary" icon={<Icon name="plus" size={15} />} disabled title="เร็ว ๆ นี้">จองกิจกรรม</Button>} />
       {error ? <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: "var(--r)", background: "var(--danger-tint)", color: "var(--danger)", fontSize: 13 }}>โหลดข้อมูลกิจกรรมไม่สำเร็จ: {error}</div> : null}
       <div className="split">
         <Card>
@@ -803,7 +803,7 @@ export function DesignPeople({ api }: { api?: PersonnelApi }): ReactElement {
   return (
     <div className="content-wrap">
       <PageHead eyebrow="งานวัด" title="พระสงฆ์และเจ้าหน้าที่" desc="ทะเบียนพระภิกษุ สามเณร และเจ้าหน้าที่ของวัด พร้อมประวัติและข้อมูลติดต่อ"
-        actions={<Button variant="primary" icon={<Icon name="plus" size={15} />}>เพิ่มบุคลากร</Button>} />
+        actions={<Button variant="primary" icon={<Icon name="plus" size={15} />} disabled title="เร็ว ๆ นี้">เพิ่มบุคลากร</Button>} />
       {error ? <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: "var(--r)", background: "var(--danger-tint)", color: "var(--danger)", fontSize: 13 }}>โหลดข้อมูลบุคลากรไม่สำเร็จ: {error}</div> : null}
       <Card>
         <Toolbar>
@@ -986,7 +986,7 @@ export function DesignRoles({ role, api }: { role: TempleRole; api?: UsersApi })
   return (
     <div className="content-wrap">
       <PageHead eyebrow="ระบบ" title="สิทธิ์ผู้ใช้งาน" desc="จัดการบัญชีผู้ใช้ของวัด กำหนดบทบาทและระดับสิทธิ์การเข้าถึงแต่ละส่วนของระบบ"
-        actions={role === "admin" ? (tab === "users" ? <Button variant="primary" icon={<Icon name="plus" size={15} />}>เพิ่มบัญชีผู้ใช้</Button> : <Button variant="primary" icon={<Icon name="check" size={15} />}>บันทึกการเปลี่ยนแปลง</Button>) : undefined} />
+        actions={role === "admin" ? (tab === "users" ? <Button variant="primary" icon={<Icon name="plus" size={15} />} disabled title="เร็ว ๆ นี้">เพิ่มบัญชีผู้ใช้</Button> : <Button variant="primary" icon={<Icon name="check" size={15} />} disabled title="เร็ว ๆ นี้">บันทึกการเปลี่ยนแปลง</Button>) : undefined} />
       <div className="seg" style={{ marginBottom: 16 }}>
         <button type="button" className={tab === "users" ? "active" : ""} onClick={() => setTab("users")}><Icon name="donors" size={14} />บัญชีผู้ใช้งาน</button>
         <button type="button" className={tab === "perms" ? "active" : ""} onClick={() => setTab("perms")}><Icon name="roles" size={14} />บทบาทและสิทธิ์</button>
