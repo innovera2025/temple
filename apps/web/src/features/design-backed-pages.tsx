@@ -1,5 +1,5 @@
 import { type ReactElement, type ReactNode, useEffect, useMemo, useState } from "react";
-import { Badge, Button, Card, SearchBox, Toolbar } from "../design-system";
+import { Badge, Button, Card, Modal, SearchBox, Toolbar } from "../design-system";
 import { Icon, type IconName } from "../layout/icons";
 import type { PageId, TempleRole } from "../layout/nav";
 import { type DashboardApi, type DashboardView, displayBaht, methodLabel, statusLabel } from "./dashboard/dashboard";
@@ -18,6 +18,7 @@ import {
   personnelTypeLabel,
 } from "./personnel/personnel";
 import { type TenantUser, type UsersApi, roleLabel } from "./users/users";
+import { type CreateDonorInput, type DonorRecord, type DonorsApi, donorTypeLabel } from "./donors/donors";
 
 /*
  * Design-backed temple-admin pages, ported faithfully from the design source of
@@ -29,11 +30,6 @@ import { type TenantUser, type UsersApi, roleLabel } from "./users/users";
  */
 
 const baht = (n: number): string => `฿${n.toLocaleString("th-TH")}`;
-
-function Money({ value, kind }: { value: number; kind?: "in" | "ex" }): ReactElement {
-  const cls = kind === "in" ? "credit" : kind === "ex" ? "debit" : "";
-  return <span className={`money ${cls} tnum`.trim()}>{baht(value)}</span>;
-}
 
 function PageHead({ eyebrow, title, desc, actions }: { eyebrow: string; title: string; desc: string; actions?: ReactNode }): ReactElement {
   return (
@@ -322,86 +318,112 @@ export function DesignDonations(): ReactElement {
 }
 
 // ============ 3. DONOR PROFILE ============
-const DONOR_HIST = [
-  { id: "RC-2569-0142", date: "๔ มิ.ย. ๒๕๖๙", fund: "กองทุนบูรณะอุโบสถ", amount: 5000 },
-  { id: "RC-2569-0098", date: "๑๘ เม.ย. ๒๕๖๙", fund: "กองทุนบูรณะอุโบสถ", amount: 20000 },
-  { id: "RC-2568-0512", date: "๓๑ ธ.ค. ๒๕๖๘", fund: "ทำบุญทั่วไป", amount: 3000 },
-  { id: "RC-2568-0388", date: "๙ ต.ค. ๒๕๖๘", fund: "กองทุนภัตตาหารพระสงฆ์", amount: 10500 },
-  { id: "RC-2568-0201", date: "๑๕ ก.ค. ๒๕๖๘", fund: "กองทุนบูรณะอุโบสถ", amount: 10000 },
-];
+export function DesignDonors({ api, canWrite }: { api?: DonorsApi; canWrite: boolean; goto?: (page: PageId) => void }): ReactElement {
+  const [donors, setDonors] = useState<DonorRecord[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [q, setQ] = useState("");
+  const [type, setType] = useState("all");
+  const [reloadKey, setReloadKey] = useState(0);
+  const [creating, setCreating] = useState(false);
+  const [draftName, setDraftName] = useState("");
+  const [draftType, setDraftType] = useState("person");
+  const [draftPhone, setDraftPhone] = useState("");
+  const [saveErr, setSaveErr] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
-export function DesignDonors({ canWrite, goto }: { canWrite: boolean; goto?: (page: PageId) => void }): ReactElement {
+  useEffect(() => {
+    if (!api) return;
+    let active = true;
+    setDonors(null);
+    setError(null);
+    api.list().then(
+      (rows) => { if (active) setDonors(rows); },
+      (err: unknown) => { if (active) setError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ"); },
+    );
+    return () => { active = false; };
+  }, [api, reloadKey]);
+
+  const all = donors ?? [];
+  const filtered = all.filter((d) => {
+    if (type !== "all" && d.donorType !== type) return false;
+    if (q && !(d.displayName.includes(q) || (d.phone ?? "").includes(q) || (d.email ?? "").includes(q))) return false;
+    return true;
+  });
+  const num = (n: number): string => (donors ? String(n) : "…");
+
+  async function submitCreate(): Promise<void> {
+    if (!api) return;
+    const name = draftName.trim();
+    if (!name) { setSaveErr("กรุณากรอกชื่อผู้บริจาค"); return; }
+    setSaving(true);
+    setSaveErr(null);
+    try {
+      await api.create({ displayName: name, donorType: draftType as "person" | "organization", phone: draftPhone.trim() || undefined } as CreateDonorInput);
+      setCreating(false);
+      setDraftName("");
+      setDraftPhone("");
+      setDraftType("person");
+      setReloadKey((k) => k + 1);
+    } catch (e) {
+      setSaveErr(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="content-wrap">
-      <button type="button" onClick={() => goto?.("donors")} className="btn btn-tertiary btn-sm" style={{ marginBottom: 14, paddingLeft: 0 }}><Icon name="chevL" size={15} />ทะเบียนผู้บริจาค</button>
-      <div className="split">
-        <div>
-          <Card pad style={{ marginBottom: 16 }}>
-            <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
-              <div className="av lg">ว</div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="row" style={{ gap: 10, flexWrap: "wrap" }}><h2>คุณวิภา รัตนากร</h2><Badge kind="neutral">บุคคล</Badge></div>
-                <div className="mono muted" style={{ fontSize: 12, marginTop: 3 }}>DNR-00118</div>
-                <div style={{ display: "flex", gap: 7, marginTop: 10, flexWrap: "wrap" }}><Badge kind="accent">ผู้อุปถัมภ์</Badge><Badge kind="accent">บูรณะอุโบสถ</Badge></div>
-              </div>
-              {canWrite ? (
-                <div style={{ display: "flex", gap: 8 }}>
-                  <Button variant="secondary" size="sm" icon={<Icon name="edit" size={14} />}>แก้ไข</Button>
-                  <Button variant="primary" size="sm" icon={<Icon name="plus" size={14} />} onClick={() => goto?.("donations")}>บันทึกบริจาค</Button>
-                </div>
-              ) : null}
-            </div>
-          </Card>
-
-          <div className="grid g-3" style={{ marginBottom: 16 }}>
-            <KPI label="ยอดบริจาคสะสม" icon="donation" value="฿48,500" />
-            <KPI label="จำนวนครั้ง" icon="receipt" value="9 ครั้ง" />
-            <KPI label="บริจาคล่าสุด" icon="clock" value="๔ มิ.ย. ๒๕๖๙" />
+      <PageHead eyebrow="การเงินและบริจาค" title="ทะเบียนผู้บริจาค" desc="รายชื่อญาติโยมและผู้อุปถัมภ์ของวัด พร้อมข้อมูลติดต่อและประเภทผู้บริจาค"
+        actions={canWrite ? <Button variant="primary" icon={<Icon name="plus" size={15} />} onClick={() => setCreating(true)}>เพิ่มผู้บริจาค</Button> : undefined} />
+      {error ? <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: "var(--r)", background: "var(--danger-tint)", color: "var(--danger)", fontSize: 13 }}>โหลดข้อมูลผู้บริจาคไม่สำเร็จ: {error}</div> : null}
+      <div className="grid g-3" style={{ marginBottom: 16 }}>
+        <KPI label="ผู้บริจาคทั้งหมด" icon="donors" value={num(all.length)} />
+        <KPI label="บุคคล" icon="donors" value={num(all.filter((d) => d.donorType === "person").length)} />
+        <KPI label="นิติบุคคล" icon="building" value={num(all.filter((d) => d.donorType === "organization").length)} />
+      </div>
+      <Card>
+        <Toolbar>
+          <SearchBox value={q} onChange={setQ} placeholder="ค้นหาชื่อ เบอร์โทร หรืออีเมล" />
+          <div className="seg" style={{ marginLeft: 4 }}>
+            {([["all", "ทั้งหมด"], ["person", "บุคคล"], ["organization", "นิติบุคคล"]] as Array<[string, string]>).map(([k, l]) => <button key={k} type="button" className={type === k ? "active" : ""} onClick={() => setType(k)}>{l}</button>)}
           </div>
-
-          <Card>
-            <div className="card-head"><div><h3>ประวัติการบริจาค</h3><div className="sub">เรียงจากล่าสุด</div></div>
-              <Button variant="tertiary" size="sm" icon={<Icon name="download" size={14} />}>ส่งออก</Button></div>
-            <Table>
-              <thead><tr><th>เลขที่ใบเสร็จ</th><th>วันที่</th><th>กองทุน</th><th className="num">จำนวน</th><th>สถานะ</th><th /></tr></thead>
-              <tbody>{DONOR_HIST.map((h) => (
-                <tr key={h.id} className="clickable" onClick={() => goto?.("receipt")}>
-                  <td className="mono">{h.id}</td><td>{h.date}</td><td className="muted">{h.fund}</td>
-                  <td className="num"><Money value={h.amount} kind="in" /></td>
-                  <td><Badge kind="credit" dot>ออกใบแล้ว</Badge></td>
+          <span className="muted" style={{ marginLeft: "auto" }}>{filtered.length} ราย</span>
+        </Toolbar>
+        <Table>
+          <thead><tr><th>ชื่อผู้บริจาค</th><th>ประเภท</th><th>ติดต่อ</th><th>แท็ก</th><th>เพิ่มเมื่อ</th><th /></tr></thead>
+          <tbody>
+            {!donors ? (
+              <tr><td colSpan={6} className="muted" style={{ textAlign: "center", padding: "20px" }}>{error ? "โหลดข้อมูลไม่สำเร็จ" : "กำลังโหลด…"}</td></tr>
+            ) : filtered.length === 0 ? (
+              <tr><td colSpan={6} className="muted" style={{ textAlign: "center", padding: "20px" }}>ยังไม่มีผู้บริจาค</td></tr>
+            ) : (
+              filtered.map((d) => (
+                <tr key={d.id} className="clickable">
+                  <td><div className="row" style={{ gap: 10 }}><span className={`av ${d.donorType === "organization" ? "blue" : ""}`.trim()}>{d.displayName.charAt(0)}</span><span style={{ fontWeight: 500 }}>{d.displayName}</span></div></td>
+                  <td><Badge kind={d.donorType === "organization" ? "reconciled" : "neutral"}>{donorTypeLabel(d.donorType)}</Badge></td>
+                  <td className="muted" style={{ fontSize: 13 }}>{d.phone ?? d.email ?? "—"}</td>
+                  <td>{d.tags.length ? <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>{d.tags.slice(0, 3).map((t) => <Badge key={t} kind="accent">{t}</Badge>)}</div> : <span className="muted">—</span>}</td>
+                  <td className="muted" style={{ fontSize: 13 }}>{d.createdAt.slice(0, 10)}</td>
                   <td className="num"><Icon name="chevR" size={15} style={{ color: "var(--ink-3)" }} /></td>
                 </tr>
-              ))}</tbody>
-            </Table>
-          </Card>
-        </div>
+              ))
+            )}
+          </tbody>
+        </Table>
+        <div className="t-foot"><span>แสดง {filtered.length} จาก {all.length} ราย</span></div>
+      </Card>
 
-        <div className="stack" style={{ gap: 16 }}>
-          <Card>
-            <div className="card-head"><h3>ข้อมูลติดต่อ</h3></div>
-            <div className="card-pad">
-              <dl className="dl" style={{ gridTemplateColumns: "92px 1fr" }}>
-                <dt>เบอร์โทร</dt><dd>081-234-5678</dd>
-                <dt>อีเมล</dt><dd style={{ wordBreak: "break-all" }}>wipha@example.com</dd>
-                <dt>ที่อยู่</dt><dd style={{ fontWeight: 400, fontSize: 13 }}>112/4 ถ.นิมมานเหมินท์ ต.สุเทพ อ.เมือง จ.เชียงใหม่ 50200</dd>
-                <dt>ผู้บริจาคตั้งแต่</dt><dd>๒ พ.ค. ๒๕๖๖</dd>
-              </dl>
-            </div>
-          </Card>
-          <Card>
-            <div className="card-head"><h3>เอกสารที่ออก</h3></div>
-            <div>
-              {DONOR_HIST.slice(0, 3).map((h, i, a) => (
-                <button key={h.id} type="button" onClick={() => goto?.("receipt")} style={{ display: "flex", gap: 11, alignItems: "center", width: "100%", textAlign: "left", padding: "11px 18px", borderBottom: i < a.length - 1 ? "1px solid var(--border)" : 0, background: "transparent", border: "none", cursor: "pointer" }}>
-                  <span className="av" style={{ background: "var(--surface-3)", color: "var(--ink-2)" }}><Icon name="receipt" size={16} /></span>
-                  <span style={{ flex: 1, minWidth: 0 }}><span style={{ display: "block", fontSize: 13, fontWeight: 500 }}>ใบอนุโมทนา {h.id}</span><span className="muted" style={{ fontSize: 12 }}>{h.date}</span></span>
-                  <Icon name="download" size={15} style={{ color: "var(--ink-3)" }} />
-                </button>
-              ))}
-            </div>
-          </Card>
-        </div>
-      </div>
+      {creating ? (
+        <Modal title="เพิ่มผู้บริจาค" sub="บันทึกผู้บริจาครายใหม่เข้าทะเบียน" onClose={() => setCreating(false)}
+          footer={<><Button variant="secondary" onClick={() => setCreating(false)}>ยกเลิก</Button><Button variant="primary" disabled={saving} onClick={() => void submitCreate()}>{saving ? "กำลังบันทึก…" : "บันทึก"}</Button></>}>
+          <div className="field"><label>ชื่อผู้บริจาค</label><input className="control" value={draftName} onChange={(e) => setDraftName(e.target.value)} placeholder="เช่น คุณวิภา รัตนากร" /></div>
+          <div className="field"><label>ประเภท</label>
+            <div className="seg">{([["person", "บุคคล"], ["organization", "นิติบุคคล"]] as Array<[string, string]>).map(([k, l]) => <button key={k} type="button" className={draftType === k ? "active" : ""} onClick={() => setDraftType(k)}>{l}</button>)}</div>
+          </div>
+          <div className="field"><label>เบอร์โทร (ไม่บังคับ)</label><input className="control" value={draftPhone} onChange={(e) => setDraftPhone(e.target.value)} /></div>
+          {saveErr ? <p className="error-text">{saveErr}</p> : null}
+        </Modal>
+      ) : null}
     </div>
   );
 }

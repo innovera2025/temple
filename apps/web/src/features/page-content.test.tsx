@@ -54,7 +54,7 @@ describe("PageContent — page → view routing", () => {
   it("renders design-backed pages for the remaining temple-admin screens", () => {
     const expectations: Array<[PageId, string[]]> = [
       ["donations", ["บันทึกการบริจาค", "ข้อมูลผู้บริจาค", "สรุปรายการ"]],
-      ["donors", ["ทะเบียนผู้บริจาค", "ผู้อุปถัมภ์", "ประวัติการบริจาค"]],
+      ["donors", ["ทะเบียนผู้บริจาค", "ค้นหาชื่อ เบอร์โทร หรืออีเมล", "ผู้บริจาคทั้งหมด"]],
       ["receipt", ["ใบอนุโมทนาบัตร", "ขออนุโมทนาบุญแด่", "ใบที่ออกล่าสุด"]],
       ["ledger", ["บัญชีรายรับ-รายจ่าย", "รายรับรวม", "กระทบยอด"]],
       ["events", ["กิจกรรมและพิธี", "จองกิจกรรม", "มิถุนายน ๒๕๖๙"]],
@@ -98,11 +98,11 @@ describe("PageContent — page → view routing", () => {
     expect(receipt).toContain("โทร. ๐๕๓-๑๒๓-๔๕๖๗");
   });
 
-  it("hides the donor write actions for a role without donor write access (staff)", () => {
-    // staff has no donor permission -> canWrite false -> donor-profile write actions hidden.
+  it("hides the donor create action for a role without donor write access (staff)", () => {
+    // staff has no donor permission -> canWrite false -> "เพิ่มผู้บริจาค" hidden.
     const staff = render("donors", "staff");
     const admin = render("donors", "admin");
-    expect(admin).toContain("บันทึกบริจาค");
-    expect(staff).not.toContain("บันทึกบริจาค");
+    expect(admin).toContain("เพิ่มผู้บริจาค");
+    expect(staff).not.toContain("เพิ่มผู้บริจาค");
   });
 });
