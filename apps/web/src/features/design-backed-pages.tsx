@@ -17,6 +17,7 @@ import {
   personnelStatusLabel,
   personnelTypeLabel,
 } from "./personnel/personnel";
+import { type TenantUser, type UsersApi, roleLabel } from "./users/users";
 
 /*
  * Design-backed temple-admin pages, ported faithfully from the design source of
@@ -805,14 +806,6 @@ const ROLE_DEFS = [
   { key: "staff", name: "เจ้าหน้าที่ทั่วไป", desc: "งานทะเบียน กิจกรรม สมาชิก" },
 ];
 const ROLE_TAG: Record<string, "accent" | "reconciled" | "pending"> = { admin: "accent", finance: "reconciled", staff: "pending" };
-const SEED_USERS = [
-  { id: "U-01", name: "ประยูร พงษ์ศักดิ์", email: "prayoon@wat.local", role: "admin", status: "active", last: "วันนี้ 08:45" },
-  { id: "U-02", name: "พระอธิการสมหวัง สุจิตฺโต", email: "abbot@wat.local", role: "admin", status: "active", last: "วันนี้ 06:12" },
-  { id: "U-03", name: "ศิริพร อินทรา", email: "siriporn@wat.local", role: "finance", status: "active", last: "วันนี้ 09:42" },
-  { id: "U-04", name: "อนงค์ บัญชีดี", email: "anong@wat.local", role: "finance", status: "active", last: "เมื่อวาน 17:30" },
-  { id: "U-05", name: "สมชาย รักษ์ดี", email: "somchai@wat.local", role: "staff", status: "active", last: "2 วันก่อน" },
-  { id: "U-06", name: "บุญมา ใจเอื้อ", email: "—", role: "staff", status: "disabled", last: "3 สัปดาห์ก่อน" },
-];
 const PERM_MATRIX: Array<{ id: string; label: string; admin: string; finance: string; staff: string }> = [
   { id: "dash", label: "แดชบอร์ดภาพรวม", admin: "full", finance: "full", staff: "full" },
   { id: "don", label: "บันทึก/แก้ไขการบริจาค", admin: "full", finance: "full", staff: "none" },
@@ -825,17 +818,29 @@ const PERM_MATRIX: Array<{ id: string; label: string; admin: string; finance: st
 ];
 const PERM_LEVELS: Record<string, { label: string; cls: "credit" | "reconciled" | "pending" | "void" }> = { full: { label: "จัดการ", cls: "credit" }, edit: { label: "แก้ไข", cls: "reconciled" }, view: { label: "ดู", cls: "pending" }, none: { label: "—", cls: "void" } };
 
-export function DesignRoles({ role }: { role: TempleRole }): ReactElement {
+export function DesignRoles({ role, api }: { role: TempleRole; api?: UsersApi }): ReactElement {
   const [tab, setTab] = useState<"users" | "perms">("users");
   const [q, setQ] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
-  const roleName = (k: string): string => ROLE_DEFS.find((r) => r.key === k)?.name ?? k;
-  const filtered = SEED_USERS.filter((u) => {
+  const [users, setUsers] = useState<TenantUser[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!api) return;
+    let active = true;
+    api.list().then(
+      (rows) => { if (active) setUsers(rows); },
+      (err: unknown) => { if (active) setError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ"); },
+    );
+    return () => { active = false; };
+  }, [api]);
+  const all = users ?? [];
+  const filtered = all.filter((u) => {
     if (roleFilter !== "all" && u.role !== roleFilter) return false;
-    if (q && !(u.name.includes(q) || u.email.includes(q))) return false;
+    if (q && !(u.displayName.includes(q) || u.email.includes(q))) return false;
     return true;
   });
-  const activeCount = SEED_USERS.filter((u) => u.status === "active").length;
+  const activeCount = all.filter((u) => u.isActive).length;
+  const num = (n: number): string => (users ? String(n) : "…");
   return (
     <div className="content-wrap">
       <PageHead eyebrow="ระบบ" title="สิทธิ์ผู้ใช้งาน" desc="จัดการบัญชีผู้ใช้ของวัด กำหนดบทบาทและระดับสิทธิ์การเข้าถึงแต่ละส่วนของระบบ"
@@ -845,13 +850,14 @@ export function DesignRoles({ role }: { role: TempleRole }): ReactElement {
         <button type="button" className={tab === "perms" ? "active" : ""} onClick={() => setTab("perms")}><Icon name="roles" size={14} />บทบาทและสิทธิ์</button>
       </div>
 
+      {error ? <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: "var(--r)", background: "var(--danger-tint)", color: "var(--danger)", fontSize: 13 }}>โหลดข้อมูลผู้ใช้ไม่สำเร็จ: {error}</div> : null}
       {tab === "users" ? (
         <>
           <div className="grid g-4" style={{ marginBottom: 16 }}>
-            <KPI label="บัญชีทั้งหมด" icon="donors" value={String(SEED_USERS.length)} />
-            <KPI label="ใช้งานอยู่" icon="checkCircle" value={String(activeCount)} tone="credit" />
-            <KPI label="ปิดใช้งาน" icon="lock" value={String(SEED_USERS.length - activeCount)} />
-            <KPI label="ผู้ดูแลระบบ" icon="roles" value={String(SEED_USERS.filter((u) => u.role === "admin").length)} />
+            <KPI label="บัญชีทั้งหมด" icon="donors" value={num(all.length)} />
+            <KPI label="ใช้งานอยู่" icon="checkCircle" value={num(activeCount)} tone="credit" />
+            <KPI label="ปิดใช้งาน" icon="lock" value={num(all.length - activeCount)} />
+            <KPI label="ผู้ดูแลระบบ" icon="roles" value={num(all.filter((u) => u.role === "admin").length)} />
           </div>
           <Card>
             <Toolbar>
@@ -862,21 +868,27 @@ export function DesignRoles({ role }: { role: TempleRole }): ReactElement {
               <span className="muted" style={{ marginLeft: "auto" }}>{filtered.length} บัญชี</span>
             </Toolbar>
             <Table>
-              <thead><tr><th>ชื่อ-นามสกุล</th><th>อีเมล</th><th>บทบาท</th><th>เข้าระบบล่าสุด</th><th>สถานะ</th><th /></tr></thead>
-              <tbody>{filtered.map((u) => (
-                <tr key={u.id} style={u.status === "disabled" ? { opacity: 0.6 } : undefined}>
-                  <td><div className="row" style={{ gap: 10 }}><span className={`av ${u.role === "finance" ? "blue" : u.role === "staff" ? "green" : ""}`.trim()}>{u.name.replace(/^(นาย|นางสาว|นาง|พระ)\s?/, "").charAt(0)}</span><span style={{ fontWeight: 500 }}>{u.name}</span></div></td>
-                  <td className="muted" style={{ fontSize: 13 }}>{u.email}</td>
-                  <td><Badge kind={ROLE_TAG[u.role]} dot>{roleName(u.role)}</Badge></td>
-                  <td className="muted" style={{ fontSize: 13 }}>{u.last}</td>
-                  <td><Badge kind={u.status === "active" ? "credit" : "void"} dot>{u.status === "active" ? "ใช้งาน" : "ปิดใช้งาน"}</Badge></td>
-                  <td className="num" style={{ whiteSpace: "nowrap" }}>
-                    {role === "admin" ? <><Button variant="tertiary" size="sm" icon={<Icon name="edit" size={14} />}>แก้ไข</Button><Button variant="tertiary" size="sm">{u.status === "active" ? "ปิด" : "เปิด"}</Button></> : null}
-                  </td>
-                </tr>
-              ))}</tbody>
+              <thead><tr><th>ชื่อ-นามสกุล</th><th>อีเมล</th><th>บทบาท</th><th>เพิ่มเมื่อ</th><th>สถานะ</th><th /></tr></thead>
+              <tbody>
+                {!users ? (
+                  <tr><td colSpan={6} className="muted" style={{ textAlign: "center", padding: "20px" }}>{error ? "โหลดข้อมูลไม่สำเร็จ" : "กำลังโหลด…"}</td></tr>
+                ) : filtered.length === 0 ? (
+                  <tr><td colSpan={6} className="muted" style={{ textAlign: "center", padding: "20px" }}>ไม่พบบัญชีผู้ใช้</td></tr>
+                ) : (
+                  filtered.map((u) => (
+                    <tr key={u.id} style={!u.isActive ? { opacity: 0.6 } : undefined}>
+                      <td><div className="row" style={{ gap: 10 }}><span className={`av ${u.role === "finance" ? "blue" : u.role === "staff" ? "green" : ""}`.trim()}>{u.displayName.replace(/^(นาย|นางสาว|นาง|พระ)\s?/, "").charAt(0)}</span><span style={{ fontWeight: 500 }}>{u.displayName}</span></div></td>
+                      <td className="muted" style={{ fontSize: 13 }}>{u.email}</td>
+                      <td><Badge kind={ROLE_TAG[u.role]} dot>{roleLabel(u.role)}</Badge></td>
+                      <td className="muted" style={{ fontSize: 13 }}>{u.createdAt.slice(0, 10)}</td>
+                      <td><Badge kind={u.isActive ? "credit" : "void"} dot>{u.isActive ? "ใช้งาน" : "ปิดใช้งาน"}</Badge></td>
+                      <td className="num" style={{ whiteSpace: "nowrap" }} />
+                    </tr>
+                  ))
+                )}
+              </tbody>
             </Table>
-            <div className="t-foot"><span>แสดง {filtered.length} จาก {SEED_USERS.length} บัญชี</span><span className="row" style={{ gap: 6 }}><Icon name="info" size={13} />ปิดใช้งานแทนการลบ เพื่อรักษาประวัติการทำรายการ</span></div>
+            <div className="t-foot"><span>แสดง {filtered.length} จาก {all.length} บัญชี</span><span className="row" style={{ gap: 6 }}><Icon name="info" size={13} />ปิดใช้งานแทนการลบ เพื่อรักษาประวัติการทำรายการ</span></div>
           </Card>
         </>
       ) : (
@@ -885,7 +897,7 @@ export function DesignRoles({ role }: { role: TempleRole }): ReactElement {
             {ROLE_DEFS.map((r) => (
               <div className="kpi" key={r.key}>
                 <div className="k-label"><Icon name="roles" size={15} style={{ color: "var(--ink-3)" }} />{r.name}</div>
-                <div className="k-value tnum" style={{ fontSize: 22 }}>{SEED_USERS.filter((u) => u.role === r.key).length} <span style={{ fontSize: 13, color: "var(--ink-3)", fontWeight: 400 }}>คน</span></div>
+                <div className="k-value tnum" style={{ fontSize: 22 }}>{users ? all.filter((u) => u.role === r.key).length : "…"} <span style={{ fontSize: 13, color: "var(--ink-3)", fontWeight: 400 }}>คน</span></div>
                 <div className="k-foot">{r.desc}</div>
               </div>
             ))}

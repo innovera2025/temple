@@ -9,6 +9,7 @@ import { createDashboardApiClient } from "./dashboard/dashboard";
 import { createLedgerApiClient } from "./ledger/ledger";
 import { createCeremoniesApiClient } from "./ceremonies/ceremonies";
 import { createPersonnelApiClient } from "./personnel/personnel";
+import { createUsersApiClient } from "./users/users";
 import {
   DesignAudit,
   DesignDashboard,
@@ -80,7 +81,7 @@ export function PageContent({ page, baseUrl, getToken, role, today, onNavigate }
       content = <DesignReports />;
       break;
     case "roles":
-      content = <DesignRoles role={role} />;
+      content = <DesignRoles role={role} api={createUsersApiClient(opts)} />;
       break;
     case "temple":
       content = <TempleProfilePage api={createTempleApiClient(opts)} canEdit={role === "admin"} />;
