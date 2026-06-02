@@ -37,16 +37,37 @@ describe("PageContent — page → view routing", () => {
     expect(html).toContain("ทะเบียนผู้บริจาค");
   });
 
-  it("shows an honest unavailable state for audit (no API yet)", () => {
+  it("renders the audit log design-backed page", () => {
     const html = render("audit");
     expect(html).toContain('data-page="audit"');
-    expect(html).toContain("ยังไม่พร้อมใช้งาน");
+    expect(html).toContain("บันทึกการใช้งาน");
+    expect(html).toContain("ข้อมูลนี้ลบไม่ได้");
   });
 
-  it("shows the design-system showcase for designsystem", () => {
-    const html = render("designsystem");
-    expect(html).toContain("ระบบออกแบบ");
-    expect(html).toContain("btn btn-primary");
+  it("renders the temple-admin design-backed dashboard instead of the old smoke-style metric shell", () => {
+    const html = render("dashboard");
+    expect(html).toContain("รายรับ-รายจ่าย ๖ เดือนล่าสุด");
+    expect(html).toContain("งานที่ต้องดำเนินการ");
+    expect(html).toContain("ความคืบหน้ากองทุน");
+  });
+
+  it("renders design-backed pages for the remaining temple-admin screens", () => {
+    const expectations: Array<[PageId, string[]]> = [
+      ["donations", ["บันทึกการบริจาค", "ข้อมูลผู้บริจาค", "สรุปรายการ"]],
+      ["donors", ["ทะเบียนผู้บริจาค", "ผู้บริจาค VIP", "ประวัติการบริจาค"]],
+      ["receipt", ["ใบอนุโมทนาบัตร", "ขออนุโมทนาบุญแด่", "ใบที่ออกล่าสุด"]],
+      ["ledger", ["บัญชีรายรับ-รายจ่าย", "รายรับรวม", "กระทบยอด"]],
+      ["events", ["กิจกรรมและพิธี", "จองกิจกรรม", "มิถุนายน ๒๕๖๙"]],
+      ["people", ["พระสงฆ์และเจ้าหน้าที่", "พระ-เณร", "เพิ่มบุคลากร"]],
+      ["reports", ["รายงานและส่งออกข้อมูล", "ตั้งค่ารายงาน", "PDF"]],
+      ["roles", ["สิทธิ์ผู้ใช้งาน", "บัญชีผู้ใช้งาน", "บทบาทและสิทธิ์"]],
+      ["audit", ["บันทึกการใช้งาน", "ข้อมูลนี้ลบไม่ได้", "ส่งออกบันทึก"]],
+      ["designsystem", ["ระบบออกแบบ", "btn btn-primary"]],
+    ];
+    for (const [page, texts] of expectations) {
+      const html = render(page);
+      for (const text of texts) expect(html).toContain(text);
+    }
   });
 
   it("hides the donor create form for a role without donor write access (staff)", () => {

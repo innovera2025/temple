@@ -14,7 +14,7 @@ describe("App (default temple product)", () => {
 
     // Design-backed brand + Thai copy (admin-app.jsx LoginScreen).
     expect(html).toContain("วัดธรรมสถิตวนาราม");
-    expect(html).toContain("ยินดีต้อนรับกลับ");
+    expect(html).toContain("ขอเชิญร่วมบุญ");
     expect(html).toContain("เข้าสู่ระบบ");
   });
 
@@ -54,7 +54,7 @@ describe("App (default temple product)", () => {
     expect(html).toContain("การเงินและบริจาค");
     expect(html).toContain("ผู้ดูแลวัดอรุณ");
     // The login welcome is gone — we transitioned to the product shell.
-    expect(html).not.toContain("ยินดีต้อนรับกลับ");
+    expect(html).not.toContain("ขอเชิญร่วมบุญ");
   });
 });
 
@@ -71,11 +71,11 @@ describe("SmokeShell (dev-only, separated from the product)", () => {
     window.location.hash = "#/smoke";
     const smoke = renderToStaticMarkup(<App />);
     expect(smoke).toContain("เมนูระบบวัด");
-    expect(smoke).not.toContain("ยินดีต้อนรับกลับ");
+    expect(smoke).not.toContain("ขอเชิญร่วมบุญ");
 
     window.location.hash = "";
     const def = renderToStaticMarkup(<App />);
-    expect(def).toContain("ยินดีต้อนรับกลับ");
+    expect(def).toContain("ขอเชิญร่วมบุญ");
     expect(def).not.toContain("เมนูระบบวัด");
   });
 });

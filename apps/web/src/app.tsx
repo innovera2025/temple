@@ -78,6 +78,7 @@ function TempleApp(): ReactElement {
         getToken={() => session.accessToken}
         role={session.user.role as TempleRole}
         today={todayIso()}
+        onNavigate={setPage}
       />
     </RoleShell>
   );
