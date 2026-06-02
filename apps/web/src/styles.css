@@ -18,29 +18,34 @@
   --pending: #976611;
   --reconciled: #3a627c;
 
-  /* The design references these via var() but the full :root (tints/borders/
-   * secondary inks) was NOT in the captured artifact — values below are
-   * reconstructed approximations, pending the Task 6 visual-review pass
-   * (design-ui-map.md open question #10). */
-  --ink-2: rgba(29, 26, 22, 0.64);
-  --ink-3: rgba(29, 26, 22, 0.42);
-  --surface-2: #faf8f3;
-  --surface-3: #f0ece3;
-  --border: rgba(29, 26, 22, 0.12);
-  --neutral: rgba(29, 26, 22, 0.55);
-  --void: rgba(29, 26, 22, 0.45);
-  --accent-tint: rgba(164, 105, 27, 0.1);
-  --accent-tint-2: rgba(164, 105, 27, 0.16);
-  --accent-line: rgba(164, 105, 27, 0.3);
-  --credit-tint: rgba(47, 107, 77, 0.12);
-  --debit-tint: rgba(176, 73, 47, 0.12);
-  --pending-tint: rgba(151, 102, 17, 0.12);
-  --reconciled-tint: rgba(58, 98, 124, 0.12);
+  /* Secondary inks, surfaces, borders and tints — now sourced VERBATIM from the rev2
+   * ds.css :root (artifacts/user-provided/…-rev2/…/temple-admin/ds.css), which resolves
+   * the earlier reconstruction (design-ui-map.md open question #10). */
+  --ink-2: #5b5448;
+  --ink-3: #8a8275;
+  --ink-on-accent: #fffdf8;
+  --surface-2: #faf9f5;
+  --surface-3: #f4f2ec;
+  --paper-sunk: #eeebe2;
+  --border: #e5e0d6;
+  --neutral: #8a8275;
+  --void: #8a8275;
+  --void-tint: #ece9e1;
+  --accent-hover: #8f5a13;
+  --accent-press: #7c4e10;
+  --accent-tint: #f3e7d2;
+  --accent-tint-2: #fbf5ea;
+  --accent-line: #e6cfa3;
+  --credit-tint: #e6efe8;
+  --debit-tint: #f6e7e1;
+  --pending-tint: #f5ecd6;
+  --reconciled-tint: #e3eaef;
 
   /* Stronger divider / focus / danger / shadow — ported from ds.css :root. */
   --border-2: #d9d3c6;
   --border-focus: #b98b3e;
   --danger: #b0392c;
+  --danger-tint: #f7e6e2;
   /* Shadow scale — ported VERBATIM from ds.css rev2 (hairline + whisper, Linear-like). */
   --shadow-xs: 0 1px 1px rgba(29, 26, 22, 0.04);
   --shadow-sm: 0 1px 2px rgba(29, 26, 22, 0.06), 0 1px 1px rgba(29, 26, 22, 0.04);
@@ -55,11 +60,12 @@
   --font-serif: "Noto Serif Thai", Georgia, serif;
   --font-mono: "IBM Plex Mono", "SF Mono", monospace;
 
-  /* Radii — base 4px per the design (design-ui-map.md §4.4). */
-  --r-xs: 2px;
-  --r-sm: 3px;
-  --r: 4px;
-  --r-lg: 8px;
+  /* Radii — VERBATIM from rev2 ds.css (supersedes the old captured 4px base). */
+  --r-xs: 3px;
+  --r-sm: 5px;
+  --r: 7px;
+  --r-lg: 9px;
+  --r-pill: 999px;
 
   /* Retained for the dev smoke shell (apps/web/src/smoke). */
   --brand: #6f2f1f;

@@ -48,3 +48,27 @@ describe("rev2 design layout tokens (ds.css 2026-06-02-rev2)", () => {
     expect(css).toContain("button.card:hover");
   });
 });
+
+describe("rev2 :root tokens reconciled to ds.css (exact hexes, not reconstructed rgba)", () => {
+  it("uses the design's exact secondary inks / surfaces / borders", () => {
+    expect(css).toContain("--ink-2: #5b5448");
+    expect(css).toContain("--ink-3: #8a8275");
+    expect(css).toContain("--surface-2: #faf9f5");
+    expect(css).toContain("--border: #e5e0d6");
+    // no leftover reconstructed rgba ink/border approximations
+    expect(css).not.toContain("rgba(29, 26, 22, 0.64)");
+    expect(css).not.toContain("rgba(29, 26, 22, 0.12)");
+  });
+
+  it("uses the design's warm tint hexes", () => {
+    expect(css).toContain("--accent-tint: #f3e7d2");
+    expect(css).toContain("--credit-tint: #e6efe8");
+    expect(css).toContain("--debit-tint: #f6e7e1");
+  });
+
+  it("uses the rev2 radius scale (7px base, not the old 4px)", () => {
+    expect(css).toContain("--r: 7px");
+    expect(css).toContain("--r-sm: 5px");
+    expect(css).toContain("--r-lg: 9px");
+  });
+});
