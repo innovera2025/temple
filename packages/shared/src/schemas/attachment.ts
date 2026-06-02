@@ -7,7 +7,7 @@
 import { type FieldError, type ValidationResult } from "./donor";
 import { isUuid } from "./platform";
 
-export const ATTACHMENT_OWNER_TYPES = ["donation", "receipt", "ledger_entry", "donor"] as const;
+export const ATTACHMENT_OWNER_TYPES = ["donation", "receipt", "ledger_entry", "donor", "item_loan"] as const;
 export type AttachmentOwnerType = (typeof ATTACHMENT_OWNER_TYPES)[number];
 
 export const ATTACHMENT_OWNER_TYPE_LABELS_TH: Record<AttachmentOwnerType, string> = {
@@ -15,6 +15,7 @@ export const ATTACHMENT_OWNER_TYPE_LABELS_TH: Record<AttachmentOwnerType, string
   receipt: "ใบอนุโมทนา",
   ledger_entry: "รายการบัญชี",
   donor: "ผู้บริจาค",
+  item_loan: "การยืมสิ่งของ",
 };
 
 export const ALLOWED_ATTACHMENT_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf"] as const;

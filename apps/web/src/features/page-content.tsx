@@ -5,6 +5,9 @@ import { createTempleApiClient } from "./temple/temple";
 import { TempleProfilePage } from "./temple/temple-view";
 import { createInventoryApiClient } from "./inventory/inventory";
 import { InventoryPage } from "./inventory/inventory-view";
+import { createItemLoansApiClient } from "./item-loans/item-loans";
+import { ItemLoansPage } from "./item-loans/item-loans-view";
+import { createAttachmentsApiClient } from "./attachments/attachments";
 import { createDashboardApiClient } from "./dashboard/dashboard";
 import { createLedgerApiClient } from "./ledger/ledger";
 import { createCeremoniesApiClient } from "./ceremonies/ceremonies";
@@ -92,6 +95,9 @@ export function PageContent({ page, baseUrl, getToken, role, today, onNavigate }
       break;
     case "inventory":
       content = <InventoryPage api={createInventoryApiClient(opts)} canWrite={role === "admin" || role === "staff"} />;
+      break;
+    case "item-loans":
+      content = <ItemLoansPage api={createItemLoansApiClient(opts)} attachmentsApi={createAttachmentsApiClient(opts)} today={today} canWrite={writable("item-loans")} />;
       break;
     case "audit":
       content = <DesignAudit />;

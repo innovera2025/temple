@@ -30,7 +30,8 @@ export type PageId =
   // Core Modules (CLAUDE.md) that have backend + views but are NOT in the design
   // NAV (design-ui-map.md open question #13). Surfaced via EXTRA_NAV below.
   | "temple"
-  | "inventory";
+  | "inventory"
+  | "item-loans";
 
 // The tenant operational roles, aliased to the shared canonical TenantRole (single
 // source of truth). No `auditor`.
@@ -91,6 +92,7 @@ export const PAGE_TITLES: Record<PageId, string> = {
   designsystem: "ระบบออกแบบ",
   temple: "ข้อมูลวัด",
   inventory: "คลังของบริจาค/พัสดุ",
+  "item-loans": "การยืม-คืนสิ่งของ",
 };
 
 // NOT from the design NAV. Core Modules (CLAUDE.md) that have a working backend +
@@ -102,6 +104,7 @@ export const EXTRA_NAV: NavGroup[] = [
     items: [
       { id: "temple", label: "ข้อมูลวัด", icon: "building" },
       { id: "inventory", label: "คลังของบริจาค/พัสดุ", icon: "box" },
+      { id: "item-loans", label: "การยืม-คืนสิ่งของ", icon: "receipt" },
     ],
   },
 ];
@@ -118,6 +121,7 @@ const PAGE_PERM: Partial<Record<PageId, string>> = {
   reports: "rep",
   roles: "role",
   audit: "audit",
+  "item-loans": "loan",
 };
 
 // data.jsx permMatrix — permission level per role for each function row. The design's
@@ -131,6 +135,7 @@ const PERM_MATRIX: Record<string, Record<TempleRole, PermLevel>> = {
   evt: { admin: "full", finance: "view", staff: "edit" },
   ppl: { admin: "full", finance: "none", staff: "edit" },
   rep: { admin: "full", finance: "full", staff: "view" },
+  loan: { admin: "full", finance: "full", staff: "full" },
   role: { admin: "full", finance: "none", staff: "none" },
   audit: { admin: "full", finance: "view", staff: "none" },
 };
