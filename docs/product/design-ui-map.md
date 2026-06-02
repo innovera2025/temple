@@ -1,11 +1,11 @@
 # แผนผัง UI ตามดีไซน์ (Design UI Map) — ระบบจัดการวัด
 
 > เอกสารนี้ดึงข้อมูลทั้งหมดจากดีไซน์ต้นฉบับที่ export ไว้ที่
-> `artifacts/claude-design/temple-admin-index-from-save_files/_bootstrap.html`
-> (รวม 20,343 บรรทัด — เป็น **source of truth** ของดีไซน์ React/JSX)
+> `/Users/innovera/wat-management-system/artifacts/user-provided/ระบบจัดการวัด-2026-06-02-rev2/extracted/`
+> (latest user-provided revision; previous revision remains at `.../ระบบจัดการวัด-2026-06-02/extracted/` for comparison)
 > เอกสารนี้ **ไม่ใช่** smoke shell ปัจจุบันใน `apps/web/src/smoke/` และ **ไม่ใช่** Agent Control Tower (`apps/web/src/control-tower.ts` ซึ่งเป็น dev artifact ที่ต้องอยู่นอก UI หลักของผลิตภัณฑ์)
 > ทุกข้อความในเอกสารนี้อ้างอิงจาก EXTRACTED DESIGN DATA ต่อ JSX module หากดีไซน์ไม่ได้ระบุ จะเขียนกำกับว่า "ไม่พบในดีไซน์" แทนการเดา
-> โมดูล JSX ที่ถูกถอดออกมา: `icons.jsx`, `data.jsx`, `shell.jsx`, `ds-screen.jsx`, `screens-1.jsx`, `screens-2.jsx`, `screens-3.jsx`, `role-extras.jsx`, `admin-app.jsx`
+> โมดูล JSX ที่ถูกถอดออกมา: `app.jsx`, `auth.jsx`, `apply.jsx`, `dashboard.jsx`, `donate.jsx`, `members.jsx`, `bookings.jsx`, `calendar.jsx`, `settings.jsx`, `temple-settings.jsx`, `innovera.jsx`, `platform-data.jsx`, `shared.jsx`, `temple-admin/icons.jsx`, `temple-admin/data.jsx`, `temple-admin/shell.jsx`, `temple-admin/ds-screen.jsx`, `temple-admin/screens-1.jsx`, `temple-admin/screens-2.jsx`, `temple-admin/screens-3.jsx`, `temple-admin/role-extras.jsx`, `temple-admin/admin-app.jsx`, `temple-admin/ds.css`
 
 ---
 

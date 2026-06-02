@@ -35,14 +35,22 @@ The inventory says the design contains these important components/screens:
 
 ### User-provided design files
 
-The user sent an additional design export on 2026-06-02. Treat it as source-of-truth for future UI work, alongside the existing Claude Design capture:
+The user sent an additional design export on 2026-06-02. Treat it as source-of-truth for future UI work, alongside the existing Claude Design capture.
+
+**Latest revision — use this first for UI work:**
+
+- Original ZIP: `/Users/innovera/wat-management-system/artifacts/user-provided/ระบบจัดการวัด-2026-06-02-rev2/source.zip`
+- Extracted files: `/Users/innovera/wat-management-system/artifacts/user-provided/ระบบจัดการวัด-2026-06-02-rev2/extracted/`
+- Top-level design files include: `app.jsx`, `auth.jsx`, `apply.jsx`, `dashboard.jsx`, `donate.jsx`, `members.jsx`, `bookings.jsx`, `calendar.jsx`, `settings.jsx`, `temple-settings.jsx`, `innovera.jsx`, `platform-data.jsx`, `shared.jsx`, `styles.css`, `index.html`, screenshots under `screenshots/`, and standalone HTML exports.
+- Admin design files include: `temple-admin/admin-app.jsx`, `temple-admin/data.jsx`, `temple-admin/screens-1.jsx`, `temple-admin/screens-2.jsx`, `temple-admin/screens-3.jsx`, `temple-admin/role-extras.jsx`, `temple-admin/shell.jsx`, `temple-admin/ds.css`, `temple-admin/ds-screen.jsx`, `temple-admin/icons.jsx`, `temple-admin/index.html`.
+- Rev2 difference confirmed by extraction comparison: `temple-admin/ds.css` changed versus the previous export; most JSX modules are unchanged. Key ds.css changes widen the shell (`--sidebar-w: 264px`, `--topbar-h: 62px`, `--maxw: 1760px`), make `.content-wrap` full-width, add larger responsive gutters, enhance page headers, and add KPI/card hover treatments.
+
+**Previous user-provided revision — keep for comparison only unless explicitly needed:**
 
 - Original ZIP: `/Users/innovera/wat-management-system/artifacts/user-provided/ระบบจัดการวัด-2026-06-02/source.zip`
 - Extracted files: `/Users/innovera/wat-management-system/artifacts/user-provided/ระบบจัดการวัด-2026-06-02/extracted/`
-- Top-level design files include: `app.jsx`, `auth.jsx`, `apply.jsx`, `dashboard.jsx`, `donate.jsx`, `members.jsx`, `bookings.jsx`, `calendar.jsx`, `settings.jsx`, `temple-settings.jsx`, `innovera.jsx`, `platform-data.jsx`, `shared.jsx`, `styles.css`, `index.html`, screenshots under `screenshots/`, and standalone HTML exports.
-- Admin design files include: `temple-admin/admin-app.jsx`, `temple-admin/data.jsx`, `temple-admin/screens-1.jsx`, `temple-admin/screens-2.jsx`, `temple-admin/screens-3.jsx`, `temple-admin/role-extras.jsx`, `temple-admin/shell.jsx`, `temple-admin/ds.css`, `temple-admin/ds-screen.jsx`, `temple-admin/icons.jsx`, `temple-admin/index.html`.
 
-**Rule:** If the design file exists in this plan, the implementation must inspect and extract it before coding. Do not infer the UI from memory or from the current smoke-test page.
+**Rule:** If the design file exists in this plan, the implementation must inspect and extract the latest revision before coding. Do not infer the UI from memory or from the current smoke-test page.
 
 ---
 
