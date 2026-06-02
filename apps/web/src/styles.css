@@ -37,6 +37,12 @@
   --pending-tint: rgba(151, 102, 17, 0.12);
   --reconciled-tint: rgba(58, 98, 124, 0.12);
 
+  /* Stronger divider / focus / danger / shadow — ported from ds.css :root. */
+  --border-2: #d9d3c6;
+  --border-focus: #b98b3e;
+  --danger: #b0392c;
+  --shadow-xs: 0 1px 1px rgba(29, 26, 22, 0.04);
+
   --font-serif: "Noto Serif Thai", Georgia, serif;
   --font-mono: "IBM Plex Mono", "SF Mono", monospace;
 
@@ -1073,3 +1079,45 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
     display: none;
   }
 }
+
+/* ===========================================================================
+ * Design-parity additions (ported from temple-admin/ds.css) — classes used by
+ * the design-backed pages that were not yet present in styles.css.
+ * ======================================================================== */
+
+/* Standalone form label (design uses <span class="label">) + hint + required mark. */
+.label { display: block; font-size: 13.5px; font-weight: 600; color: var(--ink); margin-bottom: 4px; }
+.hint { font-size: 12.5px; color: var(--ink-3); margin-bottom: 7px; }
+.req { color: var(--danger); }
+
+/* Full-width field inside a 2-col form-grid. */
+.field.full, .form-grid .full { grid-column: 1 / -1; }
+
+/* KPI delta (coloured up/down indicator, separate from the plain value). */
+.k-delta { font-weight: 600; }
+.k-delta.up { color: var(--credit); }
+.k-delta.down { color: var(--debit); }
+
+/* Currency-prefixed input (฿ inside the field). */
+.input-prefix { position: relative; display: flex; align-items: center; }
+.input-prefix .pfx { position: absolute; left: 12px; color: var(--ink-3); font-weight: 600; pointer-events: none; }
+.input-prefix .control { padding-left: 30px; }
+
+/* Radio/selectable option box (report format, etc.). */
+.opt {
+  display: flex; align-items: flex-start; gap: 11px;
+  padding: 12px 14px; border: 1px solid var(--border-2); border-radius: var(--r-sm);
+  cursor: pointer; background: var(--surface); transition: border-color .12s, background .12s;
+}
+.opt:hover { border-color: var(--ink-3); }
+.opt.sel { border-color: var(--accent); background: var(--accent-tint-2); box-shadow: 0 0 0 1px var(--accent) inset; }
+.opt .o-title { font-weight: 600; font-size: 13.5px; }
+.opt .o-desc { font-size: 12.5px; color: var(--ink-3); }
+
+/* Card footer + hairline divider. */
+.card-foot { padding: 12px 18px; border-top: 1px solid var(--border); display: flex; gap: 8px; }
+.divider { height: 1px; background: var(--border); border: 0; margin: 0; }
+
+/* Avatar colour variants (finance/staff/success). */
+.av.blue { background: var(--reconciled-tint); color: var(--reconciled); }
+.av.green { background: var(--credit-tint); color: var(--credit); }
