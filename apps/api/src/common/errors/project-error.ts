@@ -16,6 +16,7 @@ const statusCodes: Record<number, string> = {
   [HttpStatus.CONFLICT]: "CONFLICT",
   [HttpStatus.UNPROCESSABLE_ENTITY]: "UNPROCESSABLE_ENTITY",
   [HttpStatus.TOO_MANY_REQUESTS]: "TOO_MANY_REQUESTS",
+  [HttpStatus.SERVICE_UNAVAILABLE]: "SERVICE_UNAVAILABLE",
 };
 
 const statusMessages: Record<number, string> = {
@@ -25,6 +26,7 @@ const statusMessages: Record<number, string> = {
   [HttpStatus.CONFLICT]: "Conflict",
   [HttpStatus.UNPROCESSABLE_ENTITY]: "Unprocessable entity",
   [HttpStatus.TOO_MANY_REQUESTS]: "Too many requests",
+  [HttpStatus.SERVICE_UNAVAILABLE]: "Service unavailable",
 };
 
 export function projectErrorBody(
@@ -70,4 +72,8 @@ export function conflict(message = "Conflict"): HttpException {
 
 export function tooManyRequests(message = "Too many requests"): HttpException {
   return projectHttpException(HttpStatus.TOO_MANY_REQUESTS, "TOO_MANY_REQUESTS", message);
+}
+
+export function serviceUnavailable(message = "Service unavailable"): HttpException {
+  return projectHttpException(HttpStatus.SERVICE_UNAVAILABLE, "SERVICE_UNAVAILABLE", message);
 }

@@ -33,12 +33,14 @@ The inventory says the design contains these important components/screens:
 - `PublicView`
 - Shared UI: `Btn`, `Badge`, `Card`, `Modal`, `Drawer`, `Toast`, `Toolbar`, `SearchBox`, `Sidebar`, `Topbar`
 
-### Future user-provided design files
+### User-provided design files
 
-When the user sends additional Design files/screenshots, add them here before implementation:
+The user sent an additional design export on 2026-06-02. Treat it as source-of-truth for future UI work, alongside the existing Claude Design capture:
 
-- `TODO: path/to/user-sent-design-file`
-- `TODO: path/to/screenshots-or-exported-html`
+- Original ZIP: `/Users/innovera/wat-management-system/artifacts/user-provided/ระบบจัดการวัด-2026-06-02/source.zip`
+- Extracted files: `/Users/innovera/wat-management-system/artifacts/user-provided/ระบบจัดการวัด-2026-06-02/extracted/`
+- Top-level design files include: `app.jsx`, `auth.jsx`, `apply.jsx`, `dashboard.jsx`, `donate.jsx`, `members.jsx`, `bookings.jsx`, `calendar.jsx`, `settings.jsx`, `temple-settings.jsx`, `innovera.jsx`, `platform-data.jsx`, `shared.jsx`, `styles.css`, `index.html`, screenshots under `screenshots/`, and standalone HTML exports.
+- Admin design files include: `temple-admin/admin-app.jsx`, `temple-admin/data.jsx`, `temple-admin/screens-1.jsx`, `temple-admin/screens-2.jsx`, `temple-admin/screens-3.jsx`, `temple-admin/role-extras.jsx`, `temple-admin/shell.jsx`, `temple-admin/ds.css`, `temple-admin/ds-screen.jsx`, `temple-admin/icons.jsx`, `temple-admin/index.html`.
 
 **Rule:** If the design file exists in this plan, the implementation must inspect and extract it before coding. Do not infer the UI from memory or from the current smoke-test page.
 
@@ -173,6 +175,40 @@ pnpm --filter @wat/web build
 - Token storage is explicit and safe for local dev.
 - Registration screen can be UI-only if backend scope is not ready, but must label unavailable actions honestly.
 - Thai copy follows design.
+
+### Known gap: self-service registration + Google/Facebook sign-up
+
+Current implementation only renders the design affordances for register / Google / Facebook as disabled "ยังไม่พร้อมใช้งาน" actions because there is no backend endpoint yet. Do **not** claim membership sign-up is complete until this gap is implemented and verified end-to-end.
+
+Add a follow-up auth task before production readiness:
+
+**Task 4b: Implement membership registration and social sign-up**
+
+**Objective:** Make the design's สมัครสมาชิก, Google, and Facebook flows real instead of disabled placeholders.
+
+**Scope:**
+
+1. Product decision: define whether self-service sign-up creates a temple application, a tenant user invitation, or a public layperson/donor account.
+2. Backend:
+   - add explicit registration endpoint(s), validation, audit logging, rate limits, and duplicate-account handling;
+   - add OAuth provider configuration for Google and Facebook;
+   - implement callback/token exchange and account linking safely;
+   - avoid auto-creating privileged tenant admin users without platform/temple-owner approval.
+3. Frontend:
+   - enable RegisterForm only after backend support exists;
+   - make Google/Facebook buttons start the real OAuth flow;
+   - show Thai error states for provider cancellation, duplicate email, missing approval, and rate-limit.
+4. Tests/verification:
+   - write failing tests first (TDD) for register availability, OAuth start URL, callback handling, duplicate email, disabled provider config, and role/tenant assignment;
+   - run API + web tests, build, and browser smoke.
+
+**Acceptance criteria:**
+
+- `/auth/register` or the chosen registration/application endpoint exists and is tested.
+- Google and Facebook sign-up/login are wired to real backend endpoints, not fake client-only buttons.
+- New accounts receive the correct access group/tenant state and never bypass platform/temple approval rules.
+- Disabled/unsupported states are honest if provider credentials are missing.
+- End-to-end smoke proves a new user can complete the intended sign-up flow.
 
 ---
 

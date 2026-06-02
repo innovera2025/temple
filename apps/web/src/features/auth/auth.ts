@@ -5,10 +5,10 @@
  * (admin-app.jsx; see docs/product/design-ui-map.md §3.1). Only the flows the backend
  * actually supports are wired here:
  *   - POST /auth/login          -> real, used by the login form
+ *   - POST /auth/register       -> real, creates a pending temple application only
+ *   - GET /auth/oauth/:provider/start -> real config-aware OAuth authorization start
  *   - POST /auth/refresh|logout -> exist but are not part of the login screen
- * Registration, social/OAuth login and password reset have NO backend endpoint
- * (design-ui-map.md §6: RegisterForm = future/out-of-scope). They are surfaced in
- * the UI as clearly-disabled "ยังไม่พร้อมใช้งาน" affordances, never as a fake submit.
+ * Password reset still has no backend endpoint and remains disabled.
  */
 
 export type TenantRole = "admin" | "finance" | "staff";
@@ -50,12 +50,13 @@ const SESSION_STORAGE_KEY = "wat-session";
 // Which pre-login flows the product can honestly offer today. Flip to true only when
 // the matching backend endpoint ships — the UI reads these to disable/hide affordances.
 export const AUTH_FLOW_AVAILABILITY = {
-  register: false,
-  socialLogin: false,
+  register: true,
+  socialLogin: true,
   passwordReset: false,
 } as const;
 
 export const UNAVAILABLE_LABEL = "ยังไม่พร้อมใช้งาน";
+export const CONFIG_REQUIRED_LABEL = "ต้องตั้งค่า OAuth provider ก่อนใช้งาน";
 
 export interface TokenPair {
   accessToken: string;
@@ -70,6 +71,39 @@ export interface LoginCredentials {
 export interface LoginFormErrors {
   email?: string;
   password?: string;
+}
+
+export interface RegisterInput {
+  templeNameTh: string;
+  contactEmail: string;
+  password: string;
+  confirmPassword: string;
+  displayName: string;
+  acceptedTerms: boolean;
+}
+
+export interface RegisterFormErrors {
+  templeNameTh?: string;
+  contactEmail?: string;
+  password?: string;
+  confirmPassword?: string;
+  displayName?: string;
+  acceptedTerms?: string;
+}
+
+export interface RegistrationResult {
+  id: string;
+  templeNameTh: string;
+  contactEmail: string;
+  status: "pending";
+}
+
+export type SocialProvider = "google" | "facebook";
+
+export interface SocialStartResult {
+  provider: SocialProvider;
+  authUrl: string;
+  state: string;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -91,6 +125,41 @@ export function validateLoginForm(values: LoginCredentials): LoginFormErrors {
 
 export function hasErrors(errors: LoginFormErrors): boolean {
   return Boolean(errors.email || errors.password);
+}
+
+export function validateRegisterForm(values: RegisterInput): RegisterFormErrors {
+  const errors: RegisterFormErrors = {};
+  const templeNameTh = values.templeNameTh.trim();
+  const contactEmail = values.contactEmail.trim();
+  const displayName = values.displayName.trim();
+  if (!templeNameTh) errors.templeNameTh = "กรุณากรอกชื่อวัด";
+  if (!contactEmail) {
+    errors.contactEmail = "กรุณากรอกอีเมลผู้ติดต่อ";
+  } else if (!EMAIL_RE.test(contactEmail)) {
+    errors.contactEmail = "รูปแบบอีเมลไม่ถูกต้อง";
+  }
+  if (!values.password) {
+    errors.password = "กรุณากรอกรหัสผ่าน";
+  } else if (values.password.length < 8) {
+    errors.password = "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร";
+  }
+  if (values.confirmPassword !== values.password) {
+    errors.confirmPassword = "รหัสผ่านไม่ตรงกัน";
+  }
+  if (!displayName) errors.displayName = "กรุณากรอกชื่อผู้ติดต่อ";
+  if (!values.acceptedTerms) errors.acceptedTerms = "กรุณายอมรับเงื่อนไขก่อนสมัคร";
+  return errors;
+}
+
+export function hasRegisterErrors(errors: RegisterFormErrors): boolean {
+  return Boolean(
+    errors.templeNameTh ||
+      errors.contactEmail ||
+      errors.password ||
+      errors.confirmPassword ||
+      errors.displayName ||
+      errors.acceptedTerms,
+  );
 }
 
 const TENANT_ROLES: readonly TenantRole[] = ["admin", "finance", "staff"];
@@ -192,6 +261,8 @@ export function loginErrorMessage(error: unknown): string {
 
 export interface AuthApi {
   login(credentials: LoginCredentials): Promise<TokenPair>;
+  register(input: RegisterInput): Promise<RegistrationResult>;
+  startSocialSignup(provider: SocialProvider, redirectUri: string): Promise<SocialStartResult>;
 }
 
 export interface AuthApiClientOptions {
@@ -223,6 +294,43 @@ export function createAuthApiClient(options: AuthApiClientOptions): AuthApi {
         throw new AuthError(response.status, message);
       }
       return { accessToken: body.accessToken, refreshToken: body.refreshToken };
+    },
+    async register(input) {
+      const response = await doFetch(`${options.baseUrl}/auth/register`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          templeNameTh: input.templeNameTh.trim(),
+          contactEmail: input.contactEmail.trim().toLowerCase(),
+          password: input.password,
+          displayName: input.displayName.trim(),
+        }),
+      });
+      const body = (await response.json().catch(() => null)) as
+        | (AuthErrorBody & RegistrationResult)
+        | null;
+      if (!response.ok || body?.status !== "pending" || !body.id) {
+        const message = body?.error?.message ?? `สมัครสมาชิกไม่สำเร็จ (${response.status})`;
+        throw new AuthError(response.status, message);
+      }
+      return {
+        id: body.id,
+        templeNameTh: body.templeNameTh,
+        contactEmail: body.contactEmail,
+        status: "pending",
+      };
+    },
+    async startSocialSignup(provider, redirectUri) {
+      const params = new URLSearchParams({ redirectUri });
+      const response = await doFetch(`${options.baseUrl}/auth/oauth/${provider}/start?${params.toString()}`);
+      const body = (await response.json().catch(() => null)) as
+        | (AuthErrorBody & SocialStartResult)
+        | null;
+      if (!response.ok || !body?.authUrl || !body.state) {
+        const message = body?.error?.message ?? `เริ่มเข้าสู่ระบบด้วย ${provider} ไม่สำเร็จ (${response.status})`;
+        throw new AuthError(response.status, message);
+      }
+      return { provider, authUrl: body.authUrl, state: body.state };
     },
   };
 }

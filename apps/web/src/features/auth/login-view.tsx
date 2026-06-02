@@ -1,11 +1,12 @@
 import { FormEvent, ReactElement, useState } from "react";
 import { Badge, Button } from "../../design-system";
-import { Icon, IconName } from "../../layout/icons";
+import { Icon } from "../../layout/icons";
 import { ROLE_NAMES } from "../../layout/nav";
-import { RegisterUnavailable } from "./register-view";
+import { RegisterForm } from "./register-view";
 import {
-  AUTH_FLOW_AVAILABILITY,
   AuthApi,
+  AuthError,
+  CONFIG_REQUIRED_LABEL,
   DEMO_PASSWORD,
   deriveSession,
   loginErrorMessage,
@@ -16,13 +17,6 @@ import {
   UNAVAILABLE_LABEL,
   validateLoginForm,
 } from "./auth";
-
-// The three product strengths shown on the brand panel (design pts[]).
-const HIGHLIGHTS: { icon: IconName; text: string }[] = [
-  { icon: "donation", text: "รับบริจาคและออกใบอนุโมทนาบัตร" },
-  { icon: "ledger", text: "บัญชีรายรับ-รายจ่ายและรายงาน" },
-  { icon: "roles", text: "สิทธิ์ผู้ใช้และบันทึกการใช้งาน" },
-];
 
 type Mode = "login" | "register";
 
@@ -35,55 +29,76 @@ export interface LoginScreenProps {
 
 // Social/OAuth providers from the design's SocialButtons. No backend -> disabled.
 const SOCIAL_PROVIDERS = ["Google", "Facebook"] as const;
+const SOCIAL_PROVIDER_IDS = { Google: "google", Facebook: "facebook" } as const;
 
 function BrandPanel(): ReactElement {
   return (
-    <div className="auth-art">
+    <div className="auth-art" data-design-source="user-zip-auth.jsx">
+      <svg className="auth-temple" viewBox="0 0 200 200" fill="none" aria-hidden="true">
+        <path
+          d="M100 20l8 14 8-8-6 16 18-4-12 12 20 4-18 8 14 12-18-2 6 16-14-10-2 16-10-12-10 12-2-16-14 10 6-16-18 2 14-12-18-8 20-4-12-12 18 4-6-16 8 8z"
+          fill="currentColor"
+        />
+        <path
+          d="M30 180h140M50 180V130l50-40 50 40v50M75 180v-30h50v30M100 90V60M85 60h30"
+          stroke="currentColor"
+          strokeWidth="1.5"
+        />
+      </svg>
+
       <div className="a-brand">
         <div className="a-seal">
-          <Icon name="lotus" size={26} />
+          <Icon name="lotus" size={30} />
         </div>
         <div>
-          <div className="a-brand-name">วัดธรรมสถิตวนาราม</div>
-          <div className="a-brand-sub">ระบบบริหารจัดการวัด</div>
+          <div className="a-brand-name">ระบบจัดการวัด</div>
+          <div className="a-brand-sub">WAT MANAGEMENT SYSTEM</div>
         </div>
       </div>
 
       <div className="a-lead">
         <div className="a-line" />
-        <h1>
-          บริหารงานวัด
-          <br />
-          ด้วยความโปร่งใส
-          <br />
-          และเป็นระเบียบ
-        </h1>
+        <h1>วัดธรรมสถิตวนาราม</h1>
         <p className="a-sub">
-          ระบบกลางสำหรับงานบริจาค บัญชี กิจกรรม และทะเบียนบุคลากร — ออกแบบให้สุภาพ
-          ใช้งานง่าย และตรวจสอบได้
+          ระบบจัดการวัดออนไลน์ สำหรับเจ้าหน้าที่และญาติโยม จองศาลา จองกุฏิ แจ้งบวช ฌาปนกิจ
+          และร่วมบุญออนไลน์
         </p>
-        <div className="a-points">
-          {HIGHLIGHTS.map((point) => (
-            <div className="a-point" key={point.icon}>
-              <span className="pc">
-                <Icon name={point.icon} size={15} />
-              </span>
-              {point.text}
-            </div>
-          ))}
-        </div>
       </div>
 
-      <div className="a-foot">© ๒๕๖๙ วัดธรรมสถิตวนาราม · ใช้งานภายในสำหรับเจ้าหน้าที่</div>
-      <div className="a-watermark" aria-hidden="true">
-        <Icon name="lotus" size={360} />
-      </div>
+      <div className="a-foot">© ๒๕๖๙ วัดธรรมสถิตวนาราม · เพื่อความสะดวกของพุทธศาสนิกชน</div>
     </div>
   );
 }
 
-// Social/OAuth sign-in — rendered for design continuity but disabled (no backend).
-function SocialButtons(): ReactElement {
+function socialErrorMessage(error: unknown): string {
+  if (error instanceof AuthError) {
+    if (error.status === 503) return CONFIG_REQUIRED_LABEL;
+    if (error.status === 429) return "เริ่มเข้าสู่ระบบด้วยบัญชีภายนอกบ่อยเกินไป กรุณารอสักครู่";
+    return error.message || "เริ่มเข้าสู่ระบบด้วยบัญชีภายนอกไม่สำเร็จ";
+  }
+  if (error instanceof TypeError) return "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบการเชื่อมต่อ";
+  return "เริ่มเข้าสู่ระบบด้วยบัญชีภายนอกไม่สำเร็จ";
+}
+
+function SocialButtons({ api }: { api: AuthApi }): ReactElement {
+  const [busyProvider, setBusyProvider] = useState<string>("");
+  const [error, setError] = useState<string>("");
+
+  async function start(providerLabel: keyof typeof SOCIAL_PROVIDER_IDS): Promise<void> {
+    const provider = SOCIAL_PROVIDER_IDS[providerLabel];
+    setBusyProvider(provider);
+    setError("");
+    try {
+      const redirectUri = `${window.location.origin}/oauth/callback`;
+      const result = await api.startSocialSignup(provider, redirectUri);
+      window.location.assign(result.authUrl);
+    } catch (err) {
+      setError(socialErrorMessage(err));
+    } finally {
+      setBusyProvider("");
+    }
+  }
+
   return (
     <div className="auth-social">
       <div className="soc-row">
@@ -92,15 +107,17 @@ function SocialButtons(): ReactElement {
             key={provider}
             type="button"
             className="soc-btn"
-            disabled
-            title={UNAVAILABLE_LABEL}
-            aria-label={`${provider} (${UNAVAILABLE_LABEL})`}
+            disabled={busyProvider !== ""}
+            title={CONFIG_REQUIRED_LABEL}
+            aria-label={`เข้าสู่ระบบด้วย ${provider}`}
+            onClick={() => void start(provider)}
           >
-            {provider}
+            {busyProvider === SOCIAL_PROVIDER_IDS[provider] ? "กำลังเชื่อมต่อ…" : provider}
           </button>
         ))}
       </div>
-      <p className="auth-social-note">การเข้าสู่ระบบด้วยบัญชีภายนอกยังไม่พร้อมใช้งาน</p>
+      <p className="auth-social-note">Google/Facebook จะใช้งานได้เมื่อ backend ตั้งค่า OAuth provider แล้ว</p>
+      {error ? <p className="auth-error" role="alert">{error}</p> : null}
     </div>
   );
 }
@@ -170,18 +187,18 @@ export function LoginScreen({
               onClick={() => setMode("register")}
             >
               สมัครสมาชิก
-              {!AUTH_FLOW_AVAILABILITY.register ? <span className="tab-flag">{UNAVAILABLE_LABEL}</span> : null}
             </button>
           </div>
 
           {mode === "register" ? (
-            <RegisterUnavailable />
+            <RegisterForm api={api} />
           ) : (
             <>
-              <h2>ยินดีต้อนรับกลับ</h2>
-              <p className="a-hint">ลงชื่อเข้าใช้เพื่อจัดการงานของวัด</p>
+              <div className="auth-kicker">เข้าสู่ระบบ</div>
+              <h2>ขอเชิญร่วมบุญ</h2>
+              <p className="a-hint">เข้าสู่ระบบเพื่อจองบริการของวัด ร่วมบุญ หรือจัดการงานวัด</p>
 
-              <SocialButtons />
+              <SocialButtons api={api} />
               <div className="auth-or">หรือใช้อีเมล</div>
 
               <form onSubmit={onSubmit} noValidate>

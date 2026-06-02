@@ -1,14 +1,29 @@
 import { createHash, randomUUID } from "node:crypto";
 import { Inject, Injectable } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
-import { unauthorized } from "../common/errors/project-error";
-import { LoginDto, LogoutDto, RefreshDto } from "./auth.dto";
+import { conflict, serviceUnavailable, unauthorized } from "../common/errors/project-error";
+import { LoginDto, LogoutDto, RefreshDto, RegisterDto, SocialStartDto } from "./auth.dto";
 import { PasswordService } from "./password.service";
 import { TokenService } from "./token.service";
 
 export interface TokenPair {
   accessToken: string;
   refreshToken: string;
+}
+
+export interface RegistrationResult {
+  id: string;
+  templeNameTh: string;
+  contactEmail: string;
+  status: "pending";
+}
+
+export type SocialProvider = "google" | "facebook";
+
+export interface SocialStartResult {
+  provider: SocialProvider;
+  authUrl: string;
+  state: string;
 }
 
 interface LoginUser {
@@ -25,6 +40,23 @@ function hashRefreshToken(token: string): string {
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
+}
+
+function oauthEnv(provider: SocialProvider): { clientId?: string; redirectUri?: string; scope: string; endpoint: string } {
+  if (provider === "google") {
+    return {
+      clientId: process.env.GOOGLE_OAUTH_CLIENT_ID,
+      redirectUri: process.env.GOOGLE_OAUTH_REDIRECT_URI,
+      scope: "openid email profile",
+      endpoint: "https://accounts.google.com/o/oauth2/v2/auth",
+    };
+  }
+  return {
+    clientId: process.env.FACEBOOK_OAUTH_CLIENT_ID,
+    redirectUri: process.env.FACEBOOK_OAUTH_REDIRECT_URI,
+    scope: "email,public_profile",
+    endpoint: "https://www.facebook.com/v20.0/dialog/oauth",
+  };
 }
 
 @Injectable()
@@ -61,6 +93,73 @@ export class AuthService {
     }
 
     return this.issueTokenPair(user);
+  }
+
+  /**
+   * Self-service signup creates a pending temple application only. It never creates
+   * an active tenant admin/user by itself; platform approval remains the authority
+   * for tenant bootstrap and privileged access.
+   */
+  async register(dto: RegisterDto): Promise<RegistrationResult> {
+    const contactEmail = normalizeEmail(dto.contactEmail);
+    const templeNameTh = dto.templeNameTh.trim();
+
+    return this.prisma.withSystemAccess(async (tx) => {
+      const existingUser = await tx.user.findUnique({ where: { email: contactEmail }, select: { id: true } });
+      if (existingUser) {
+        throw conflict("อีเมลนี้มีบัญชีผู้ใช้แล้ว");
+      }
+
+      const existingApplication = await tx.templeApplication.findFirst({
+        where: { contactEmail, status: { in: ["pending", "approved"] } },
+        select: { id: true },
+      });
+      if (existingApplication) {
+        throw conflict("อีเมลนี้มีใบสมัครที่รอตรวจสอบหรือได้รับอนุมัติแล้ว");
+      }
+
+      // Hash the password to validate/accept the field without persisting a privileged
+      // credential in the current schema. Approval still sets the first admin password.
+      await this.passwordService.hash(dto.password);
+
+      const application = await tx.templeApplication.create({
+        data: { templeNameTh, contactEmail, status: "pending" },
+        select: { id: true, templeNameTh: true, contactEmail: true, status: true },
+      });
+
+      await tx.platformAuditLog.create({
+        data: {
+          actorPlatformUserId: null,
+          action: "auth.register.pending_application_created",
+          entityType: "temple_application",
+          entityId: application.id,
+          metadata: { contactEmail, displayName: dto.displayName.trim(), source: "self_service_register" },
+        },
+      });
+
+      return { ...application, status: "pending" };
+    });
+  }
+
+  startSocialSignup(provider: SocialProvider, dto: Pick<SocialStartDto, "redirectUri">): SocialStartResult {
+    const env = oauthEnv(provider);
+    const redirectUri = env.redirectUri ?? dto.redirectUri;
+    if (!env.clientId || !redirectUri) {
+      throw serviceUnavailable(`${provider} OAuth ยังไม่ได้ตั้งค่า client id / redirect uri`);
+    }
+
+    const state = randomUUID();
+    const url = new URL(env.endpoint);
+    url.searchParams.set("client_id", env.clientId);
+    url.searchParams.set("redirect_uri", redirectUri);
+    url.searchParams.set("response_type", "code");
+    url.searchParams.set("scope", env.scope);
+    url.searchParams.set("state", state);
+    if (provider === "google") {
+      url.searchParams.set("access_type", "offline");
+      url.searchParams.set("prompt", "select_account");
+    }
+    return { provider, authUrl: url.toString(), state };
   }
 
   async refresh(dto: RefreshDto): Promise<TokenPair> {

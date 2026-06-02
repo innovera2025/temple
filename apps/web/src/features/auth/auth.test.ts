@@ -10,6 +10,7 @@ import {
   loginErrorMessage,
   saveSession,
   validateLoginForm,
+  validateRegisterForm,
 } from "./auth";
 
 function fakeResponse(status: number, body: unknown): Response {
@@ -121,6 +122,78 @@ describe("createAuthApiClient", () => {
 
     await expect(api.login({ email: "a@b.co", password: "pw" })).rejects.toBeInstanceOf(AuthError);
   });
+
+  it("posts a self-service register request and returns the pending application", async () => {
+    const fetchFn = vi.fn(async () => fakeResponse(201, {
+      id: "app-1",
+      templeNameTh: "วัดทดสอบ",
+      contactEmail: "new@example.test",
+      status: "pending",
+    }));
+    const api = createAuthApiClient({ baseUrl: "http://api", fetchFn: fetchFn as unknown as typeof fetch });
+
+    const result = await api.register({
+      templeNameTh: " วัดทดสอบ ",
+      contactEmail: " NEW@example.test ",
+      password: "Register123!",
+      confirmPassword: "Register123!",
+      displayName: "ผู้สมัคร",
+      acceptedTerms: true,
+    });
+
+    expect(result).toEqual({
+      id: "app-1",
+      templeNameTh: "วัดทดสอบ",
+      contactEmail: "new@example.test",
+      status: "pending",
+    });
+    const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("http://api/auth/register");
+    expect(JSON.parse(String(init.body))).toEqual({
+      templeNameTh: "วัดทดสอบ",
+      contactEmail: "new@example.test",
+      password: "Register123!",
+      displayName: "ผู้สมัคร",
+    });
+  });
+
+  it("starts Google/Facebook social signup through the backend config-aware endpoint", async () => {
+    const fetchFn = vi.fn(async () => fakeResponse(200, {
+      provider: "google",
+      authUrl: "https://accounts.google.com/o/oauth2/v2/auth?state=s",
+      state: "s",
+    }));
+    const api = createAuthApiClient({ baseUrl: "http://api", fetchFn: fetchFn as unknown as typeof fetch });
+
+    const result = await api.startSocialSignup("google", "http://localhost:5173/oauth/callback");
+
+    expect(result.authUrl).toContain("accounts.google.com");
+    const [[url]] = fetchFn.mock.calls as unknown as [[string, RequestInit?]];
+    expect(url).toBe(
+      "http://api/auth/oauth/google/start?redirectUri=http%3A%2F%2Flocalhost%3A5173%2Foauth%2Fcallback",
+    );
+  });
+});
+
+
+describe("validateRegisterForm", () => {
+  it("requires temple, email, matching password, display name, and terms", () => {
+    expect(validateRegisterForm({
+      templeNameTh: "",
+      contactEmail: "bad",
+      password: "short",
+      confirmPassword: "other",
+      displayName: "",
+      acceptedTerms: false,
+    })).toMatchObject({
+      templeNameTh: expect.any(String),
+      contactEmail: expect.any(String),
+      password: expect.any(String),
+      confirmPassword: expect.any(String),
+      displayName: expect.any(String),
+      acceptedTerms: expect.any(String),
+    });
+  });
 });
 
 describe("loginErrorMessage", () => {
@@ -139,9 +212,9 @@ describe("loginErrorMessage", () => {
 });
 
 describe("unavailable flows are honestly flagged", () => {
-  it("keeps register / social / password-reset disabled (no backend)", () => {
-    expect(AUTH_FLOW_AVAILABILITY.register).toBe(false);
-    expect(AUTH_FLOW_AVAILABILITY.socialLogin).toBe(false);
+  it("enables register/social when backed by real endpoints but keeps password-reset disabled", () => {
+    expect(AUTH_FLOW_AVAILABILITY.register).toBe(true);
+    expect(AUTH_FLOW_AVAILABILITY.socialLogin).toBe(true);
     expect(AUTH_FLOW_AVAILABILITY.passwordReset).toBe(false);
   });
 });

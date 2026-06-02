@@ -180,6 +180,69 @@ describe("auth, RBAC, tenant context, and audit", () => {
     );
   });
 
+  it("registers a new temple signup as a pending application without creating a privileged user", async () => {
+    const suffix = randomUUID().slice(0, 8);
+    const email = `signup-${suffix}@example.test`;
+    const result = await authService.register({
+      templeNameTh: `วัดทดสอบสมัคร ${suffix}`,
+      contactEmail: email,
+      password: "Register123!",
+      displayName: "ผู้ขอสมัคร",
+    });
+
+    expect(result).toMatchObject({ status: "pending", contactEmail: email });
+    expect(result.id).toEqual(expect.any(String));
+
+    const applications = await psqlJson<{ contact_email: string; status: string }>(`
+      SELECT contact_email, status FROM temple_applications WHERE id = '${result.id}'
+    `);
+    expect(applications).toEqual([{ contact_email: email, status: "pending" }]);
+
+    const users = await psqlJson<{ email: string }>(`
+      SELECT email FROM users WHERE email = '${email}'
+    `);
+    expect(users).toEqual([]);
+  });
+
+  it("rejects duplicate signup emails before creating another application", async () => {
+    const suffix = randomUUID().slice(0, 8);
+    const email = `duplicate-signup-${suffix}@example.test`;
+    await authService.register({
+      templeNameTh: `วัดซ้ำ ${suffix}`,
+      contactEmail: email,
+      password: "Register123!",
+      displayName: "ผู้ขอสมัคร",
+    });
+
+    await expectProjectHttpError(
+      authService.register({
+        templeNameTh: `วัดซ้ำอีก ${suffix}`,
+        contactEmail: email.toUpperCase(),
+        password: "Register123!",
+        displayName: "ผู้ขอสมัคร",
+      }),
+      409,
+      "CONFLICT",
+    );
+  });
+
+  it("does not expose Google/Facebook OAuth start URLs until provider config exists", async () => {
+    await expectProjectHttpError(
+      Promise.resolve().then(() =>
+        authService.startSocialSignup("google", { redirectUri: "http://localhost:5173/oauth/callback" }),
+      ),
+      503,
+      "SERVICE_UNAVAILABLE",
+    );
+    await expectProjectHttpError(
+      Promise.resolve().then(() =>
+        authService.startSocialSignup("facebook", { redirectUri: "http://localhost:5173/oauth/callback" }),
+      ),
+      503,
+      "SERVICE_UNAVAILABLE",
+    );
+  });
+
   it("blocks a protected mutation without an access token", async () => {
     const request: AuthenticatedRequest = {
       headers: {},

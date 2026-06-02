@@ -3,7 +3,7 @@ import { createRoot, Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LoginScreen } from "./login-view";
-import { AuthError, Session } from "./auth";
+import { AuthApi, AuthError, Session } from "./auth";
 
 // React's act() requires this flag to be set in a test environment.
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -53,37 +53,57 @@ afterEach(() => {
 
 const noop = (): void => undefined;
 
+function testApi(overrides: Partial<AuthApi> = {}): AuthApi {
+  return {
+    login: vi.fn(),
+    register: vi.fn(),
+    startSocialSignup: vi.fn(),
+    ...overrides,
+  } as AuthApi;
+}
+
 describe("LoginScreen — design-backed brand + copy", () => {
   it("renders the temple branding and Thai welcome copy", () => {
     const html = renderToStaticMarkup(
-      <LoginScreen api={{ login: vi.fn() }} onAuthenticated={noop} />,
+      <LoginScreen api={testApi()} onAuthenticated={noop} />,
     );
+    expect(html).toContain("ระบบจัดการวัด");
     expect(html).toContain("วัดธรรมสถิตวนาราม");
-    expect(html).toContain("บริหารงานวัด");
-    expect(html).toContain("ยินดีต้อนรับกลับ");
-    expect(html).toContain("ลงชื่อเข้าใช้เพื่อจัดการงานของวัด");
-    // The three product highlights from the design's brand panel.
-    expect(html).toContain("รับบริจาคและออกใบอนุโมทนาบัตร");
+    expect(html).toContain("ระบบจัดการวัดออนไลน์ สำหรับเจ้าหน้าที่และญาติโยม");
+    expect(html).toContain("จองศาลา จองกุฏิ แจ้งบวช ฌาปนกิจ และร่วมบุญออนไลน์");
+    expect(html).toContain("ขอเชิญร่วมบุญ");
+    expect(html).toContain("เข้าสู่ระบบเพื่อจองบริการของวัด ร่วมบุญ หรือจัดการงานวัด");
+    expect(html).toContain("auth-temple");
     // The submit/tab call-to-action.
     expect(html).toContain("เข้าสู่ระบบ");
   });
 });
 
-describe("LoginScreen — honest unavailable flows", () => {
-  it("renders social sign-in and forgot-password disabled with a not-ready note", async () => {
-    const container = await mount(<LoginScreen api={{ login: vi.fn() }} onAuthenticated={noop} />);
+describe("LoginScreen — register/social flows", () => {
+  it("renders social sign-in enabled while forgot-password remains disabled", async () => {
+    const container = await mount(
+      <LoginScreen api={testApi()} onAuthenticated={noop} />,
+    );
     const social = Array.from(container.querySelectorAll<HTMLButtonElement>(".soc-btn"));
     expect(social.length).toBe(2);
-    expect(social.every((b) => b.disabled)).toBe(true);
-    expect(container.textContent).toContain("การเข้าสู่ระบบด้วยบัญชีภายนอกยังไม่พร้อมใช้งาน");
+    expect(social.every((b) => b.disabled)).toBe(false);
+    expect(container.textContent).toContain("Google/Facebook จะใช้งานได้เมื่อ backend ตั้งค่า OAuth provider แล้ว");
 
     const forgot = container.querySelector<HTMLButtonElement>(".auth-link");
     expect(forgot?.disabled).toBe(true);
   });
 
-  it("switches to an honest register panel with no working submit", async () => {
+  it("switches to a working register panel that submits a pending application request", async () => {
     const login = vi.fn();
-    const container = await mount(<LoginScreen api={{ login }} onAuthenticated={noop} />);
+    const register = vi.fn(async () => ({
+      id: "app-1",
+      templeNameTh: "วัดทดสอบ",
+      contactEmail: "new@example.test",
+      status: "pending" as const,
+    }));
+    const container = await mount(
+      <LoginScreen api={testApi({ login, register })} onAuthenticated={noop} />,
+    );
 
     const registerTab = Array.from(container.querySelectorAll("button")).find(
       (b) => b.textContent?.includes("สมัครสมาชิก"),
@@ -92,11 +112,26 @@ describe("LoginScreen — honest unavailable flows", () => {
 
     const panel = container.querySelector('[data-flow="register"]');
     expect(panel).not.toBeNull();
-    expect(container.textContent).toContain("ยังไม่เปิดให้สมัครสมาชิกด้วยตนเอง");
-    // The login form is gone and the register submit cannot fire.
+    expect(container.textContent).toContain("ใบสมัครวัดสถานะรอตรวจสอบ");
     expect(container.querySelector("#auth-email")).toBeNull();
-    const registerSubmit = panel?.querySelector<HTMLButtonElement>("button.btn-primary");
-    expect(registerSubmit?.disabled).toBe(true);
+
+    await setInput(container.querySelector("#register-temple"), "วัดทดสอบ");
+    await setInput(container.querySelector("#register-name"), "ผู้สมัคร");
+    await setInput(container.querySelector("#register-email"), "new@example.test");
+    await setInput(container.querySelector("#register-password"), "Register123!");
+    await setInput(container.querySelector("#register-confirm-password"), "Register123!");
+    await click(panel?.querySelector('input[type="checkbox"]') ?? null);
+    await submitForm(panel?.querySelector("form") ?? null);
+
+    expect(register).toHaveBeenCalledWith({
+      templeNameTh: "วัดทดสอบ",
+      contactEmail: "new@example.test",
+      password: "Register123!",
+      confirmPassword: "Register123!",
+      displayName: "ผู้สมัคร",
+      acceptedTerms: true,
+    });
+    expect(container.textContent).toContain("รับคำขอสมัครของ วัดทดสอบ แล้ว");
     expect(login).not.toHaveBeenCalled();
   });
 });
@@ -106,7 +141,7 @@ describe("LoginScreen — real login flow", () => {
     const login = vi.fn(async () => ({ accessToken: "tok", refreshToken: "ref" }));
     let session: Session | null = null;
     const container = await mount(
-      <LoginScreen api={{ login }} onAuthenticated={(s) => (session = s)} />,
+      <LoginScreen api={testApi({ login })} onAuthenticated={(s) => (session = s)} />,
     );
 
     await submitForm(container.querySelector("form"));
@@ -123,7 +158,7 @@ describe("LoginScreen — real login flow", () => {
       throw new AuthError(401, "invalid");
     });
     const onAuthenticated = vi.fn();
-    const container = await mount(<LoginScreen api={{ login }} onAuthenticated={onAuthenticated} />);
+    const container = await mount(<LoginScreen api={testApi({ login })} onAuthenticated={onAuthenticated} />);
 
     await submitForm(container.querySelector("form"));
 
@@ -133,7 +168,7 @@ describe("LoginScreen — real login flow", () => {
 
   it("blocks submit and shows a field error when the email is empty", async () => {
     const login = vi.fn();
-    const container = await mount(<LoginScreen api={{ login }} onAuthenticated={noop} />);
+    const container = await mount(<LoginScreen api={testApi({ login })} onAuthenticated={noop} />);
 
     await setInput(container.querySelector("#auth-email"), "");
     await submitForm(container.querySelector("form"));
@@ -148,7 +183,7 @@ describe("LoginScreen — real login flow", () => {
       () => new Promise<{ accessToken: string }>((resolve) => (resolveLogin = resolve)),
     );
     const onAuthenticated = vi.fn();
-    const container = await mount(<LoginScreen api={{ login }} onAuthenticated={onAuthenticated} />);
+    const container = await mount(<LoginScreen api={testApi({ login })} onAuthenticated={onAuthenticated} />);
 
     await submitForm(container.querySelector("form"));
 
@@ -172,7 +207,7 @@ describe("LoginScreen — real login flow", () => {
     const login = vi.fn(async () => ({ accessToken: "tok" }));
     let session: Session | null = null;
     const container = await mount(
-      <LoginScreen api={{ login }} onAuthenticated={(s) => (session = s)} />,
+      <LoginScreen api={testApi({ login })} onAuthenticated={(s) => (session = s)} />,
     );
 
     const financeBtn = Array.from(container.querySelectorAll<HTMLButtonElement>(".acct")).find((b) =>
