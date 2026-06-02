@@ -13,6 +13,7 @@ export * from "./schemas/temple-profile";
 export * from "./schemas/personnel";
 export * from "./schemas/ceremony";
 export * from "./schemas/inventory";
+export * from "./schemas/item-loan";
 export * from "./schemas/user";
 export * from "./schemas/attachment";
 export * from "./baht-text";
