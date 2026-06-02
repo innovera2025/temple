@@ -75,7 +75,6 @@ describe("PageContent — page → view routing", () => {
     const dash = render("dashboard");
     expect(dash).toContain("หน่วย: พันบาท");
     expect(dash).toContain("รอออกใบอนุโมทนาบัตร");
-    expect(dash).toContain("k-delta up");
     // ledger: searchable toolbar + the design's status chips + footer
     const ledger = render("ledger");
     expect(ledger).toContain("ค้นหารายการ / เอกสารอ้างอิง");

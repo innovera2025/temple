@@ -5,6 +5,7 @@ import { createTempleApiClient } from "./temple/temple";
 import { TempleProfilePage } from "./temple/temple-view";
 import { createInventoryApiClient } from "./inventory/inventory";
 import { InventoryPage } from "./inventory/inventory-view";
+import { createDashboardApiClient } from "./dashboard/dashboard";
 import {
   DesignAudit,
   DesignDashboard,
@@ -52,7 +53,7 @@ export function PageContent({ page, baseUrl, getToken, role, onNavigate }: PageC
   let content: ReactElement;
   switch (page) {
     case "dashboard":
-      content = <DesignDashboard goto={onNavigate} />;
+      content = <DesignDashboard api={createDashboardApiClient(opts)} goto={onNavigate} />;
       break;
     case "donations":
       content = <DesignDonations />;

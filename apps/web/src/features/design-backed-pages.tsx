@@ -1,7 +1,8 @@
-import { type ReactElement, type ReactNode, useMemo, useState } from "react";
+import { type ReactElement, type ReactNode, useEffect, useMemo, useState } from "react";
 import { Badge, Button, Card, SearchBox, Toolbar } from "../design-system";
 import { Icon, type IconName } from "../layout/icons";
 import type { PageId, TempleRole } from "../layout/nav";
+import { type DashboardApi, type DashboardView, displayBaht, methodLabel, statusLabel } from "./dashboard/dashboard";
 
 /*
  * Design-backed temple-admin pages, ported faithfully from the design source of
@@ -68,13 +69,6 @@ const FUNDS = [
   { name: "กองทุนภัตตาหารพระสงฆ์", raised: 156000, goal: 200000 },
   { name: "กองทุนการศึกษาสามเณร", raised: 84000, goal: 200000 },
 ];
-const RECENT_DONATIONS = [
-  { id: "RC-2569-0142", donor: "คุณวิภา รัตนากร", fund: "กองทุนบูรณะอุโบสถ", amount: 5000, status: "ออกใบแล้ว" },
-  { id: "RC-2569-0141", donor: "ครอบครัวสุขใจ", fund: "กองทุนบูรณะอุโบสถ", amount: 12000, status: "ออกใบแล้ว" },
-  { id: "RC-2569-0140", donor: "ผู้ไม่ประสงค์ออกนาม", fund: "กองทุนภัตตาหารพระสงฆ์", amount: 500, status: "รอออกใบ" },
-  { id: "RC-2569-0139", donor: "บริษัท ดีดีพัฒนา จำกัด", fund: "กองทุนบูรณะอุโบสถ", amount: 50000, status: "ออกใบแล้ว" },
-  { id: "RC-2569-0138", donor: "คุณธีรพงษ์ ศรีนคร", fund: "ทำบุญทั่วไป", amount: 2500, status: "ออกใบแล้ว" },
-];
 const UPCOMING = [
   { day: "12", title: "ทอดผ้าป่าสามัคคี บูรณะอุโบสถ", info: "09:00 · ศาลาการเปรียญ" },
   { day: "08", title: "ทำบุญตักบาตรวันพระ", info: "07:00 · ลานธรรม" },
@@ -104,42 +98,68 @@ function IncomeExpenseChart(): ReactElement {
   );
 }
 
-export function DesignDashboard({ goto }: { goto?: (page: PageId) => void }): ReactElement {
-  const tasks: Array<{ icon: IconName; label: string; to: PageId; kind: "pending" | "reconciled" }> = [
-    { icon: "receipt", label: "รอออกใบอนุโมทนาบัตร", to: "donations", kind: "pending" },
-    { icon: "ledger", label: "รายการรอกระทบยอด", to: "ledger", kind: "reconciled" },
-    { icon: "event", label: "คำขอจัดกิจกรรมรอตรวจสอบ", to: "events", kind: "pending" },
+export function DesignDashboard({ api, goto }: { api?: DashboardApi; goto?: (page: PageId) => void }): ReactElement {
+  // Real data from GET /dashboard. The 6-month chart, fund progress and upcoming events
+  // have no API source yet, so those cards stay demo and are tagged "ตัวอย่าง" (honest).
+  const [view, setView] = useState<DashboardView | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!api) return;
+    let active = true;
+    api.get().then(
+      (value) => { if (active) setView(value); },
+      (err: unknown) => { if (active) setError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ"); },
+    );
+    return () => { active = false; };
+  }, [api]);
+
+  const fin = view?.financial ?? null;
+  const loading = !view && !error;
+  const money = (value: string | undefined): string => (fin ? displayBaht(value ?? "0") : loading ? "…" : "—");
+  const queueTasks: Array<{ icon: IconName; label: string; to: PageId; kind: "pending" | "reconciled"; count: number | null }> = [
+    { icon: "receipt", label: "รอออกใบอนุโมทนาบัตร", to: "donations", kind: "pending", count: view?.awaitingReceiptCount ?? null },
+    { icon: "ledger", label: "รายการรอกระทบยอด", to: "ledger", kind: "reconciled", count: view?.awaitingReconciliationCount ?? null },
   ];
+
   return (
     <div className="content-wrap">
-      <PageHead eyebrow="ภาพรวม" title="แดชบอร์ด" desc="สรุปสถานะการเงิน การบริจาค และงานที่ต้องดำเนินการ ประจำวันที่ ๔ มิถุนายน ๒๕๖๙"
+      <PageHead eyebrow="ภาพรวม" title="แดชบอร์ด" desc="สรุปสถานะการเงิน การบริจาค และงานที่ต้องดำเนินการของวัด"
         actions={<>
           <Button variant="secondary" icon={<Icon name="download" size={15} />}>ส่งออกสรุป</Button>
           <Button variant="primary" icon={<Icon name="plus" size={15} />} onClick={() => goto?.("donations")}>บันทึกการบริจาค</Button>
         </>} />
 
-      <div className="grid g-4" style={{ marginBottom: 16 }}>
-        <KPI label="รับบริจาคเดือนนี้" icon="donation" value="฿96,000" delta={{ dir: "up", text: "18%" }} foot="vs. พ.ค." />
-        <KPI label="รายจ่ายเดือนนี้" icon="ledger" value="฿60,030" delta={{ dir: "down", text: "12%" }} foot="vs. พ.ค." />
-        <KPI label="ยอดคงเหลือทุกกองทุน" icon="building" value="฿1,488,000" foot="ณ วันนี้" />
-        <KPI label="ผู้บริจาคใหม่เดือนนี้" icon="donors" value="12" foot="ราย" />
+      {error ? (
+        <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: "var(--r)", background: "var(--danger-tint)", color: "var(--danger)", fontSize: 13 }}>
+          โหลดข้อมูลแดชบอร์ดไม่สำเร็จ: {error}
+        </div>
+      ) : null}
+
+      <div className="grid g-4" style={{ marginBottom: fin === null && view ? 8 : 16 }}>
+        <KPI label="รับบริจาคเดือนนี้" icon="donation" value={money(fin?.incomeSatang)} foot={view ? `เดือน ${view.month}` : undefined} />
+        <KPI label="รายจ่ายเดือนนี้" icon="ledger" value={money(fin?.expenseSatang)} foot={view ? `เดือน ${view.month}` : undefined} />
+        <KPI label="ยอดคงเหลือทุกกองทุน" icon="building" value={money(fin?.balanceSatang)} foot={view ? `เดือน ${view.month}` : undefined} />
+        <KPI label="ผู้บริจาคใหม่เดือนนี้" icon="donors" value={view ? String(view.newDonorsThisMonth) : loading ? "…" : "—"} foot="ราย" />
       </div>
+      {fin === null && view ? (
+        <p className="muted" style={{ marginBottom: 16, fontSize: 12.5 }}>* ข้อมูลการเงินแสดงเฉพาะผู้ดูแลวัดและฝ่ายการเงิน</p>
+      ) : null}
 
       <div className="split-wide" style={{ marginBottom: 16 }}>
         <Card>
           <div className="card-head"><div><h3>รายรับ-รายจ่าย ๖ เดือนล่าสุด</h3><div className="sub">เปรียบเทียบแนวโน้ม</div></div>
-            <Button variant="tertiary" size="sm" icon={<Icon name="chevR" size={13} />} onClick={() => goto?.("reports")}>ดูรายงาน</Button></div>
+            <Badge kind="neutral">ตัวอย่าง</Badge></div>
           <div className="card-pad"><IncomeExpenseChart /></div>
         </Card>
         <Card>
           <div className="card-head"><h3>งานที่ต้องดำเนินการ</h3></div>
           <div>
-            {tasks.map((t, i) => (
+            {queueTasks.map((t, i) => (
               <button key={t.label} type="button" onClick={() => goto?.(t.to)} className="row clickable-row"
-                style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", textAlign: "left", padding: "13px 18px", border: 0, borderBottom: i < tasks.length - 1 ? "1px solid var(--border)" : 0, background: "transparent", cursor: "pointer" }}>
+                style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", textAlign: "left", padding: "13px 18px", border: 0, borderBottom: i < queueTasks.length - 1 ? "1px solid var(--border)" : 0, background: "transparent", cursor: "pointer" }}>
                 <span className="av" style={{ background: "var(--surface-3)", color: "var(--ink-2)" }}><Icon name={t.icon} size={17} /></span>
                 <span style={{ flex: 1, fontSize: 13.5 }}>{t.label}</span>
-                <Badge kind={t.kind}>1</Badge>
+                {t.count != null ? <Badge kind={t.kind}>{t.count}</Badge> : <span className="muted" style={{ fontSize: 12 }}>…</span>}
                 <Icon name="chevR" size={15} style={{ color: "var(--ink-3)" }} />
               </button>
             ))}
@@ -152,19 +172,27 @@ export function DesignDashboard({ goto }: { goto?: (page: PageId) => void }): Re
           <div className="card-head"><div><h3>การบริจาคล่าสุด</h3><div className="sub">รายการที่บันทึกเข้าระบบ</div></div>
             <Button variant="tertiary" size="sm" icon={<Icon name="chevR" size={13} />} onClick={() => goto?.("donations")}>ดูทั้งหมด</Button></div>
           <Table>
-            <thead><tr><th>เลขที่</th><th>ผู้บริจาค</th><th>กองทุน</th><th className="num">จำนวน</th><th>สถานะ</th></tr></thead>
-            <tbody>{RECENT_DONATIONS.map((d) => (
-              <tr key={d.id} className="clickable" onClick={() => goto?.("donors")}>
-                <td className="mono">{d.id}</td><td>{d.donor}</td><td className="muted">{d.fund}</td>
-                <td className="num"><Money value={d.amount} kind="in" /></td>
-                <td><Badge kind={d.status === "ออกใบแล้ว" ? "credit" : "pending"} dot>{d.status}</Badge></td>
-              </tr>
-            ))}</tbody>
+            <thead><tr><th>วันที่</th><th>ผู้บริจาค</th><th>ช่องทาง</th><th className="num">จำนวน</th><th>สถานะ</th></tr></thead>
+            <tbody>
+              {!view ? (
+                <tr><td colSpan={5} className="muted" style={{ textAlign: "center", padding: "20px" }}>{error ? "โหลดข้อมูลไม่สำเร็จ" : "กำลังโหลด…"}</td></tr>
+              ) : view.recentDonations.length === 0 ? (
+                <tr><td colSpan={5} className="muted" style={{ textAlign: "center", padding: "20px" }}>ยังไม่มีรายการบริจาคล่าสุด</td></tr>
+              ) : (
+                view.recentDonations.map((d) => (
+                  <tr key={d.id} className="clickable" onClick={() => goto?.("donations")}>
+                    <td>{d.donationDate}</td><td>{d.donorName}</td><td className="muted">{methodLabel(d.method)}</td>
+                    <td className="num"><span className="money credit tnum">{displayBaht(d.amountSatang)}</span></td>
+                    <td><Badge kind={d.status === "confirmed" ? "credit" : "pending"} dot>{statusLabel(d.status)}</Badge></td>
+                  </tr>
+                ))
+              )}
+            </tbody>
           </Table>
         </Card>
         <div className="stack" style={{ gap: 16 }}>
           <Card>
-            <div className="card-head"><h3>ความคืบหน้ากองทุน</h3></div>
+            <div className="card-head"><h3>ความคืบหน้ากองทุน</h3><Badge kind="neutral">ตัวอย่าง</Badge></div>
             <div className="card-pad" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               {FUNDS.map((f) => {
                 const pct = Math.round((f.raised / f.goal) * 100);
@@ -179,7 +207,7 @@ export function DesignDashboard({ goto }: { goto?: (page: PageId) => void }): Re
             </div>
           </Card>
           <Card>
-            <div className="card-head"><h3>กิจกรรมใกล้ถึง</h3></div>
+            <div className="card-head"><h3>กิจกรรมใกล้ถึง</h3><Badge kind="neutral">ตัวอย่าง</Badge></div>
             <div>
               {UPCOMING.map((e, i) => (
                 <div key={e.title} style={{ display: "flex", gap: 12, padding: "12px 18px", borderBottom: i < UPCOMING.length - 1 ? "1px solid var(--border)" : 0, alignItems: "center" }}>
