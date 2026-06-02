@@ -21,7 +21,51 @@ const READ_ROLES = ["admin", "finance", "staff"] as const;
 
 const date = (d: Date | null): string | null => (d ? d.toISOString().slice(0, 10) : null);
 
-function serializeItem(item: ItemWithAvailable): Record<string, unknown> {
+interface SerializedItem {
+  id: string;
+  name: string;
+  category: string;
+  unit: string | null;
+  totalQty: number;
+  availableQty: number;
+  status: string;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface SerializedSettlement {
+  id: string;
+  shortageQty: number;
+  settlementType: string;
+  cashAmountSatang: string | null;
+  replacementNote: string | null;
+  settledAt: string | null;
+  note: string | null;
+}
+
+interface SerializedLoan {
+  id: string;
+  loanNo: string;
+  itemId: string;
+  itemName: string;
+  borrowerName: string;
+  borrowerPhone: string | null;
+  quantity: number;
+  borrowedAt: string | null;
+  dueAt: string | null;
+  borrowPhotoId: string | null;
+  status: string;
+  returnedAt: string | null;
+  returnedQty: number | null;
+  returnNote: string | null;
+  shortageQty: number;
+  settlement: SerializedSettlement | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function serializeItem(item: ItemWithAvailable): SerializedItem {
   return {
     id: item.id,
     name: item.name,
@@ -36,7 +80,7 @@ function serializeItem(item: ItemWithAvailable): Record<string, unknown> {
   };
 }
 
-function serializeLoan(loan: LoanRow): Record<string, unknown> {
+function serializeLoan(loan: LoanRow): SerializedLoan {
   return {
     id: loan.id,
     loanNo: loan.loanNo,
