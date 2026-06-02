@@ -4,6 +4,13 @@ import { Icon, type IconName } from "../layout/icons";
 import type { PageId, TempleRole } from "../layout/nav";
 import { type DashboardApi, type DashboardView, displayBaht, methodLabel, statusLabel } from "./dashboard/dashboard";
 import { type LedgerApi, type LedgerEntryView, type LedgerSummaryView } from "./ledger/ledger";
+import {
+  type CeremoniesApi,
+  type Ceremony,
+  CEREMONY_TYPE_OPTIONS,
+  ceremonyStatusLabel,
+  ceremonyTypeLabel,
+} from "./ceremonies/ceremonies";
 
 /*
  * Design-backed temple-admin pages, ported faithfully from the design source of
@@ -562,48 +569,65 @@ export function DesignLedger({ api, today }: { api?: LedgerApi; today?: string }
 }
 
 // ============ 6. EVENT / CEREMONY BOOKING ============
-const EVENTS = [
-  { id: "EV-0231", title: "ทอดผ้าป่าสามัคคี บูรณะอุโบสถ", type: "งานบุญ", place: "ศาลาการเปรียญ", date: "๑๒ มิ.ย. ๒๕๖๙", day: 12, time: "09:00–14:00", host: "ครอบครัวสุขใจ", status: "ยืนยันแล้ว", attendees: 250 },
-  { id: "EV-0233", title: "สวดพระอภิธรรม คุณยายเปรม", type: "ฌาปนกิจ", place: "ศาลา ๒", date: "๗ มิ.ย. ๒๕๖๙", day: 7, time: "18:00–21:00", host: "คุณสมหญิง สุวรรณดี", status: "ยืนยันแล้ว", attendees: 80 },
-  { id: "EV-0234", title: "อบรมวิปัสสนากรรมฐาน ๓ วัน", type: "ปฏิบัติธรรม", place: "กุฏิวิปัสสนา", date: "๑๙ มิ.ย. ๒๕๖๙", day: 19, time: "06:00 เป็นต้นไป", host: "มูลนิธิแสงธรรม", status: "รอตรวจสอบ", attendees: 40 },
-  { id: "EV-0235", title: "ทำบุญตักบาตรวันพระ", type: "งานบุญ", place: "ลานธรรม", date: "๘ มิ.ย. ๒๕๖๙", day: 8, time: "07:00–09:00", host: "วัด", status: "ยืนยันแล้ว", attendees: 300 },
-];
-const EV_TYPES = ["งานบุญ", "อุปสมบท", "ฌาปนกิจ", "ปฏิบัติธรรม"];
-const EV_TAG: Record<string, "accent" | "pending" | "neutral" | "reconciled"> = { "งานบุญ": "accent", "อุปสมบท": "pending", "ฌาปนกิจ": "neutral", "ปฏิบัติธรรม": "reconciled" };
+// The month calendar has no API source yet, so it stays a demo grid (tagged ตัวอย่าง).
+const DEMO_EVENT_DAYS = new Set([7, 8, 12, 19]);
 
-export function DesignEvents(): ReactElement {
+function ceremonyStatusKind(status: string): "credit" | "pending" | "void" {
+  return status === "confirmed" ? "credit" : status === "cancelled" ? "void" : "pending";
+}
+
+export function DesignEvents({ api }: { api?: CeremoniesApi }): ReactElement {
+  const [items, setItems] = useState<Ceremony[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [type, setType] = useState("all");
-  const filtered = EVENTS.filter((e) => type === "all" || e.type === type);
-  const eventDays = new Set(EVENTS.map((e) => e.day));
+  useEffect(() => {
+    if (!api) return;
+    let active = true;
+    api.list().then(
+      (rows) => { if (active) setItems(rows); },
+      (err: unknown) => { if (active) setError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ"); },
+    );
+    return () => { active = false; };
+  }, [api]);
+  const filtered = (items ?? []).filter((e) => type === "all" || e.ceremonyType === type);
+  const eventDays = DEMO_EVENT_DAYS;
   return (
     <div className="content-wrap">
       <PageHead eyebrow="งานวัด" title="กิจกรรมและพิธี" desc="จองและจัดการกิจกรรม งานบุญ พิธีอุปสมบท ฌาปนกิจ และการปฏิบัติธรรม"
         actions={<Button variant="primary" icon={<Icon name="plus" size={15} />}>จองกิจกรรม</Button>} />
+      {error ? <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: "var(--r)", background: "var(--danger-tint)", color: "var(--danger)", fontSize: 13 }}>โหลดข้อมูลกิจกรรมไม่สำเร็จ: {error}</div> : null}
       <div className="split">
         <Card>
           <Toolbar>
             <div className="seg">
               <button type="button" className={type === "all" ? "active" : ""} onClick={() => setType("all")}>ทั้งหมด</button>
-              {EV_TYPES.map((t) => <button key={t} type="button" className={type === t ? "active" : ""} onClick={() => setType(t)}>{t}</button>)}
+              {CEREMONY_TYPE_OPTIONS.map((t) => <button key={t.value} type="button" className={type === t.value ? "active" : ""} onClick={() => setType(t.value)}>{t.label}</button>)}
             </div>
             <span className="muted" style={{ marginLeft: "auto" }}>{filtered.length} กิจกรรม</span>
           </Toolbar>
           <Table>
-            <thead><tr><th>กิจกรรม</th><th>ประเภท</th><th>วันที่ / เวลา</th><th>สถานที่</th><th className="num">ผู้ร่วม</th><th>สถานะ</th><th /></tr></thead>
-            <tbody>{filtered.map((e) => (
-              <tr key={e.id}>
-                <td><div style={{ fontWeight: 500 }}>{e.title}</div><div className="mono muted" style={{ fontSize: 11 }}>{e.id} · {e.host}</div></td>
-                <td><Badge kind={EV_TAG[e.type] ?? "neutral"}>{e.type}</Badge></td>
-                <td style={{ whiteSpace: "nowrap" }}>{e.date}<div className="muted" style={{ fontSize: 12 }}>{e.time}</div></td>
-                <td>{e.place}</td><td className="num tnum">{e.attendees}</td>
-                <td><Badge kind={e.status === "ยืนยันแล้ว" ? "credit" : "pending"} dot>{e.status}</Badge></td>
-                <td className="num">{e.status === "รอตรวจสอบ" ? <Button variant="tertiary" size="sm">ยืนยัน</Button> : null}</td>
-              </tr>
-            ))}</tbody>
+            <thead><tr><th>กิจกรรม</th><th>ประเภท</th><th>วันที่ / เวลา</th><th>สถานที่</th><th className="num">นิมนต์พระ</th><th>สถานะ</th></tr></thead>
+            <tbody>
+              {!items ? (
+                <tr><td colSpan={6} className="muted" style={{ textAlign: "center", padding: "20px" }}>{error ? "โหลดข้อมูลไม่สำเร็จ" : "กำลังโหลด…"}</td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={6} className="muted" style={{ textAlign: "center", padding: "20px" }}>ยังไม่มีกิจกรรม</td></tr>
+              ) : (
+                filtered.map((e) => (
+                  <tr key={e.id}>
+                    <td><div style={{ fontWeight: 500 }}>{e.title}</div><div className="mono muted" style={{ fontSize: 11 }}>{e.requesterName ?? "—"}</div></td>
+                    <td><Badge kind="accent">{ceremonyTypeLabel(e.ceremonyType)}</Badge></td>
+                    <td style={{ whiteSpace: "nowrap" }}>{e.ceremonyDate}<div className="muted" style={{ fontSize: 12 }}>{e.timeNote ?? ""}</div></td>
+                    <td>{e.location ?? "—"}</td><td className="num tnum">{e.monkCount ?? "—"}</td>
+                    <td><Badge kind={ceremonyStatusKind(e.status)} dot>{ceremonyStatusLabel(e.status)}</Badge></td>
+                  </tr>
+                ))
+              )}
+            </tbody>
           </Table>
         </Card>
         <Card>
-          <div className="card-head"><h3>มิถุนายน ๒๕๖๙</h3></div>
+          <div className="card-head"><h3>มิถุนายน ๒๕๖๙</h3><Badge kind="neutral">ตัวอย่าง</Badge></div>
           <div className="card-pad">
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 3 }}>
               {["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"].map((d) => <div key={d} style={{ textAlign: "center", fontSize: 11, color: "var(--ink-3)", fontWeight: 600, padding: "4px 0" }}>{d}</div>)}

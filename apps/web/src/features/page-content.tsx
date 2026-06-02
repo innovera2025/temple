@@ -7,6 +7,7 @@ import { createInventoryApiClient } from "./inventory/inventory";
 import { InventoryPage } from "./inventory/inventory-view";
 import { createDashboardApiClient } from "./dashboard/dashboard";
 import { createLedgerApiClient } from "./ledger/ledger";
+import { createCeremoniesApiClient } from "./ceremonies/ceremonies";
 import {
   DesignAudit,
   DesignDashboard,
@@ -69,7 +70,7 @@ export function PageContent({ page, baseUrl, getToken, role, today, onNavigate }
       content = <DesignLedger api={createLedgerApiClient(opts)} today={today} />;
       break;
     case "events":
-      content = <DesignEvents />;
+      content = <DesignEvents api={createCeremoniesApiClient(opts)} />;
       break;
     case "people":
       content = <DesignPeople />;
