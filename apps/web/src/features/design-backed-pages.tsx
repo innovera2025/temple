@@ -11,6 +11,12 @@ import {
   ceremonyStatusLabel,
   ceremonyTypeLabel,
 } from "./ceremonies/ceremonies";
+import {
+  type Personnel,
+  type PersonnelApi,
+  personnelStatusLabel,
+  personnelTypeLabel,
+} from "./personnel/personnel";
 
 /*
  * Design-backed temple-admin pages, ported faithfully from the design source of
@@ -652,56 +658,80 @@ export function DesignEvents({ api }: { api?: CeremoniesApi }): ReactElement {
 }
 
 // ============ 7. MONK & STAFF ============
-const PEOPLE = [
-  { id: "M-001", kind: "พระภิกษุ", chaya: "พระอธิการสมหวัง สุจิตฺโต", name: "สมหวัง รุ่งเรือง", role: "เจ้าอาวาส", vassa: 34, kuti: "กุฏิเจ้าอาวาส", status: "จำพรรษา", tel: "08x-xxx-xxxx" },
-  { id: "M-002", kind: "พระภิกษุ", chaya: "พระมหาวิชัย ปญฺญาวโร", name: "วิชัย ใจดี", role: "รองเจ้าอาวาส", vassa: 22, kuti: "กุฏิ ๑", status: "จำพรรษา", tel: "08x-xxx-xxxx" },
-  { id: "M-003", kind: "พระภิกษุ", chaya: "พระสุริยา ธมฺมโชโต", name: "สุริยา แสงธรรม", role: "พระวิทยากร", vassa: 11, kuti: "กุฏิ ๒", status: "จำพรรษา", tel: "08x-xxx-xxxx" },
-  { id: "M-004", kind: "สามเณร", chaya: "สามเณรพงศกร", name: "พงศกร ใจเย็น", role: "สามเณร", vassa: 2, kuti: "กุฏิสามเณร ๑", status: "จำพรรษา", tel: "—" },
-  { id: "S-101", kind: "เจ้าหน้าที่", chaya: "นายประยูร พงษ์ศักดิ์", name: "ประยูร พงษ์ศักดิ์", role: "ไวยาวัจกร", vassa: null, kuti: "—", status: "ปฏิบัติงาน", tel: "081-234-5678" },
-  { id: "S-102", kind: "เจ้าหน้าที่", chaya: "นางสาวศิริพร อินทรา", name: "ศิริพร อินทรา", role: "เจ้าหน้าที่การเงิน", vassa: null, kuti: "—", status: "ปฏิบัติงาน", tel: "089-111-2233" },
-  { id: "S-103", kind: "เจ้าหน้าที่", chaya: "นางบุญมา ใจเอื้อ", name: "บุญมา ใจเอื้อ", role: "แม่ครัว", vassa: null, kuti: "—", status: "ปฏิบัติงาน", tel: "092-345-6789" },
-];
+function isMonkish(type: string): boolean {
+  return type === "monk" || type === "novice";
+}
 
-export function DesignPeople(): ReactElement {
+export function DesignPeople({ api }: { api?: PersonnelApi }): ReactElement {
+  const [people, setPeople] = useState<Personnel[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [kind, setKind] = useState("all");
-  const monkCount = PEOPLE.filter((p) => p.kind === "พระภิกษุ" || p.kind === "สามเณร").length;
-  const staffCount = PEOPLE.filter((p) => p.kind === "เจ้าหน้าที่").length;
-  const filtered = PEOPLE.filter((p) => {
-    if (kind === "monk" && !(p.kind === "พระภิกษุ" || p.kind === "สามเณร")) return false;
-    if (kind === "staff" && p.kind !== "เจ้าหน้าที่") return false;
-    if (q && !(p.chaya.includes(q) || p.name.includes(q) || p.role.includes(q))) return false;
+  useEffect(() => {
+    if (!api) return;
+    let active = true;
+    api.list().then(
+      (rows) => { if (active) setPeople(rows); },
+      (err: unknown) => { if (active) setError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ"); },
+    );
+    return () => { active = false; };
+  }, [api]);
+
+  const all = people ?? [];
+  const monkCount = all.filter((p) => isMonkish(p.personnelType)).length;
+  const staffCount = all.filter((p) => p.personnelType === "staff").length;
+  const filtered = all.filter((p) => {
+    if (kind === "monk" && !isMonkish(p.personnelType)) return false;
+    if (kind === "staff" && p.personnelType !== "staff") return false;
+    const chaya = p.dharmaName ?? p.displayName;
+    if (q && !(chaya.includes(q) || p.displayName.includes(q) || (p.position ?? "").includes(q))) return false;
     return true;
   });
+  const countLabel = (n: number): string => (people ? ` (${n})` : "");
+
   return (
     <div className="content-wrap">
       <PageHead eyebrow="งานวัด" title="พระสงฆ์และเจ้าหน้าที่" desc="ทะเบียนพระภิกษุ สามเณร และเจ้าหน้าที่ของวัด พร้อมประวัติและข้อมูลติดต่อ"
         actions={<Button variant="primary" icon={<Icon name="plus" size={15} />}>เพิ่มบุคลากร</Button>} />
+      {error ? <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: "var(--r)", background: "var(--danger-tint)", color: "var(--danger)", fontSize: 13 }}>โหลดข้อมูลบุคลากรไม่สำเร็จ: {error}</div> : null}
       <Card>
         <Toolbar>
           <SearchBox value={q} onChange={setQ} placeholder="ค้นหาฉายา ชื่อ หรือตำแหน่ง" />
           <div className="seg" style={{ marginLeft: 4 }}>
             <button type="button" className={kind === "all" ? "active" : ""} onClick={() => setKind("all")}>ทั้งหมด</button>
-            <button type="button" className={kind === "monk" ? "active" : ""} onClick={() => setKind("monk")}>พระ-เณร ({monkCount})</button>
-            <button type="button" className={kind === "staff" ? "active" : ""} onClick={() => setKind("staff")}>เจ้าหน้าที่ ({staffCount})</button>
+            <button type="button" className={kind === "monk" ? "active" : ""} onClick={() => setKind("monk")}>พระ-เณร{countLabel(monkCount)}</button>
+            <button type="button" className={kind === "staff" ? "active" : ""} onClick={() => setKind("staff")}>เจ้าหน้าที่{countLabel(staffCount)}</button>
           </div>
         </Toolbar>
         <Table>
-          <thead><tr><th>ฉายา / ชื่อ</th><th>ประเภท</th><th>ตำแหน่ง</th><th>พรรษา</th><th>สังกัด/ติดต่อ</th><th>สถานะ</th><th /></tr></thead>
-          <tbody>{filtered.map((p) => (
-            <tr key={p.id} className="clickable">
-              <td><div className="row" style={{ gap: 10 }}>
-                <span className={`av ${p.kind === "เจ้าหน้าที่" ? "blue" : ""}`.trim()}>{p.chaya.replace(/^(นาย|นางสาว|นาง|พระ|สามเณร)\s?/, "").charAt(0)}</span>
-                <span><span style={{ display: "block", fontWeight: 500 }}>{p.chaya}</span>{p.name !== p.chaya ? <span className="muted" style={{ fontSize: 12 }}>{p.name}</span> : null}</span>
-              </div></td>
-              <td><Badge kind={p.kind === "เจ้าหน้าที่" ? "reconciled" : "accent"}>{p.kind}</Badge></td>
-              <td>{p.role}</td>
-              <td className="tnum">{p.vassa != null ? `${p.vassa} พรรษา` : <span className="muted">—</span>}</td>
-              <td className="muted">{p.kind === "เจ้าหน้าที่" ? p.tel : p.kuti}</td>
-              <td><Badge kind="credit" dot>{p.status}</Badge></td>
-              <td className="num"><Icon name="chevR" size={15} style={{ color: "var(--ink-3)" }} /></td>
-            </tr>
-          ))}</tbody>
+          <thead><tr><th>ฉายา / ชื่อ</th><th>ประเภท</th><th>ตำแหน่ง</th><th>พรรษา</th><th>ติดต่อ</th><th>สถานะ</th><th /></tr></thead>
+          <tbody>
+            {!people ? (
+              <tr><td colSpan={7} className="muted" style={{ textAlign: "center", padding: "20px" }}>{error ? "โหลดข้อมูลไม่สำเร็จ" : "กำลังโหลด…"}</td></tr>
+            ) : filtered.length === 0 ? (
+              <tr><td colSpan={7} className="muted" style={{ textAlign: "center", padding: "20px" }}>ยังไม่มีบุคลากร</td></tr>
+            ) : (
+              filtered.map((p) => {
+                const staff = p.personnelType === "staff";
+                const chaya = p.dharmaName ?? p.displayName;
+                const secular = p.secularName ?? (staff ? null : p.displayName);
+                return (
+                  <tr key={p.id} className="clickable">
+                    <td><div className="row" style={{ gap: 10 }}>
+                      <span className={`av ${staff ? "blue" : ""}`.trim()}>{chaya.replace(/^(นาย|นางสาว|นาง|พระ|สามเณร)\s?/, "").charAt(0)}</span>
+                      <span><span style={{ display: "block", fontWeight: 500 }}>{chaya}</span>{secular && secular !== chaya ? <span className="muted" style={{ fontSize: 12 }}>{secular}</span> : null}</span>
+                    </div></td>
+                    <td><Badge kind={staff ? "reconciled" : "accent"}>{personnelTypeLabel(p.personnelType)}</Badge></td>
+                    <td>{p.position ?? p.rank ?? <span className="muted">—</span>}</td>
+                    <td className="tnum">{p.phansaCount != null ? `${p.phansaCount} พรรษา` : <span className="muted">—</span>}</td>
+                    <td className="muted">{p.phone ?? "—"}</td>
+                    <td><Badge kind="credit" dot>{personnelStatusLabel(p.status)}</Badge></td>
+                    <td className="num"><Icon name="chevR" size={15} style={{ color: "var(--ink-3)" }} /></td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
         </Table>
       </Card>
     </div>

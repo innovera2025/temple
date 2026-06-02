@@ -88,7 +88,7 @@ describe("PageContent — page → view routing", () => {
     // people: search box + dynamic count tabs
     const people = render("people");
     expect(people).toContain("ค้นหาฉายา ชื่อ หรือตำแหน่ง");
-    expect(people).toContain("พระ-เณร (4)");
+    expect(people).toContain("พระ-เณร");
     // audit: tax/lock footer line with the immutability note
     const audit = render("audit");
     expect(audit).toContain("บันทึกนี้ไม่สามารถแก้ไขหรือลบได้");
