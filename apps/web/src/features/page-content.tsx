@@ -6,6 +6,7 @@ import { TempleProfilePage } from "./temple/temple-view";
 import { createInventoryApiClient } from "./inventory/inventory";
 import { InventoryPage } from "./inventory/inventory-view";
 import { createDashboardApiClient } from "./dashboard/dashboard";
+import { createLedgerApiClient } from "./ledger/ledger";
 import {
   DesignAudit,
   DesignDashboard,
@@ -43,7 +44,7 @@ function UnavailablePage({ title, reason }: { title: string; reason: string }): 
   );
 }
 
-export function PageContent({ page, baseUrl, getToken, role, onNavigate }: PageContentProps): ReactElement {
+export function PageContent({ page, baseUrl, getToken, role, today, onNavigate }: PageContentProps): ReactElement {
   const opts = { baseUrl, getToken };
   const writable = (id: PageId): boolean => {
     const level = permOf(role, id);
@@ -65,7 +66,7 @@ export function PageContent({ page, baseUrl, getToken, role, onNavigate }: PageC
       content = <DesignReceipt />;
       break;
     case "ledger":
-      content = <DesignLedger />;
+      content = <DesignLedger api={createLedgerApiClient(opts)} today={today} />;
       break;
     case "events":
       content = <DesignEvents />;

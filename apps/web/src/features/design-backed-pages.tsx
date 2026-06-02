@@ -3,6 +3,7 @@ import { Badge, Button, Card, SearchBox, Toolbar } from "../design-system";
 import { Icon, type IconName } from "../layout/icons";
 import type { PageId, TempleRole } from "../layout/nav";
 import { type DashboardApi, type DashboardView, displayBaht, methodLabel, statusLabel } from "./dashboard/dashboard";
+import { type LedgerApi, type LedgerEntryView, type LedgerSummaryView } from "./ledger/ledger";
 
 /*
  * Design-backed temple-admin pages, ported faithfully from the design source of
@@ -461,38 +462,65 @@ export function DesignReceipt(): ReactElement {
 }
 
 // ============ 5. LEDGER ============
-const LEDGER = [
-  { id: "LG-0461", date: "๔ มิ.ย. ๒๕๖๙", kind: "in", account: "เงินบริจาค", desc: "รับบริจาค RC-2569-0142 บูรณะอุโบสถ", amount: 5000, status: "reconciled", ref: "RC-2569-0142" },
-  { id: "LG-0459", date: "๓ มิ.ย. ๒๕๖๙", kind: "ex", account: "ค่าสาธารณูปโภค", desc: "ค่าไฟฟ้าประจำเดือน พ.ค.", amount: 8420, status: "posted", ref: "INV-PEA-0588" },
-  { id: "LG-0458", date: "๓ มิ.ย. ๒๕๖๙", kind: "in", account: "เงินบริจาค", desc: "ตู้บริจาคหน้าอุโบสถ", amount: 500, status: "pending", ref: "RC-2569-0140" },
-  { id: "LG-0455", date: "๑ มิ.ย. ๒๕๖๙", kind: "ex", account: "ค่าบูรณะ", desc: "งวดที่ 3 — ช่างปูนอุโบสถ", amount: 45000, status: "posted", ref: "CTR-RENOV-03" },
-  { id: "LG-0451", date: "๒๙ พ.ค. ๒๕๖๙", kind: "ex", account: "ค่าน้ำประปา", desc: "ค่าน้ำประจำเดือน พ.ค.", amount: 1180, status: "void", ref: "INV-PWA-0421" },
-];
 const LEDGER_STATUS: Record<string, { label: string; cls: "reconciled" | "neutral" | "pending" | "void" }> = {
   reconciled: { label: "กระทบยอดแล้ว", cls: "reconciled" }, posted: { label: "บันทึกแล้ว", cls: "neutral" }, pending: { label: "รอตรวจสอบ", cls: "pending" }, void: { label: "ยกเลิก", cls: "void" },
 };
 
-export function DesignLedger(): ReactElement {
+// Map a real ledger entry to the design row + a display status the filters understand.
+function ledgerDisplayStatus(e: LedgerEntryView): "reconciled" | "posted" | "pending" | "void" {
+  if (e.status === "voided") return "void";
+  if (e.reconciledAt) return "reconciled";
+  if (e.status === "posted") return "posted";
+  return "pending"; // draft
+}
+
+export function DesignLedger({ api, today }: { api?: LedgerApi; today?: string }): ReactElement {
+  const [entries, setEntries] = useState<LedgerEntryView[] | null>(null);
+  const [summary, setSummary] = useState<LedgerSummaryView | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [kind, setKind] = useState("all");
   const [status, setStatus] = useState("all");
-  const filtered = useMemo(() => LEDGER.filter((r) => {
+
+  useEffect(() => {
+    if (!api) return;
+    let active = true;
+    Promise.all([api.listEntries(), api.summary(today ? { month: today.slice(0, 7) } : undefined)]).then(
+      ([es, sm]) => { if (active) { setEntries(es); setSummary(sm); } },
+      (err: unknown) => { if (active) setError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ"); },
+    );
+    return () => { active = false; };
+  }, [api, today]);
+
+  const rows = useMemo(() => (entries ?? []).map((e) => ({
+    id: e.entryNo,
+    date: e.entryDate,
+    account: e.accountNameTh,
+    desc: e.description ?? "—",
+    ref: e.payee ?? e.entryNo,
+    amountSatang: e.amountSatang,
+    kind: e.direction === "income" ? "in" : e.direction === "expense" ? "ex" : "",
+    status: ledgerDisplayStatus(e),
+  })), [entries]);
+  const filtered = useMemo(() => rows.filter((r) => {
     if (kind !== "all" && r.kind !== kind) return false;
     if (status !== "all" && r.status !== status) return false;
     if (q && !(r.desc.includes(q) || r.ref.includes(q) || r.account.includes(q))) return false;
     return true;
-  }), [q, kind, status]);
-  const totIn = LEDGER.filter((r) => r.kind === "in" && r.status !== "void").reduce((a, b) => a + b.amount, 0);
-  const totEx = LEDGER.filter((r) => r.kind === "ex" && r.status !== "void").reduce((a, b) => a + b.amount, 0);
+  }), [rows, q, kind, status]);
+
+  const money = (value: string | undefined): string => (summary ? displayBaht(value ?? "0") : "…");
+  const netShownSatang = filtered.reduce((acc, r) => (r.status === "void" ? acc : r.kind === "in" ? acc + Number(r.amountSatang) : r.kind === "ex" ? acc - Number(r.amountSatang) : acc), 0);
 
   return (
     <div className="content-wrap">
       <PageHead eyebrow="การเงิน" title="บัญชีรายรับ-รายจ่าย" desc="สมุดบัญชีของวัด บันทึกและกระทบยอดรายการเงินเข้า-ออกทุกประเภท"
         actions={<><Button variant="secondary" icon={<Icon name="download" size={15} />}>ส่งออก</Button><Button variant="primary" icon={<Icon name="plus" size={15} />}>เพิ่มรายการ</Button></>} />
+      {error ? <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: "var(--r)", background: "var(--danger-tint)", color: "var(--danger)", fontSize: 13 }}>โหลดข้อมูลบัญชีไม่สำเร็จ: {error}</div> : null}
       <div className="grid g-3" style={{ marginBottom: 16 }}>
-        <KPI label="รายรับรวม (มิ.ย.)" value={baht(totIn)} tone="credit" />
-        <KPI label="รายจ่ายรวม (มิ.ย.)" value={baht(totEx)} tone="debit" />
-        <KPI label="คงเหลือสุทธิ" value={baht(totIn - totEx)} />
+        <KPI label="รายรับรวม (เดือนนี้)" value={money(summary?.incomeSatang)} tone="credit" />
+        <KPI label="รายจ่ายรวม (เดือนนี้)" value={money(summary?.expenseSatang)} tone="debit" />
+        <KPI label="คงเหลือสุทธิ" value={money(summary?.balanceSatang)} />
       </div>
       <Card>
         <Toolbar>
@@ -504,22 +532,30 @@ export function DesignLedger(): ReactElement {
         </Toolbar>
         <Table>
           <thead><tr><th>รหัส</th><th>วันที่</th><th>หมวดบัญชี</th><th>รายละเอียด</th><th className="num">รายรับ</th><th className="num">รายจ่าย</th><th>สถานะ</th><th /></tr></thead>
-          <tbody>{filtered.map((r) => {
-            const sm = LEDGER_STATUS[r.status] ?? { label: r.status, cls: "neutral" as const };
-            const voided = r.status === "void";
-            return (
-              <tr key={r.id} style={voided ? { opacity: 0.55 } : undefined}>
-                <td className="mono">{r.id}</td><td style={{ whiteSpace: "nowrap" }}>{r.date}</td><td>{r.account}</td>
-                <td><div style={{ textDecoration: voided ? "line-through" : "none" }}>{r.desc}</div><div className="mono muted" style={{ fontSize: 11 }}>{r.ref}</div></td>
-                <td className="num">{r.kind === "in" ? <Money value={r.amount} kind="in" /> : <span className="muted">—</span>}</td>
-                <td className="num">{r.kind === "ex" ? <Money value={r.amount} kind="ex" /> : <span className="muted">—</span>}</td>
-                <td><Badge kind={sm.cls} dot>{sm.label}</Badge></td>
-                <td className="num">{r.status === "pending" ? <Button variant="tertiary" size="sm">กระทบยอด</Button> : null}</td>
-              </tr>
-            );
-          })}</tbody>
+          <tbody>
+            {!entries ? (
+              <tr><td colSpan={8} className="muted" style={{ textAlign: "center", padding: "20px" }}>{error ? "โหลดข้อมูลไม่สำเร็จ" : "กำลังโหลด…"}</td></tr>
+            ) : filtered.length === 0 ? (
+              <tr><td colSpan={8} className="muted" style={{ textAlign: "center", padding: "20px" }}>ไม่พบรายการบัญชี</td></tr>
+            ) : (
+              filtered.map((r) => {
+                const sm = LEDGER_STATUS[r.status] ?? { label: r.status, cls: "neutral" as const };
+                const voided = r.status === "void";
+                return (
+                  <tr key={r.id} style={voided ? { opacity: 0.55 } : undefined}>
+                    <td className="mono">{r.id}</td><td style={{ whiteSpace: "nowrap" }}>{r.date}</td><td>{r.account}</td>
+                    <td><div style={{ textDecoration: voided ? "line-through" : "none" }}>{r.desc}</div><div className="mono muted" style={{ fontSize: 11 }}>{r.ref}</div></td>
+                    <td className="num">{r.kind === "in" ? <span className="money credit tnum">{displayBaht(r.amountSatang)}</span> : <span className="muted">—</span>}</td>
+                    <td className="num">{r.kind === "ex" ? <span className="money debit tnum">{displayBaht(r.amountSatang)}</span> : <span className="muted">—</span>}</td>
+                    <td><Badge kind={sm.cls} dot>{sm.label}</Badge></td>
+                    <td className="num" />
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
         </Table>
-        <div className="t-foot"><span>แสดง {filtered.length} จาก {LEDGER.length} รายการ</span><span>ยอดสุทธิที่แสดง: <b className="tnum" style={{ color: "var(--ink)" }}>{baht(filtered.filter((r) => r.kind === "in" && r.status !== "void").reduce((a, b) => a + b.amount, 0) - filtered.filter((r) => r.kind === "ex" && r.status !== "void").reduce((a, b) => a + b.amount, 0))}</b></span></div>
+        <div className="t-foot"><span>แสดง {filtered.length} จาก {rows.length} รายการ</span><span>ยอดสุทธิที่แสดง: <b className="tnum" style={{ color: "var(--ink)" }}>{summary ? displayBaht(String(netShownSatang)) : "…"}</b></span></div>
       </Card>
     </div>
   );
