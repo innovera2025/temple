@@ -11,6 +11,7 @@ import { createCeremoniesApiClient } from "./ceremonies/ceremonies";
 import { createPersonnelApiClient } from "./personnel/personnel";
 import { createUsersApiClient } from "./users/users";
 import { createDonorsApiClient } from "./donors/donors";
+import { createDonationsApiClient } from "./donations/donations";
 import {
   DesignAudit,
   DesignDashboard,
@@ -61,7 +62,7 @@ export function PageContent({ page, baseUrl, getToken, role, today, onNavigate }
       content = <DesignDashboard api={createDashboardApiClient(opts)} goto={onNavigate} />;
       break;
     case "donations":
-      content = <DesignDonations />;
+      content = <DesignDonations api={createDonationsApiClient(opts)} donorsApi={createDonorsApiClient(opts)} today={today} />;
       break;
     case "donors":
       content = <DesignDonors api={createDonorsApiClient(opts)} canWrite={writable("donors")} goto={onNavigate} />;

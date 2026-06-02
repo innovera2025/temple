@@ -1,5 +1,6 @@
 import { type ReactElement, type ReactNode, useEffect, useMemo, useState } from "react";
-import { Badge, Button, Card, Modal, SearchBox, Toolbar } from "../design-system";
+import type { FieldError } from "@wat/shared";
+import { Badge, Button, Card, Modal, SearchBox, Toast, Toolbar } from "../design-system";
 import { Icon, type IconName } from "../layout/icons";
 import type { PageId, TempleRole } from "../layout/nav";
 import { type DashboardApi, type DashboardView, displayBaht, methodLabel, statusLabel } from "./dashboard/dashboard";
@@ -19,6 +20,14 @@ import {
 } from "./personnel/personnel";
 import { type TenantUser, type UsersApi, roleLabel } from "./users/users";
 import { type CreateDonorInput, type DonorRecord, type DonorsApi, donorTypeLabel } from "./donors/donors";
+import {
+  type DonationFormValues,
+  type DonationsApi,
+  DONATION_METHOD_OPTIONS,
+  emptyDonationForm,
+  firstError,
+  validateDonationForm,
+} from "./donations/donations";
 
 /*
  * Design-backed temple-admin pages, ported faithfully from the design source of
@@ -236,61 +245,79 @@ export function DesignDashboard({ api, goto }: { api?: DashboardApi; goto?: (pag
 
 // ============ 2. DONATION INTAKE ============
 const PRESETS = [100, 500, 1000, 2000, 5000, 10000];
-const CHANNELS = ["เงินสด", "โอนธนาคาร", "พร้อมเพย์ / QR", "บัตรเครดิต", "เช็คธนาคาร"];
 
-export function DesignDonations(): ReactElement {
-  const [dtype, setDtype] = useState("บุคคล");
-  const [fund, setFund] = useState(FUNDS[0]?.name ?? "");
-  const [channel, setChannel] = useState("พร้อมเพย์ / QR");
-  const [amount, setAmount] = useState("");
-  const [issue, setIssue] = useState(true);
-  const amt = parseInt(amount.replace(/[^0-9]/g, ""), 10) || 0;
-  const anon = dtype === "ไม่ประสงค์ออกนาม";
+export function DesignDonations({ api, donorsApi, today }: { api?: DonationsApi; donorsApi?: DonorsApi; today?: string }): ReactElement {
+  const [form, setForm] = useState<DonationFormValues>(() => emptyDonationForm(today ?? "2569-06-04"));
+  const [donors, setDonors] = useState<DonorRecord[]>([]);
+  const [errors, setErrors] = useState<FieldError[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState("");
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!donorsApi) return;
+    let active = true;
+    donorsApi.list().then((rows) => { if (active) setDonors(rows); }, () => undefined);
+    return () => { active = false; };
+  }, [donorsApi]);
+
+  const amt = Number(form.amountBaht) || 0;
+  const set = (patch: Partial<DonationFormValues>): void => setForm((f) => ({ ...f, ...patch }));
+  const selectedDonor = donors.find((d) => d.id === form.donorId);
+  const amountError = firstError(errors, "amountSatang") ?? firstError(errors, "amountBaht");
+
+  async function submit(): Promise<void> {
+    if (!api) return;
+    const result = validateDonationForm(form);
+    if (!result.success) { setErrors(result.errors); return; }
+    setErrors([]);
+    setSaving(true);
+    setSubmitError(null);
+    try {
+      await api.create(result.data);
+      setToast("บันทึกการบริจาคแล้ว · ลงบัญชีรายรับอัตโนมัติ");
+      setForm(emptyDonationForm(today ?? form.donationDate));
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <div className="content-wrap">
-      <PageHead eyebrow="การบริจาค" title="บันทึกการบริจาค" desc="กรอกข้อมูลผู้บริจาคและจำนวนเงิน ระบบจะออกใบอนุโมทนาบัตรและบันทึกเข้าบัญชีรายรับโดยอัตโนมัติ" />
+      <PageHead eyebrow="การบริจาค" title="บันทึกการบริจาค" desc="กรอกข้อมูลผู้บริจาคและจำนวนเงิน ระบบจะบันทึกเข้าบัญชีรายรับของวัดโดยอัตโนมัติ" />
       <div className="split">
         <div>
           <Card pad style={{ marginBottom: 16 }}>
             <h3 style={{ marginBottom: 14 }}>ข้อมูลผู้บริจาค</h3>
-            <div className="field"><span className="label">ประเภทผู้บริจาค</span>
-              <div className="seg">{["บุคคล", "นิติบุคคล", "ไม่ประสงค์ออกนาม"].map((t) => (
-                <button type="button" key={t} className={dtype === t ? "active" : ""} onClick={() => setDtype(t)}>{t}</button>
-              ))}</div>
-            </div>
-            {!anon ? (
-              <div className="form-grid">
-                <label className="field full"><span className="label">{dtype === "นิติบุคคล" ? "ชื่อนิติบุคคล" : "ชื่อ-นามสกุล"}<span className="req"> *</span></span><input className="control" placeholder={dtype === "นิติบุคคล" ? "เช่น บริษัท ... จำกัด" : "เช่น คุณวิภา รัตนากร"} /></label>
-                {dtype === "นิติบุคคล" ? <label className="field"><span className="label">เลขประจำตัวผู้เสียภาษี<span className="req"> *</span></span><input className="control tnum" placeholder="0-0000-00000-00-0" /></label> : null}
-                <label className="field"><span className="label">เบอร์โทรศัพท์</span><input className="control tnum" placeholder="08x-xxx-xxxx" /></label>
-                <label className="field"><span className="label">อีเมล</span><input className="control" placeholder="name@example.com" /></label>
-                <label className="field full"><span className="label">ที่อยู่</span><span className="hint">ใช้สำหรับออกใบอนุโมทนาบัตรและลดหย่อนภาษี</span><textarea className="control" placeholder="บ้านเลขที่ ถนน ตำบล อำเภอ จังหวัด รหัสไปรษณีย์" /></label>
-              </div>
-            ) : null}
+            <label className="field"><span className="label">ผู้บริจาค</span>
+              <select className="control" value={form.donorId ?? ""} onChange={(e) => set({ donorId: e.target.value })}>
+                <option value="">ไม่ระบุผู้บริจาค (ไม่ประสงค์ออกนาม)</option>
+                {donors.map((d) => <option key={d.id} value={d.id}>{d.displayName}</option>)}
+              </select>
+              <span className="hint">เพิ่มผู้บริจาครายใหม่ได้ที่หน้า “ทะเบียนผู้บริจาค”</span>
+            </label>
           </Card>
 
           <Card pad style={{ marginBottom: 16 }}>
             <h3 style={{ marginBottom: 14 }}>รายละเอียดการบริจาค</h3>
-            <label className="field"><span className="label">กองทุน / วัตถุประสงค์</span><select className="control" value={fund} onChange={(e) => setFund(e.target.value)}>{FUNDS.map((f) => <option key={f.name}>{f.name}</option>)}</select></label>
             <div className="field"><span className="label">จำนวนเงิน<span className="req"> *</span></span>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 9 }}>{PRESETS.map((p) => <button type="button" key={p} className={`chip ${amt === p ? "active" : ""}`} onClick={() => setAmount(String(p))}>{baht(p)}</button>)}</div>
-              <div className="input-prefix" style={{ maxWidth: 240 }}><span className="pfx">฿</span><input className="control tnum" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9]/g, ""))} placeholder="0" /></div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 9 }}>{PRESETS.map((p) => <button type="button" key={p} className={`chip ${amt === p ? "active" : ""}`} onClick={() => set({ amountBaht: String(p) })}>{baht(p)}</button>)}</div>
+              <div className="input-prefix" style={{ maxWidth: 240 }}><span className="pfx">฿</span><input className="control tnum" value={form.amountBaht} onChange={(e) => set({ amountBaht: e.target.value.replace(/[^0-9.]/g, "") })} placeholder="0" /></div>
+              {amountError ? <p className="error-text">{amountError}</p> : null}
             </div>
             <div className="form-grid">
-              <label className="field"><span className="label">ช่องทางการรับเงิน</span><select className="control" value={channel} onChange={(e) => setChannel(e.target.value)}>{CHANNELS.map((c) => <option key={c}>{c}</option>)}</select></label>
-              <label className="field"><span className="label">วันที่รับบริจาค</span><input className="control tnum" defaultValue="2569-06-04" /></label>
+              <label className="field"><span className="label">ช่องทางการรับเงิน</span><select className="control" value={form.method} onChange={(e) => set({ method: e.target.value as DonationFormValues["method"] })}>{DONATION_METHOD_OPTIONS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}</select></label>
+              <label className="field"><span className="label">วันที่รับบริจาค</span><input className="control tnum" value={form.donationDate} onChange={(e) => set({ donationDate: e.target.value })} />{firstError(errors, "donationDate") ? <p className="error-text">{firstError(errors, "donationDate")}</p> : null}</label>
             </div>
-            <label className="field full"><span className="label">หมายเหตุ</span><textarea className="control" placeholder="บันทึกเพิ่มเติม (ถ้ามี)" style={{ minHeight: 64 }} /></label>
-            <label className="opt" style={{ cursor: "pointer" }}>
-              <input type="checkbox" checked={issue} onChange={(e) => setIssue(e.target.checked)} style={{ marginTop: 2 }} />
-              <span><span className="o-title">ออกใบอนุโมทนาบัตรทันที</span><span className="o-desc" style={{ display: "block" }}>สร้างเอกสารและส่งให้ผู้บริจาคทางอีเมล</span></span>
-            </label>
+            <label className="field full"><span className="label">หมายเหตุ</span><textarea className="control" value={form.note ?? ""} onChange={(e) => set({ note: e.target.value })} placeholder="บันทึกเพิ่มเติม (ถ้ามี)" style={{ minHeight: 64 }} /></label>
+            <div className="muted" style={{ fontSize: 12 }}>ใบอนุโมทนาบัตรออกได้ที่หน้า “ใบอนุโมทนาบัตร” หลังบันทึกการบริจาค</div>
           </Card>
 
+          {submitError ? <div style={{ marginBottom: 12, padding: "10px 14px", borderRadius: "var(--r)", background: "var(--danger-tint)", color: "var(--danger)", fontSize: 13 }}>{submitError}</div> : null}
           <div style={{ display: "flex", gap: 10 }}>
-            <Button variant="primary" size="lg" icon={<Icon name="check" size={15} />}>บันทึกการบริจาค</Button>
-            <Button variant="secondary" size="lg">บันทึกร่าง</Button>
+            <Button variant="primary" size="lg" icon={<Icon name="check" size={15} />} disabled={saving} onClick={() => void submit()}>{saving ? "กำลังบันทึก…" : "บันทึกการบริจาค"}</Button>
           </div>
         </div>
 
@@ -302,7 +329,7 @@ export function DesignDonations(): ReactElement {
                 <div className="muted" style={{ fontSize: 12.5 }}>จำนวนเงินบริจาค</div>
                 <div className="tnum" style={{ fontSize: 34, fontWeight: 600, color: "var(--accent)", lineHeight: 1.2 }}>{baht(amt)}</div>
               </div>
-              {([["ผู้บริจาค", anon ? "ผู้ไม่ประสงค์ออกนาม" : "—"], ["ประเภท", anon ? "ไม่ระบุ" : dtype], ["กองทุน", fund], ["ช่องทาง", channel], ["วันที่", "๔ มิ.ย. ๒๕๖๙"], ["ใบอนุโมทนา", issue ? "ออกทันที" : "ยังไม่ออก"]] as Array<[string, string]>).map(([k, v]) => (
+              {([["ผู้บริจาค", selectedDonor?.displayName ?? "ไม่ระบุ"], ["ช่องทาง", DONATION_METHOD_OPTIONS.find((m) => m.value === form.method)?.label ?? form.method], ["วันที่", form.donationDate]] as Array<[string, string]>).map(([k, v]) => (
                 <div className="between" key={k} style={{ padding: "7px 0", fontSize: 13.5 }}><span className="muted">{k}</span><span style={{ fontWeight: 500, textAlign: "right", maxWidth: 180 }}>{v}</span></div>
               ))}
             </div>
@@ -313,6 +340,7 @@ export function DesignDonations(): ReactElement {
           </div>
         </div>
       </div>
+      <Toast msg={toast} />
     </div>
   );
 }
