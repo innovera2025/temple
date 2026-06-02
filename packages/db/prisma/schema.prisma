@@ -150,8 +150,23 @@ enum AttachmentOwnerType {
   receipt
   ledger_entry
   donor
+  item_loan
 
   @@map("attachment_owner_type")
+}
+
+enum LoanStatus {
+  borrowed
+  returned
+
+  @@map("loan_status")
+}
+
+enum LoanSettlementType {
+  replacement
+  cash
+
+  @@map("loan_settlement_type")
 }
 
 model Temple {
@@ -195,6 +210,9 @@ model Temple {
   ceremonies        Ceremony[]
   inventoryItems    InventoryItem[]
   inventoryMovements InventoryMovement[]
+  borrowableItems   BorrowableItem[]
+  itemLoans         ItemLoan[]
+  itemLoanSettlements ItemLoanSettlement[]
 
   @@map("temples")
 }
@@ -412,6 +430,74 @@ model InventoryMovement {
   @@index([tenantId])
   @@index([tenantId, itemId])
   @@map("inventory_movements")
+}
+
+model BorrowableItem {
+  id        String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String            @map("tenant_id") @db.Uuid
+  tenant    Temple            @relation(fields: [tenantId], references: [id])
+  name      String
+  category  InventoryCategory @default(equipment)
+  unit      String?
+  totalQty  Int               @default(0) @map("total_qty")
+  status    InventoryStatus   @default(active)
+  note      String?
+  loans     ItemLoan[]
+  createdAt DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime          @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@map("borrowable_items")
+}
+
+model ItemLoan {
+  id            String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String               @map("tenant_id") @db.Uuid
+  tenant        Temple               @relation(fields: [tenantId], references: [id])
+  loanNo        String               @map("loan_no")
+  itemId        String               @map("item_id") @db.Uuid
+  item          BorrowableItem       @relation(fields: [tenantId, itemId], references: [tenantId, id])
+  borrowerName  String               @map("borrower_name")
+  borrowerPhone String?              @map("borrower_phone")
+  quantity      Int
+  borrowedAt    DateTime             @map("borrowed_at") @db.Date
+  dueAt         DateTime?            @map("due_at") @db.Date
+  borrowPhotoId String?              @map("borrow_photo_id") @db.Uuid
+  status        LoanStatus           @default(borrowed)
+  returnedAt    DateTime?            @map("returned_at") @db.Date
+  returnedQty   Int?                 @map("returned_qty")
+  returnNote    String?              @map("return_note")
+  note          String?
+  settlements   ItemLoanSettlement[]
+  createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime             @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, loanNo])
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@index([tenantId, itemId])
+  @@index([tenantId, status])
+  @@map("item_loans")
+}
+
+model ItemLoanSettlement {
+  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String             @map("tenant_id") @db.Uuid
+  tenant           Temple             @relation(fields: [tenantId], references: [id])
+  loanId           String             @map("loan_id") @db.Uuid
+  loan             ItemLoan           @relation(fields: [tenantId, loanId], references: [tenantId, id])
+  shortageQty      Int                @map("shortage_qty")
+  settlementType   LoanSettlementType @map("settlement_type")
+  cashAmountSatang BigInt?            @map("cash_amount_satang")
+  replacementNote  String?            @map("replacement_note")
+  settledAt        DateTime           @map("settled_at") @db.Date
+  note             String?
+  createdAt        DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([tenantId])
+  @@index([tenantId, loanId])
+  @@map("item_loan_settlements")
 }
 
 model Donation {
