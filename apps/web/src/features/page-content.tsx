@@ -12,6 +12,7 @@ import { createPersonnelApiClient } from "./personnel/personnel";
 import { createUsersApiClient } from "./users/users";
 import { createDonorsApiClient } from "./donors/donors";
 import { createDonationsApiClient } from "./donations/donations";
+import { createReceiptsApiClient } from "./receipts/receipts";
 import {
   DesignAudit,
   DesignDashboard,
@@ -68,7 +69,7 @@ export function PageContent({ page, baseUrl, getToken, role, today, onNavigate }
       content = <DesignDonors api={createDonorsApiClient(opts)} canWrite={writable("donors")} goto={onNavigate} />;
       break;
     case "receipt":
-      content = <DesignReceipt />;
+      content = <DesignReceipt api={createReceiptsApiClient(opts)} donationsApi={createDonationsApiClient(opts)} donorsApi={createDonorsApiClient(opts)} />;
       break;
     case "ledger":
       content = <DesignLedger api={createLedgerApiClient(opts)} today={today} />;

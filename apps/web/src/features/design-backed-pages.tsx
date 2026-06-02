@@ -1,5 +1,5 @@
 import { type ReactElement, type ReactNode, useEffect, useMemo, useState } from "react";
-import type { FieldError } from "@wat/shared";
+import { type FieldError, bahtText } from "@wat/shared";
 import { Badge, Button, Card, Modal, SearchBox, Toast, Toolbar } from "../design-system";
 import { Icon, type IconName } from "../layout/icons";
 import type { PageId, TempleRole } from "../layout/nav";
@@ -23,11 +23,13 @@ import { type CreateDonorInput, type DonorRecord, type DonorsApi, donorTypeLabel
 import {
   type DonationFormValues,
   type DonationsApi,
+  type DonationView,
   DONATION_METHOD_OPTIONS,
   emptyDonationForm,
   firstError,
   validateDonationForm,
 } from "./donations/donations";
+import { type ReceiptsApi, type ReceiptView, receiptStatusLabel } from "./receipts/receipts";
 
 /*
  * Design-backed temple-admin pages, ported faithfully from the design source of
@@ -457,24 +459,66 @@ export function DesignDonors({ api, canWrite }: { api?: DonorsApi; canWrite: boo
 }
 
 // ============ 4. RECEIPT / ANUMODANA ============
-const RECEIPTS = [
-  { no: "อ.๒๕๖๙/๐๑๔๒", id: "RC-2569-0142", donor: "คุณวิภา รัตนากร", amount: 5000, fund: "กองทุนบูรณะอุโบสถ", date: "๔ มิถุนายน ๒๕๖๙", bahtText: "ห้าพันบาทถ้วน", addr: "112/4 ถ.นิมมานเหมินท์ ต.สุเทพ อ.เมือง จ.เชียงใหม่ 50200" },
-  { no: "อ.๒๕๖๙/๐๑๔๑", id: "RC-2569-0141", donor: "ครอบครัวสุขใจ", amount: 12000, fund: "กองทุนบูรณะอุโบสถ", date: "๓ มิถุนายน ๒๕๖๙", bahtText: "หนึ่งหมื่นสองพันบาทถ้วน", addr: "45 หมู่ 3 ต.ช้างเผือก อ.เมือง จ.เชียงใหม่" },
-  { no: "อ.๒๕๖๙/๐๑๓๙", id: "RC-2569-0139", donor: "บริษัท ดีดีพัฒนา จำกัด", amount: 50000, fund: "กองทุนบูรณะอุโบสถ", date: "๓๐ พฤษภาคม ๒๕๖๙", bahtText: "ห้าหมื่นบาทถ้วน", addr: "อาคารดีดี ชั้น 12 ถ.สาทร กรุงเทพฯ" },
-  { no: "อ.๒๕๖๙/๐๑๓๘", id: "RC-2569-0138", donor: "คุณธีรพงษ์ ศรีนคร", amount: 2500, fund: "ทำบุญทั่วไป", date: "๒ มิถุนายน ๒๕๖๙", bahtText: "สองพันห้าร้อยบาทถ้วน", addr: "9 ซ.วัดเกต ต.วัดเกต อ.เมือง จ.เชียงใหม่" },
-];
+const RECEIPT_STATUS_KIND: Record<string, "credit" | "void" | "neutral"> = { issued: "credit", voided: "void", superseded: "neutral" };
 
-export function DesignReceipt(): ReactElement {
-  const [sel, setSel] = useState(RECEIPTS[0]);
-  if (!sel) return <div className="content-wrap" />;
+export function DesignReceipt({ api, donationsApi, donorsApi }: { api?: ReceiptsApi; donationsApi?: DonationsApi; donorsApi?: DonorsApi }): ReactElement {
+  const [receipts, setReceipts] = useState<ReceiptView[] | null>(null);
+  const [donations, setDonations] = useState<DonationView[]>([]);
+  const [donors, setDonors] = useState<DonorRecord[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [selId, setSelId] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [voiding, setVoiding] = useState(false);
+  const [reason, setReason] = useState("");
+  const [voidErr, setVoidErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!api) return;
+    let active = true;
+    setReceipts(null);
+    setError(null);
+    Promise.all([api.list(), donationsApi ? donationsApi.list() : Promise.resolve([]), donorsApi ? donorsApi.list() : Promise.resolve([])]).then(
+      ([rcs, dons, dnrs]) => { if (active) { setReceipts(rcs); setDonations(dons); setDonors(dnrs); } },
+      (err: unknown) => { if (active) setError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ"); },
+    );
+    return () => { active = false; };
+  }, [api, donationsApi, donorsApi, reloadKey]);
+
+  const donationById = new Map(donations.map((d) => [d.id, d]));
+  const donorById = new Map(donors.map((d) => [d.id, d]));
+  const rows = (receipts ?? []).map((r) => {
+    const don = donationById.get(r.donationId);
+    const dnr = don?.donorId ? donorById.get(don.donorId) : undefined;
+    return { id: r.id, receiptNo: r.receiptNo, status: r.status, issuedAt: r.issuedAt.slice(0, 10), donationId: r.donationId, amountSatang: don?.amountSatang ?? null, donorName: dnr?.displayName ?? "ไม่ระบุผู้บริจาค", address: dnr?.address ?? null };
+  });
+  const sel = rows.find((r) => r.id === selId) ?? rows[0] ?? null;
+
+  async function submitVoid(): Promise<void> {
+    if (!api || !sel) return;
+    if (!reason.trim()) { setVoidErr("กรุณาระบุเหตุผลการยกเลิก"); return; }
+    setBusy(true);
+    setVoidErr(null);
+    try {
+      await api.void(sel.id, reason.trim());
+      setVoiding(false);
+      setReason("");
+      setReloadKey((k) => k + 1);
+    } catch (e) {
+      setVoidErr(e instanceof Error ? e.message : "ยกเลิกไม่สำเร็จ");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="content-wrap">
-      <PageHead eyebrow="การบริจาค" title="ใบอนุโมทนาบัตร" desc="ดูตัวอย่าง พิมพ์ หรือส่งใบอนุโมทนาบัตรให้ผู้บริจาค รูปแบบเอกสารทางการของวัด"
+      <PageHead eyebrow="การบริจาค" title="ใบอนุโมทนาบัตร" desc="ดูตัวอย่าง พิมพ์ หรือยกเลิกใบอนุโมทนาบัตร รูปแบบเอกสารทางการของวัด"
         actions={<>
-          <Button variant="secondary" icon={<Icon name="mail" size={15} />}>ส่งอีเมล</Button>
-          <Button variant="secondary" icon={<Icon name="download" size={15} />}>ดาวน์โหลด PDF</Button>
-          <Button variant="primary" icon={<Icon name="print" size={15} />}>พิมพ์</Button>
+          <Button variant="secondary" icon={<Icon name="print" size={15} />}>พิมพ์</Button>
+          {sel && sel.status === "issued" ? <Button variant="danger" icon={<Icon name="x" size={15} />} onClick={() => setVoiding(true)}>ยกเลิกใบ</Button> : null}
         </>} />
+      {error ? <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: "var(--r)", background: "var(--danger-tint)", color: "var(--danger)", fontSize: 13 }}>โหลดข้อมูลใบอนุโมทนาบัตรไม่สำเร็จ: {error}</div> : null}
       <div className="split">
         <div className="doc">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
@@ -482,23 +526,23 @@ export function DesignReceipt(): ReactElement {
               <div className="doc-seal"><Icon name="lotus" size={30} /></div>
               <div><div style={{ fontSize: 19, fontWeight: 600 }}>วัดธรรมสถิตวนาราม</div><div style={{ fontSize: 12.5, color: "var(--ink-2)" }}>๑๒๓ หมู่ ๔ ต.ในเมือง อ.เมือง จ.เชียงใหม่ ๕๐๐๐๐ · โทร. ๐๕๓-๑๒๓-๔๕๖๗</div></div>
             </div>
-            <div style={{ textAlign: "right" }}><div style={{ fontSize: 12, color: "var(--ink-3)" }}>เลขที่</div><div style={{ fontSize: 15, fontWeight: 600 }}>{sel.no}</div></div>
+            <div style={{ textAlign: "right" }}><div style={{ fontSize: 12, color: "var(--ink-3)" }}>เลขที่</div><div style={{ fontSize: 15, fontWeight: 600 }} className="mono">{sel?.receiptNo ?? "—"}</div>{sel ? <div style={{ marginTop: 4 }}><Badge kind={RECEIPT_STATUS_KIND[sel.status] ?? "neutral"} dot>{receiptStatusLabel(sel.status)}</Badge></div> : null}</div>
           </div>
           <div style={{ textAlign: "center", margin: "18px 0 24px" }}>
             <div style={{ fontSize: 26, fontWeight: 700, color: "var(--accent)" }}>ใบอนุโมทนาบัตร</div>
             <div style={{ width: 64, height: 2, background: "var(--accent-line)", margin: "10px auto" }} />
-            <div style={{ fontSize: 13.5, color: "var(--ink-2)" }}>ออกให้ ณ วันที่ {sel.date}</div>
+            <div style={{ fontSize: 13.5, color: "var(--ink-2)" }}>ออกให้ ณ วันที่ {sel?.issuedAt ?? "—"}</div>
           </div>
-          <div style={{ fontSize: 16, lineHeight: 2, textAlign: "center" }}>ขออนุโมทนาบุญแด่<br /><span style={{ fontSize: 22, fontWeight: 600 }}>{sel.donor}</span><br /><span style={{ fontSize: 13.5, color: "var(--ink-2)" }}>{sel.addr}</span></div>
+          <div style={{ fontSize: 16, lineHeight: 2, textAlign: "center" }}>ขออนุโมทนาบุญแด่<br /><span style={{ fontSize: 22, fontWeight: 600 }}>{sel?.donorName ?? "—"}</span><br /><span style={{ fontSize: 13.5, color: "var(--ink-2)" }}>{sel?.address ?? ""}</span></div>
           <div style={{ margin: "24px 0", padding: "18px 22px", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: "var(--r)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div><div style={{ fontSize: 12.5, color: "var(--ink-3)" }}>ได้บริจาคทรัพย์เพื่อ</div><div style={{ fontSize: 16, fontWeight: 600, marginTop: 2 }}>{sel.fund}</div></div>
-              <div style={{ textAlign: "right" }}><div className="tnum" style={{ fontSize: 30, fontWeight: 700, color: "var(--accent)" }}>{baht(sel.amount)}</div><div style={{ fontSize: 12.5, color: "var(--ink-2)" }}>({sel.bahtText})</div></div>
+              <div><div style={{ fontSize: 12.5, color: "var(--ink-3)" }}>ได้บริจาคทรัพย์เป็นจำนวน</div></div>
+              <div style={{ textAlign: "right" }}><div className="tnum" style={{ fontSize: 30, fontWeight: 700, color: "var(--accent)" }}>{sel?.amountSatang ? displayBaht(sel.amountSatang) : "—"}</div><div style={{ fontSize: 12.5, color: "var(--ink-2)" }}>{sel?.amountSatang ? `(${bahtText(Number(sel.amountSatang))})` : ""}</div></div>
             </div>
           </div>
           <div style={{ textAlign: "center", fontSize: 15, lineHeight: 1.9 }}>ขออำนาจคุณพระศรีรัตนตรัยและสิ่งศักดิ์สิทธิ์ทั้งหลาย<br />จงดลบันดาลให้ท่านและครอบครัว ประสบแต่ความสุขความเจริญ เทอญ</div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginTop: 36 }}>
-            <div style={{ fontSize: 12, color: "var(--ink-3)" }}>อ้างอิงใบเสร็จ <span className="mono">{sel.id}</span><br />เอกสารนี้ออกโดยระบบอิเล็กทรอนิกส์</div>
+            <div style={{ fontSize: 12, color: "var(--ink-3)" }}>เอกสารนี้ออกโดยระบบอิเล็กทรอนิกส์</div>
             <div style={{ textAlign: "center" }}><div style={{ borderBottom: "1px solid var(--ink-3)", width: 200, marginBottom: 8, height: 34 }} /><div style={{ fontFamily: "var(--font-serif)", fontSize: 14 }}>พระอธิการสมหวัง สุจิตฺโต</div><div style={{ fontSize: 12.5, color: "var(--ink-2)" }}>เจ้าอาวาส</div></div>
           </div>
         </div>
@@ -506,13 +550,19 @@ export function DesignReceipt(): ReactElement {
           <Card>
             <div className="card-head"><h3>ใบที่ออกล่าสุด</h3></div>
             <div>
-              {RECEIPTS.map((r, i, a) => (
-                <button key={r.id} type="button" onClick={() => setSel(r)} style={{ display: "flex", gap: 11, alignItems: "center", width: "100%", textAlign: "left", padding: "12px 18px", borderBottom: i < a.length - 1 ? "1px solid var(--border)" : 0, background: sel.id === r.id ? "var(--accent-tint)" : "transparent", border: "none", cursor: "pointer" }}>
-                  <span className="av" style={sel.id === r.id ? {} : { background: "var(--surface-3)", color: "var(--ink-2)" }}><Icon name="receipt" size={16} /></span>
-                  <span style={{ flex: 1, minWidth: 0 }}><span style={{ display: "block", fontSize: 13, fontWeight: 600 }}>{r.no}</span><span className="muted" style={{ fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}>{r.donor}</span></span>
-                  <span className="tnum" style={{ fontSize: 13, fontWeight: 600, color: "var(--credit)" }}>{baht(r.amount)}</span>
-                </button>
-              ))}
+              {!receipts ? (
+                <div className="card-pad muted">{error ? "โหลดไม่สำเร็จ" : "กำลังโหลด…"}</div>
+              ) : rows.length === 0 ? (
+                <div className="card-pad muted">ยังไม่มีใบอนุโมทนาบัตร</div>
+              ) : (
+                rows.map((r, i, a) => (
+                  <button key={r.id} type="button" onClick={() => setSelId(r.id)} style={{ display: "flex", gap: 11, alignItems: "center", width: "100%", textAlign: "left", padding: "12px 18px", borderBottom: i < a.length - 1 ? "1px solid var(--border)" : 0, background: sel?.id === r.id ? "var(--accent-tint)" : "transparent", border: "none", cursor: "pointer" }}>
+                    <span className="av" style={sel?.id === r.id ? {} : { background: "var(--surface-3)", color: "var(--ink-2)" }}><Icon name="receipt" size={16} /></span>
+                    <span style={{ flex: 1, minWidth: 0 }}><span style={{ display: "block", fontSize: 13, fontWeight: 600 }}>{r.receiptNo}</span><span className="muted" style={{ fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}>{r.donorName}</span></span>
+                    <span className="tnum" style={{ fontSize: 13, fontWeight: 600, color: "var(--credit)" }}>{r.amountSatang ? displayBaht(r.amountSatang) : "—"}</span>
+                  </button>
+                ))
+              )}
             </div>
           </Card>
           <div style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "12px 14px", marginTop: 12, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--r)", fontSize: 12.5, color: "var(--ink-2)" }}>
@@ -521,6 +571,15 @@ export function DesignReceipt(): ReactElement {
           </div>
         </div>
       </div>
+
+      {voiding && sel ? (
+        <Modal title="ยกเลิกใบอนุโมทนาบัตร" sub={sel.receiptNo} onClose={() => setVoiding(false)}
+          footer={<><Button variant="secondary" onClick={() => setVoiding(false)}>ปิด</Button><Button variant="danger" disabled={busy} onClick={() => void submitVoid()}>{busy ? "กำลังยกเลิก…" : "ยืนยันยกเลิก"}</Button></>}>
+          <p style={{ margin: "0 0 12px", fontSize: 13, color: "var(--ink-2)" }}>การยกเลิกจะบันทึกในบันทึกการใช้งาน ใบที่ยกเลิกแล้วจะออกใหม่ได้</p>
+          <div className="field"><label>เหตุผลการยกเลิก</label><textarea className="control" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="เช่น ระบุยอดผิด" style={{ minHeight: 64 }} /></div>
+          {voidErr ? <p className="error-text">{voidErr}</p> : null}
+        </Modal>
+      ) : null}
     </div>
   );
 }
