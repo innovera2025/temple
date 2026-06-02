@@ -77,3 +77,26 @@ and keep it as an *accepted deviation* until `ds.css` is provided.
 message for the captured output). The icon port + auth screens are exercised by
 `layout/icons.test.tsx`, `layout/layout.test.tsx`, `features/auth/*.test.tsx`, and
 `app.test.tsx`.
+
+## Update — 2026-06-02: real `ds.css` now available (rev2)
+
+The user provided the design's own `ds.css` in the rev2 export
+(`artifacts/user-provided/ระบบจัดการวัด-2026-06-02-rev2/extracted/temple-admin/ds.css`),
+so the "ds.css was not captured" limitation above is **partially resolved**. The rev2 vs
+rev1 `ds.css` diff is purely a **wider-shell layout pass**, now ported VERBATIM into
+`apps/web/src/styles.css` and locked by `apps/web/src/styles-rev2.test.ts`:
+
+- Layout tokens: `--sidebar-w 256→264px`, `--topbar-h 60→62px`, `--maxw 1240→1760px`;
+  added the `--shadow-sm/md/lg` scale. `.sidebar`/`.topbar` now consume the tokens
+  (no more hard-coded `248px`); `.content-wrap` gets `width: 100%`.
+- Responsive content gutters on the scroll container at 1280 / 1600 / 1920px.
+- `.page-head` eyebrow → uppercase + a 16×2px accent line (`::before`); roomier `desc`
+  and responsive `h1` (27px @1280, 30px @1600).
+- `.kpi` flat-until-hover (border + `--shadow-sm` lift), larger value (28px, 32px @1600);
+  clickable `button.card` lift on hover (`--shadow-md`, translateY).
+
+Still open: a full reconciliation of the reconstructed **tints/borders/inks** against the
+now-available rev2 `ds.css` `:root` (the verified 8 core hexes already match); and a true
+pixel/console browser pass at ≥1280px (no headless browser installed in this env — verified
+instead via served HTTP 200, rev2 markers present in the built CSS bundle, and the
+`renderToStaticMarkup` DOM tests).
