@@ -95,8 +95,24 @@ rev1 `ds.css` diff is purely a **wider-shell layout pass**, now ported VERBATIM 
 - `.kpi` flat-until-hover (border + `--shadow-sm` lift), larger value (28px, 32px @1600);
   clickable `button.card` lift on hover (`--shadow-md`, translateY).
 
-Still open: a full reconciliation of the reconstructed **tints/borders/inks** against the
-now-available rev2 `ds.css` `:root` (the verified 8 core hexes already match); and a true
-pixel/console browser pass at ≥1280px (no headless browser installed in this env — verified
-instead via served HTTP 200, rev2 markers present in the built CSS bundle, and the
-`renderToStaticMarkup` DOM tests).
+Token reconciliation is now **done** (commit `feat: reconcile design tokens to rev2 ds.css
+:root`): the reconstructed tints/borders/inks were replaced with the design's exact hexes
+and the rev2 radius scale.
+
+## Update — 2026-06-02: real headless browser pass (Playwright + system Chrome)
+
+Ran `apps/web/scripts/visual-check.mjs` (playwright-core driving system Google Chrome,
+headless) against the live dev servers, logged in with a real seed token, at **1280px and
+1600px**. Both viewports — ALL CHECKS PASSED:
+
+- `.sidebar` computed width = **264px**, `.topbar` height = **62px**, `.content-wrap`
+  max-width = **1760px** (rev2 wider shell confirmed in a real browser).
+- Dashboard KPIs render **real `/dashboard` data** (e.g. `฿623.45` from the seeded DB, not
+  the demo `฿96,000`) — not the loading "…" state.
+- Demo-only cards are tagged **ตัวอย่าง**; the page is the temple product (NOT the smoke
+  shell, NOT the Agent Control Tower).
+- **Zero console errors** (a benign `/favicon.ico` 404 was fixed by adding an inline lotus
+  favicon to `index.html`).
+
+Screenshots: `/tmp/wat-visual/dashboard-{1280,1600}.png`. The script is optional/manual
+(not in CI; needs an ad-hoc `playwright-core` + a Chromium-class browser).
