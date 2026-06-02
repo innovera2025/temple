@@ -12,6 +12,7 @@ import { DonationsModule } from "./donations/donations.module";
 import { DonorsModule } from "./donors/donors.module";
 import { HealthModule } from "./health/health.module";
 import { InventoryModule } from "./inventory/inventory.module";
+import { ItemLoansModule } from "./item-loans/item-loans.module";
 import { LedgerModule } from "./ledger/ledger.module";
 import { PersonnelModule } from "./personnel/personnel.module";
 import { PlatformModule } from "./platform/platform.module";
@@ -47,6 +48,7 @@ import { UsersModule } from "./users/users.module";
     PersonnelModule,
     CeremoniesModule,
     InventoryModule,
+    ItemLoansModule,
     UsersModule,
     AttachmentsModule,
     PlatformModule
