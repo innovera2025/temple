@@ -8,6 +8,7 @@
 
 import { isValidIsoDate } from "./donation";
 import { type FieldError, type ValidationResult } from "./donor";
+import { isUuid } from "./platform";
 
 export const INVENTORY_CATEGORIES = ["sangha_offering", "supplies", "equipment", "other"] as const;
 export type InventoryCategory = (typeof INVENTORY_CATEGORIES)[number];
@@ -51,6 +52,8 @@ export interface ItemInput {
   unit?: string | null;
   status?: InventoryStatus;
   note?: string | null;
+  /** Optional storage room (ห้อง/โรงเก็บ) id; null clears it. */
+  roomId?: string | null;
 }
 
 export type CreateItemInput = ItemInput;
@@ -73,7 +76,7 @@ export interface ItemSearchQuery {
   skip?: number;
 }
 
-const ITEM_KEYS = ["name", "category", "unit", "status", "note"] as const;
+const ITEM_KEYS = ["name", "category", "unit", "status", "note", "roomId"] as const;
 const MOVEMENT_KEYS = ["movementType", "quantity", "movementDate", "reason", "reference", "note"] as const;
 const DEFAULT_TAKE = 200;
 const MAX_TAKE = 1000;
@@ -137,6 +140,15 @@ function applyItemOptionalFields(
   if ("note" in input) {
     const v = optString(input.note, "note", INVENTORY_LIMITS.note, errors);
     if (v !== undefined) data.note = v;
+  }
+  if ("roomId" in input) {
+    if (input.roomId === null || input.roomId === undefined || (typeof input.roomId === "string" && input.roomId.trim() === "")) {
+      data.roomId = null;
+    } else if (typeof input.roomId === "string" && isUuid(input.roomId.trim())) {
+      data.roomId = input.roomId.trim();
+    } else {
+      errors.push({ field: "roomId", message: "ห้อง/โรงเก็บไม่ถูกต้อง" });
+    }
   }
 }
 
@@ -259,4 +271,118 @@ export function parseItemQuery(raw: Record<string, unknown> | undefined): ItemSe
   }
 
   return query;
+}
+
+// ---- storage rooms (ห้อง/โรงเก็บ) ------------------------------------------
+
+export const ROOM_LIMITS = { name: 120, note: 500 } as const;
+
+export interface RoomInput {
+  name: string;
+  note?: string | null;
+}
+export type CreateRoomInput = RoomInput;
+export type UpdateRoomInput = Partial<RoomInput>;
+
+export interface RoomView {
+  id: string;
+  name: string;
+  note: string | null;
+  itemCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function validateCreateRoom(input: unknown): ValidationResult<CreateRoomInput> {
+  if (!isPlainObject(input)) return { success: false, errors: [{ field: "_root", message: "รูปแบบข้อมูลไม่ถูกต้อง" }] };
+  const errors: FieldError[] = [];
+  const data: Record<string, unknown> = {};
+  if (typeof input.name !== "string" || input.name.trim() === "") errors.push({ field: "name", message: "ต้องระบุชื่อห้อง/โรงเก็บ" });
+  else if (input.name.trim().length > ROOM_LIMITS.name) errors.push({ field: "name", message: `ชื่อต้องไม่เกิน ${ROOM_LIMITS.name} ตัวอักษร` });
+  else data.name = input.name.trim();
+  if ("note" in input) {
+    const v = optString(input.note, "note", ROOM_LIMITS.note, errors);
+    if (v !== undefined) data.note = v;
+  }
+  for (const key of Object.keys(input)) if (!["name", "note"].includes(key)) errors.push({ field: key, message: `ไม่รองรับฟิลด์ "${key}"` });
+  return errors.length ? { success: false, errors } : { success: true, data: data as unknown as CreateRoomInput };
+}
+
+export function validateUpdateRoom(input: unknown): ValidationResult<UpdateRoomInput> {
+  if (!isPlainObject(input)) return { success: false, errors: [{ field: "_root", message: "รูปแบบข้อมูลไม่ถูกต้อง" }] };
+  const errors: FieldError[] = [];
+  const data: Record<string, unknown> = {};
+  if ("name" in input) {
+    if (typeof input.name !== "string" || input.name.trim() === "") errors.push({ field: "name", message: "ชื่อห้อง/โรงเก็บไม่ถูกต้อง" });
+    else if (input.name.trim().length > ROOM_LIMITS.name) errors.push({ field: "name", message: `ชื่อต้องไม่เกิน ${ROOM_LIMITS.name} ตัวอักษร` });
+    else data.name = input.name.trim();
+  }
+  if ("note" in input) {
+    const v = optString(input.note, "note", ROOM_LIMITS.note, errors);
+    if (v !== undefined) data.note = v;
+  }
+  for (const key of Object.keys(input)) if (!["name", "note"].includes(key)) errors.push({ field: key, message: `ไม่รองรับฟิลด์ "${key}"` });
+  if (Object.keys(data).length === 0 && errors.length === 0) errors.push({ field: "_root", message: "ไม่มีข้อมูลที่จะแก้ไข" });
+  return errors.length ? { success: false, errors } : { success: true, data: data as UpdateRoomInput };
+}
+
+// ---- Excel / bulk import (นำเข้าของภายในวัด) --------------------------------
+
+export const IMPORT_MAX_ROWS = 1000;
+
+export interface ImportItemInput {
+  name: string;
+  category?: InventoryCategory;
+  quantity?: number;
+  unit?: string | null;
+  /** Room name; the API resolves it to a room (creating it if new). */
+  roomName?: string | null;
+  note?: string | null;
+}
+
+const CATEGORY_BY_LABEL: Record<string, InventoryCategory> = Object.fromEntries(
+  (Object.entries(INVENTORY_CATEGORY_LABELS_TH) as Array<[InventoryCategory, string]>).map(([key, label]) => [label, key]),
+);
+
+function resolveImportCategory(raw: unknown): InventoryCategory | undefined | "INVALID" {
+  if (raw === undefined || raw === null || (typeof raw === "string" && raw.trim() === "")) return undefined;
+  if (typeof raw !== "string") return "INVALID";
+  const t = raw.trim();
+  if (isInventoryCategory(t)) return t;
+  return CATEGORY_BY_LABEL[t] ?? "INVALID";
+}
+
+/** Validate parsed import rows (from an .xlsx the web reads client-side). */
+export function validateImportItems(input: unknown): ValidationResult<ImportItemInput[]> {
+  if (!Array.isArray(input)) return { success: false, errors: [{ field: "_root", message: "ต้องเป็นรายการของแถวข้อมูล" }] };
+  if (input.length === 0) return { success: false, errors: [{ field: "_root", message: "ไม่มีข้อมูลให้นำเข้า" }] };
+  if (input.length > IMPORT_MAX_ROWS) return { success: false, errors: [{ field: "_root", message: `นำเข้าได้ไม่เกิน ${IMPORT_MAX_ROWS} แถวต่อครั้ง` }] };
+  const errors: FieldError[] = [];
+  const rows: ImportItemInput[] = [];
+  input.forEach((raw, i) => {
+    const p = `row[${i}]`;
+    if (!isPlainObject(raw)) { errors.push({ field: p, message: "แถวไม่ถูกต้อง" }); return; }
+    const row: ImportItemInput = { name: "" };
+    if (typeof raw.name !== "string" || raw.name.trim() === "") errors.push({ field: `${p}.name`, message: "ต้องระบุชื่อสิ่งของ" });
+    else if (raw.name.trim().length > INVENTORY_LIMITS.name) errors.push({ field: `${p}.name`, message: "ชื่อยาวเกินไป" });
+    else row.name = raw.name.trim();
+
+    const cat = resolveImportCategory(raw.category);
+    if (cat === "INVALID") errors.push({ field: `${p}.category`, message: "ประเภทไม่ถูกต้อง" });
+    else if (cat) row.category = cat;
+
+    if (raw.quantity !== undefined && raw.quantity !== null && raw.quantity !== "") {
+      const q = typeof raw.quantity === "number" ? raw.quantity : Number(raw.quantity);
+      if (!Number.isFinite(q) || !Number.isInteger(q) || q < 0 || q > MAX_MOVEMENT_QUANTITY) errors.push({ field: `${p}.quantity`, message: "จำนวนไม่ถูกต้อง" });
+      else if (q > 0) row.quantity = q;
+    }
+    const unit = optString(raw.unit, `${p}.unit`, INVENTORY_LIMITS.unit, errors);
+    if (typeof unit === "string") row.unit = unit;
+    const room = optString(raw.roomName ?? raw.room, `${p}.room`, ROOM_LIMITS.name, errors);
+    if (typeof room === "string") row.roomName = room;
+    const note = optString(raw.note, `${p}.note`, INVENTORY_LIMITS.note, errors);
+    if (typeof note === "string") row.note = note;
+    rows.push(row);
+  });
+  return errors.length ? { success: false, errors } : { success: true, data: rows };
 }
