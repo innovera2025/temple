@@ -15,6 +15,7 @@ export const tenantTables = [
   "borrowable_items",
   "item_loans",
   "item_loan_settlements",
+  "storage_rooms",
 ] as const;
 
 export interface RlsTableStatus {

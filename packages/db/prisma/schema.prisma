@@ -210,6 +210,7 @@ model Temple {
   ceremonies        Ceremony[]
   inventoryItems    InventoryItem[]
   inventoryMovements InventoryMovement[]
+  storageRooms      StorageRoom[]
   borrowableItems   BorrowableItem[]
   itemLoans         ItemLoan[]
   itemLoanSettlements ItemLoanSettlement[]
@@ -402,6 +403,8 @@ model InventoryItem {
   quantity  Int                 @default(0)
   status    InventoryStatus     @default(active)
   note      String?
+  roomId    String?             @map("room_id") @db.Uuid
+  room      StorageRoom?        @relation(fields: [tenantId, roomId], references: [tenantId, id])
   movements InventoryMovement[]
   createdAt DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime            @default(now()) @map("updated_at") @db.Timestamptz(6)
@@ -409,7 +412,24 @@ model InventoryItem {
   @@unique([tenantId, id])
   @@index([tenantId])
   @@index([tenantId, category])
+  @@index([tenantId, roomId])
   @@map("inventory_items")
+}
+
+model StorageRoom {
+  id        String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String          @map("tenant_id") @db.Uuid
+  tenant    Temple          @relation(fields: [tenantId], references: [id])
+  name      String
+  note      String?
+  items     InventoryItem[]
+  createdAt DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime        @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("storage_rooms")
 }
 
 model InventoryMovement {
