@@ -12,9 +12,12 @@ import {
   INVENTORY_STATUSES,
   type CreateItemInput,
   type CreateMovementInput,
+  type CreateRoomInput,
+  type ImportItemInput,
   type InventoryCategory,
   type InventoryMovementType,
   type InventoryStatus,
+  type RoomView,
   type UpdateItemInput,
 } from "@wat/shared";
 
@@ -25,6 +28,9 @@ export type {
   CreateItemInput,
   UpdateItemInput,
   CreateMovementInput,
+  CreateRoomInput,
+  ImportItemInput,
+  RoomView,
 } from "@wat/shared";
 
 export interface InventoryItem {
@@ -35,6 +41,7 @@ export interface InventoryItem {
   quantity: number;
   status: InventoryStatus;
   note: string | null;
+  roomId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -95,6 +102,49 @@ export interface InventoryApi {
   updateItem(id: string, patch: UpdateItemInput): Promise<InventoryItem>;
   listMovements(itemId: string): Promise<InventoryMovement[]>;
   recordMovement(itemId: string, input: CreateMovementInput): Promise<{ movement: InventoryMovement; item: InventoryItem }>;
+  listRooms(): Promise<RoomView[]>;
+  createRoom(input: CreateRoomInput): Promise<RoomView>;
+  importItems(rows: ImportItemInput[]): Promise<{ itemsCreated: number; roomsCreated: number }>;
+}
+
+// Header aliases (TH/EN) -> import field. The temple's Excel can use Thai headers.
+const HEADER_MAP: Record<string, keyof ImportItemInput> = {
+  name: "name", "ชื่อ": "name", "ชื่อสิ่งของ": "name", "รายการ": "name",
+  category: "category", "ประเภท": "category", "หมวด": "category", "หมวดหมู่": "category",
+  quantity: "quantity", qty: "quantity", "จำนวน": "quantity",
+  unit: "unit", "หน่วย": "unit",
+  room: "roomName", roomname: "roomName", "ห้อง": "roomName", "โรงเก็บ": "roomName", "ห้อง/โรงเก็บ": "roomName", "ที่เก็บ": "roomName",
+  note: "note", "หมายเหตุ": "note",
+};
+
+/** Parse an .xlsx File (first sheet) into import rows, mapping TH/EN headers.
+ *  SheetJS is loaded on demand so it stays out of the main bundle. */
+export async function parseInventoryXlsx(file: File): Promise<ImportItemInput[]> {
+  const XLSX = await import("xlsx");
+  const buffer = await file.arrayBuffer();
+  const wb = XLSX.read(new Uint8Array(buffer), { type: "array" });
+  const sheetName = wb.SheetNames[0];
+  const sheet = sheetName ? wb.Sheets[sheetName] : undefined;
+  if (!sheet) return [];
+  const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+  const rows: ImportItemInput[] = [];
+  for (const r of raw) {
+    const row: Record<string, unknown> = {};
+    for (const [header, value] of Object.entries(r)) {
+      const field = HEADER_MAP[String(header).trim().toLowerCase()] ?? HEADER_MAP[String(header).trim()];
+      if (!field) continue;
+      if (field === "quantity") {
+        const n = Number(String(value).replace(/[^0-9.-]/g, ""));
+        if (Number.isFinite(n) && String(value).trim() !== "") row.quantity = Math.trunc(n);
+      } else {
+        const s = String(value).trim();
+        if (s) row[field] = s;
+      }
+    }
+    // skip fully-empty rows
+    if (Object.keys(row).length > 0) rows.push(row as unknown as ImportItemInput);
+  }
+  return rows;
 }
 
 export interface InventoryApiClientOptions {
@@ -155,6 +205,22 @@ export function createInventoryApiClient(options: InventoryApiClientOptions): In
         }),
       );
       return { movement: body.movement as InventoryMovement, item: body.item as InventoryItem };
+    },
+    async listRooms() {
+      const body = await parse(await doFetch(`${options.baseUrl}/inventory/rooms`, { headers: headers() }));
+      return (body.rooms ?? []) as RoomView[];
+    },
+    async createRoom(input) {
+      const body = await parse(
+        await doFetch(`${options.baseUrl}/inventory/rooms`, { method: "POST", headers: headers(), body: JSON.stringify(input) }),
+      );
+      return body.room as RoomView;
+    },
+    async importItems(rows) {
+      const body = await parse(
+        await doFetch(`${options.baseUrl}/inventory/import`, { method: "POST", headers: headers(), body: JSON.stringify({ rows }) }),
+      );
+      return body as { itemsCreated: number; roomsCreated: number };
     },
   };
 }

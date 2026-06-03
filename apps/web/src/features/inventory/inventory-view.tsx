@@ -1,10 +1,11 @@
-import { useEffect, useState, type ReactElement } from "react";
+import { useEffect, useRef, useState, type ReactElement } from "react";
 import {
   CATEGORY_OPTIONS,
   categoryLabel,
   createInventoryApiClient,
   MOVEMENT_TYPE_OPTIONS,
   movementTypeLabel,
+  parseInventoryXlsx,
   STATUS_OPTIONS,
   statusLabel,
   type CreateItemInput,
@@ -16,15 +17,18 @@ import {
   type InventoryMovementType,
   type InventoryStatus,
   type ItemFilters,
+  type RoomView,
 } from "./inventory";
 
 export { createInventoryApiClient };
 
 export function ItemsTable({
   rows,
+  rooms = [],
   onSelect,
 }: {
   rows: InventoryItem[];
+  rooms?: RoomView[];
   onSelect?: (item: InventoryItem) => void;
 }): ReactElement {
   if (rows.length === 0) {
@@ -34,12 +38,14 @@ export function ItemsTable({
       </div>
     );
   }
+  const roomName = new Map(rooms.map((r) => [r.id, r.name]));
   return (
     <table className="w-full border-collapse text-sm">
       <thead>
         <tr className="border-b border-stone-200 text-left text-xs text-stone-500">
           <th className="py-2 pr-3">รายการ</th>
           <th className="py-2 pr-3">ประเภท</th>
+          <th className="py-2 pr-3">ห้อง/โรงเก็บ</th>
           <th className="py-2 pr-3 text-right">คงเหลือ</th>
           <th className="py-2 pr-3">สถานะ</th>
         </tr>
@@ -53,6 +59,7 @@ export function ItemsTable({
           >
             <td className="py-2 pr-3">{item.name}</td>
             <td className="py-2 pr-3">{categoryLabel(item.category)}</td>
+            <td className="py-2 pr-3 text-stone-600">{item.roomId ? roomName.get(item.roomId) ?? "—" : "—"}</td>
             <td className="py-2 pr-3 text-right font-medium">
               {item.quantity} {item.unit ?? ""}
             </td>
@@ -72,20 +79,24 @@ export function ItemForm({
   draft,
   category,
   status,
+  rooms,
   submitting,
   onChange,
   onCategoryChange,
   onStatusChange,
+  onAddRoom,
   onSubmit,
   onCancel,
 }: {
   draft: Record<string, string>;
   category: InventoryCategory;
   status: InventoryStatus;
+  rooms: RoomView[];
   submitting: boolean;
   onChange: (key: string, value: string) => void;
   onCategoryChange: (c: InventoryCategory) => void;
   onStatusChange: (s: InventoryStatus) => void;
+  onAddRoom: () => void;
   onSubmit: () => void;
   onCancel: () => void;
 }): ReactElement {
@@ -144,6 +155,26 @@ export function ItemForm({
           </select>
         </label>
       </div>
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="font-medium text-stone-700">ห้อง/โรงเก็บ</span>
+        <div className="flex gap-2">
+          <select
+            className="flex-1 rounded-lg border border-stone-300 px-3 py-2"
+            value={draft.roomId ?? ""}
+            onChange={(event) => onChange("roomId", event.target.value)}
+          >
+            <option value="">— ไม่ระบุ —</option>
+            {rooms.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+          <button type="button" onClick={onAddRoom} className="rounded-lg border border-stone-300 px-3 py-2 text-sm font-semibold text-stone-700">
+            ＋ ห้องใหม่
+          </button>
+        </div>
+      </label>
       <label className="flex flex-col gap-1 text-sm">
         <span className="font-medium text-stone-700">หมายเหตุ</span>
         <textarea
@@ -309,6 +340,9 @@ export function InventoryPage({ api, canWrite }: { api: InventoryApi; canWrite: 
   const [movementDraft, setMovementDraft] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rooms, setRooms] = useState<RoomView[]>([]);
+  const [notice, setNotice] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const reload = (next: ItemFilters): void => {
     api
@@ -316,10 +350,50 @@ export function InventoryPage({ api, canWrite }: { api: InventoryApi; canWrite: 
       .then(setRows)
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ"));
   };
+  const reloadRooms = (): void => {
+    api.listRooms().then(setRooms).catch(() => undefined);
+  };
 
   useEffect(() => {
     reload(filters);
+    reloadRooms();
   }, [api]);
+
+  const addRoom = async (): Promise<void> => {
+    if (typeof window === "undefined") return;
+    const name = window.prompt("ชื่อห้อง/โรงเก็บใหม่");
+    if (!name || !name.trim()) return;
+    try {
+      const room = await api.createRoom({ name: name.trim() });
+      setRooms((prev) => [...prev, room].sort((a, b) => a.name.localeCompare(b.name)));
+      setItemDraft((prev) => ({ ...prev, roomId: room.id }));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "เพิ่มห้องไม่สำเร็จ");
+    }
+  };
+
+  const onImportFile = async (file: File | null): Promise<void> => {
+    if (!file) return;
+    setError(null);
+    setNotice(null);
+    setSubmitting(true);
+    try {
+      const parsed = await parseInventoryXlsx(file);
+      if (parsed.length === 0) {
+        setError("ไม่พบข้อมูลในไฟล์ Excel (ต้องมีคอลัมน์ ชื่อ/name)");
+        return;
+      }
+      const result = await api.importItems(parsed);
+      setNotice(`นำเข้าสำเร็จ: เพิ่ม ${result.itemsCreated} รายการ${result.roomsCreated ? ` และห้องใหม่ ${result.roomsCreated} ห้อง` : ""}`);
+      reloadRooms();
+      reload(filters);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "นำเข้าไม่สำเร็จ");
+    } finally {
+      setSubmitting(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   const openDetail = (item: InventoryItem): void => {
     setError(null);
@@ -335,7 +409,14 @@ export function InventoryPage({ api, canWrite }: { api: InventoryApi; canWrite: 
   const submitItem = async (): Promise<void> => {
     setSubmitting(true);
     setError(null);
-    const payload = { name: itemDraft.name ?? "", category: itemCategory, status: itemStatus, unit: itemDraft.unit ?? "", note: itemDraft.note ?? "" } as unknown as CreateItemInput;
+    const payload = {
+      name: itemDraft.name ?? "",
+      category: itemCategory,
+      status: itemStatus,
+      unit: itemDraft.unit ?? "",
+      note: itemDraft.note ?? "",
+      roomId: itemDraft.roomId || null,
+    } as unknown as CreateItemInput;
     try {
       if (mode.kind === "createItem") await api.createItem(payload);
       else if (mode.kind === "editItem") await api.updateItem(mode.item.id, payload);
@@ -378,23 +459,45 @@ export function InventoryPage({ api, canWrite }: { api: InventoryApi; canWrite: 
           <p className="mt-1 text-sm text-stone-600">ทะเบียนสังฆทาน พัสดุ และอุปกรณ์ พร้อมประวัติรับเข้า-เบิกออก</p>
         </div>
         {canWrite && mode.kind === "list" ? (
-          <button
-            type="button"
-            onClick={() => {
-              setItemDraft({});
-              setItemCategory("sangha_offering");
-              setItemStatus("active");
-              setError(null);
-              setMode({ kind: "createItem" });
-            }}
-            className="rounded-lg bg-stone-800 px-4 py-2 text-sm font-semibold text-white"
-          >
-            เพิ่มรายการ
-          </button>
+          <div className="flex gap-3">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              className="hidden"
+              aria-label="ไฟล์ Excel นำเข้า"
+              onChange={(event) => {
+                void onImportFile(event.target.files?.[0] ?? null);
+              }}
+            />
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => fileInputRef.current?.click()}
+              className="rounded-lg border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700 disabled:opacity-50"
+            >
+              นำเข้า Excel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setItemDraft({});
+                setItemCategory("sangha_offering");
+                setItemStatus("active");
+                setError(null);
+                setNotice(null);
+                setMode({ kind: "createItem" });
+              }}
+              className="rounded-lg bg-stone-800 px-4 py-2 text-sm font-semibold text-white"
+            >
+              เพิ่มรายการ
+            </button>
+          </div>
         ) : null}
       </header>
 
       {error ? <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p> : null}
+      {notice ? <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</p> : null}
 
       {mode.kind === "list" ? (
         <>
@@ -443,7 +546,7 @@ export function InventoryPage({ api, canWrite }: { api: InventoryApi; canWrite: 
             />
           </div>
           <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-            <ItemsTable rows={rows} onSelect={openDetail} />
+            <ItemsTable rows={rows} rooms={rooms} onSelect={openDetail} />
           </div>
         </>
       ) : mode.kind === "detail" ? (
@@ -501,10 +604,12 @@ export function InventoryPage({ api, canWrite }: { api: InventoryApi; canWrite: 
             draft={itemDraft}
             category={itemCategory}
             status={itemStatus}
+            rooms={rooms}
             submitting={submitting}
             onChange={(key, value) => setItemDraft((prev) => ({ ...prev, [key]: value }))}
             onCategoryChange={setItemCategory}
             onStatusChange={setItemStatus}
+            onAddRoom={() => void addRoom()}
             onSubmit={submitItem}
             onCancel={() => setMode({ kind: "list" })}
           />
