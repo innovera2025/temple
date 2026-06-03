@@ -3,10 +3,14 @@ import { Prisma } from "@prisma/client";
 import {
   type CreateItemInput,
   type CreateMovementInput,
+  type CreateRoomInput,
+  type ImportItemInput,
+  isUuid,
   type ItemSearchQuery,
   type UpdateItemInput,
+  type UpdateRoomInput,
 } from "@wat/shared";
-import { conflict, notFound } from "../common/errors/project-error";
+import { conflict, notFound, projectHttpException } from "../common/errors/project-error";
 import { PrismaService } from "../common/prisma/prisma.service";
 
 export interface ItemRecord {
@@ -16,6 +20,15 @@ export interface ItemRecord {
   unit: string | null;
   quantity: number;
   status: string;
+  note: string | null;
+  roomId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface RoomRecord {
+  id: string;
+  name: string;
   note: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -47,7 +60,19 @@ function itemSnapshot(item: ItemRecord): Prisma.InputJsonObject {
     quantity: item.quantity,
     status: item.status,
     note: item.note,
+    roomId: item.roomId,
   };
+}
+
+function roomSnapshot(room: RoomRecord): Prisma.InputJsonObject {
+  return { id: room.id, name: room.name, note: room.note };
+}
+
+/** Validate an item's room belongs to this tenant (FK + RLS back this; this gives a clean 422). */
+async function ensureRoom(tx: Prisma.TransactionClient, roomId: string): Promise<void> {
+  if (!isUuid(roomId)) throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ห้อง/โรงเก็บไม่ถูกต้อง");
+  const found = await tx.storageRoom.findFirst({ where: { id: roomId }, select: { id: true } });
+  if (!found) throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ไม่พบห้อง/โรงเก็บที่เลือก");
 }
 
 function movementSnapshot(movement: MovementRecord): Prisma.InputJsonObject {
@@ -75,6 +100,7 @@ export class InventoryService {
     ip?: string,
   ): Promise<ItemRecord> {
     return this.prisma.withTenant(tenantId, async (tx) => {
+      if (input.roomId) await ensureRoom(tx, input.roomId);
       const created = (await tx.inventoryItem.create({
         // quantity is NOT settable here — it starts at 0 and only changes via movements.
         data: { ...input, tenantId } as Prisma.InventoryItemUncheckedCreateInput,
@@ -135,6 +161,7 @@ export class InventoryService {
       if (!before) {
         throw notFound("ไม่พบรายการพัสดุ");
       }
+      if (typeof patch.roomId === "string" && patch.roomId) await ensureRoom(tx, patch.roomId);
 
       let after: ItemRecord;
       try {
@@ -253,6 +280,95 @@ export class InventoryService {
       });
 
       return { movement, item };
+    });
+  }
+
+  // ---- storage rooms (ห้อง/โรงเก็บ) ----------------------------------------
+
+  async createRoom(tenantId: string, actorUserId: string, input: CreateRoomInput, ip?: string): Promise<RoomRecord> {
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      let created: RoomRecord;
+      try {
+        created = (await tx.storageRoom.create({ data: { ...input, tenantId } as Prisma.StorageRoomUncheckedCreateInput })) as RoomRecord;
+      } catch (error: unknown) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") throw conflict("มีห้อง/โรงเก็บชื่อนี้แล้ว");
+        throw error;
+      }
+      await tx.auditLog.create({ data: { tenantId, actorUserId, action: "inventory:room:create", entityType: "storage_room", entityId: created.id, after: roomSnapshot(created), metadata: {}, ip } });
+      return created;
+    });
+  }
+
+  async listRooms(tenantId: string): Promise<Array<RoomRecord & { itemCount: number }>> {
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const rooms = (await tx.storageRoom.findMany({ orderBy: [{ name: "asc" }], take: 500 })) as RoomRecord[];
+      const grouped = await tx.inventoryItem.groupBy({ by: ["roomId"], _count: { _all: true } });
+      const counts = new Map(grouped.filter((g) => g.roomId).map((g) => [g.roomId as string, g._count._all]));
+      return rooms.map((r) => ({ ...r, itemCount: counts.get(r.id) ?? 0 }));
+    });
+  }
+
+  async updateRoom(tenantId: string, actorUserId: string, id: string, patch: UpdateRoomInput, ip?: string): Promise<RoomRecord> {
+    if (!isUuid(id)) throw notFound("ไม่พบห้อง/โรงเก็บ");
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const before = (await tx.storageRoom.findFirst({ where: { id } })) as RoomRecord | null;
+      if (!before) throw notFound("ไม่พบห้อง/โรงเก็บ");
+      let after: RoomRecord;
+      try {
+        after = (await tx.storageRoom.update({ where: { tenantId_id: { tenantId, id } }, data: { ...patch, updatedAt: new Date() } })) as RoomRecord;
+      } catch (error: unknown) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") throw conflict("มีห้อง/โรงเก็บชื่อนี้แล้ว");
+        throw error;
+      }
+      await tx.auditLog.create({ data: { tenantId, actorUserId, action: "inventory:room:update", entityType: "storage_room", entityId: id, before: roomSnapshot(before), after: roomSnapshot(after), metadata: {}, ip } });
+      return after;
+    });
+  }
+
+  /**
+   * Bulk import (นำเข้า Excel): resolve/create rooms by name, create each item, and record an
+   * initial `receive` movement for any positive quantity so the balance stays movement-backed.
+   * Atomic — the whole import succeeds or rolls back.
+   */
+  async importItems(
+    tenantId: string,
+    actorUserId: string,
+    rows: ImportItemInput[],
+    ip?: string,
+  ): Promise<{ itemsCreated: number; roomsCreated: number }> {
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const existing = await tx.storageRoom.findMany({ select: { id: true, name: true } });
+      const roomByName = new Map(existing.map((r) => [r.name, r.id]));
+      let roomsCreated = 0;
+      const movementDate = new Date();
+
+      for (const row of rows) {
+        let roomId: string | null = null;
+        if (row.roomName) {
+          let rid = roomByName.get(row.roomName);
+          if (!rid) {
+            const room = await tx.storageRoom.create({ data: { tenantId, name: row.roomName } as Prisma.StorageRoomUncheckedCreateInput });
+            rid = room.id;
+            roomByName.set(row.roomName, rid);
+            roomsCreated += 1;
+            await tx.auditLog.create({ data: { tenantId, actorUserId, action: "inventory:room:create", entityType: "storage_room", entityId: rid, after: { id: rid, name: row.roomName } as Prisma.InputJsonObject, metadata: { via: "import" }, ip } });
+          }
+          roomId = rid;
+        }
+        const item = (await tx.inventoryItem.create({
+          data: { tenantId, name: row.name, category: row.category ?? "other", unit: row.unit ?? null, note: row.note ?? null, roomId } as Prisma.InventoryItemUncheckedCreateInput,
+        })) as ItemRecord;
+        const qty = row.quantity ?? 0;
+        if (qty > 0) {
+          await tx.inventoryItem.update({ where: { tenantId_id: { tenantId, id: item.id } }, data: { quantity: qty } });
+          await tx.inventoryMovement.create({
+            data: { tenantId, itemId: item.id, movementType: "receive", quantity: qty, balanceAfter: qty, movementDate, reason: "นำเข้าจาก Excel", reference: null, note: null },
+          });
+        }
+      }
+
+      await tx.auditLog.create({ data: { tenantId, actorUserId, action: "inventory:import", entityType: "inventory_item", entityId: null, after: { itemsCreated: rows.length, roomsCreated } as Prisma.InputJsonObject, metadata: {}, ip } });
+      return { itemsCreated: rows.length, roomsCreated };
     });
   }
 }

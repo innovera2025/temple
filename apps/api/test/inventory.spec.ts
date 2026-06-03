@@ -217,6 +217,61 @@ describe("inventory (คลังของบริจาค/พัสดุ)", 
     expect(actorB.tenant_id).toBe(templeB);
   });
 
+  it("creates a storage room, lists it with itemCount, and rejects a duplicate name (409)", async () => {
+    const name = `โรงเก็บ-${randomUUID().slice(0, 8)}`;
+    const { room } = await inventory.createRoom(actorA, templeA, ip, { name, note: "ของหนัก" });
+    expect(room.itemCount).toBe(0);
+    const { rooms } = await inventory.listRooms(templeA);
+    expect(rooms.some((r) => r.id === room.id && r.name === name)).toBe(true);
+    await expectProjectHttpError(inventory.createRoom(actorA, templeA, ip, { name }), 409, "CONFLICT");
+  });
+
+  it("assigns a room to an item; a non-existent/cross-tenant room is 422, not 500", async () => {
+    const { room } = await inventory.createRoom(actorA, templeA, ip, { name: `ห้อง-${randomUUID().slice(0, 8)}` });
+    const { item } = await inventory.createItem(actorA, templeA, ip, { name: `กับร่ม-${randomUUID().slice(0, 8)}`, roomId: room.id });
+    expect(item.roomId).toBe(room.id);
+    await expectProjectHttpError(
+      inventory.createItem(actorA, templeA, ip, { name: "x", roomId: randomUUID() }),
+      422,
+      "UNPROCESSABLE_ENTITY",
+    );
+  });
+
+  it("imports items from Excel rows: creates rooms by name, items, and a receive movement for qty", async () => {
+    const roomName = `คลังนำเข้า-${randomUUID().slice(0, 8)}`;
+    const a = `นำเข้า-A-${randomUUID().slice(0, 8)}`;
+    const b = `นำเข้า-B-${randomUUID().slice(0, 8)}`;
+    const result = await inventory.importItems(actorA, templeA, ip, {
+      rows: [
+        { name: a, category: "equipment", quantity: 12, unit: "ตัว", roomName },
+        { name: b, category: "พัสดุ/วัสดุสิ้นเปลือง", roomName },
+      ],
+    });
+    expect(result).toMatchObject({ itemsCreated: 2, roomsCreated: 1 });
+
+    const { items } = await inventory.listItems(templeA, { q: a });
+    const created = items.find((i) => i.name === a);
+    expect(created?.quantity).toBe(12); // backed by a receive movement
+    expect(created?.roomId).toBeTruthy();
+    const { rooms } = await inventory.listRooms(templeA);
+    expect(rooms.find((r) => r.name === roomName)?.itemCount).toBe(2);
+  });
+
+  it("rejects an invalid import payload (bad row) with 422", async () => {
+    await expectProjectHttpError(
+      inventory.importItems(actorA, templeA, ip, { rows: [{ name: "" }, { name: "ok", quantity: -5 }] }),
+      422,
+      "UNPROCESSABLE_ENTITY",
+    );
+  });
+
+  it("never imports into another tenant (RLS): rooms created are tenant-scoped", async () => {
+    const name = `iso-room-${randomUUID().slice(0, 8)}`;
+    await inventory.importItems(actorA, templeA, ip, { rows: [{ name: `iso-item-${randomUUID().slice(0, 8)}`, roomName: name }] });
+    const { rooms } = await inventory.listRooms(templeB);
+    expect(rooms.some((r) => r.name === name)).toBe(false);
+  });
+
   it("restricts writes to admin/staff (finance rejected); reads allow admin/finance/staff", () => {
     expect(reflector.get<string[]>(ROLES_KEY, InventoryController.prototype.createItem)).toEqual(["admin", "staff"]);
     expect(reflector.get<string[]>(ROLES_KEY, InventoryController.prototype.recordMovement)).toEqual(["admin", "staff"]);

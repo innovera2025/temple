@@ -4,7 +4,10 @@ import {
   parseItemQuery,
   validateCreateItem,
   validateCreateMovement,
+  validateCreateRoom,
+  validateImportItems,
   validateUpdateItem,
+  validateUpdateRoom,
 } from "@wat/shared";
 import { CurrentTenant } from "../common/decorators/current-tenant.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
@@ -14,7 +17,7 @@ import { AuthGuard } from "../common/guards/auth.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
 import { TenantGuard } from "../common/guards/tenant.guard";
 import { AuthenticatedUser } from "../common/types/authenticated-request";
-import { InventoryService, ItemRecord, MovementRecord } from "./inventory.service";
+import { InventoryService, ItemRecord, MovementRecord, RoomRecord } from "./inventory.service";
 
 const INVENTORY_WRITE_ROLES = ["admin", "staff"] as const;
 const INVENTORY_READ_ROLES = ["admin", "finance", "staff"] as const;
@@ -27,8 +30,29 @@ interface SerializedItem {
   quantity: number;
   status: string;
   note: string | null;
+  roomId: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+interface SerializedRoom {
+  id: string;
+  name: string;
+  note: string | null;
+  itemCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function serializeRoom(room: RoomRecord & { itemCount: number }): SerializedRoom {
+  return {
+    id: room.id,
+    name: room.name,
+    note: room.note,
+    itemCount: room.itemCount,
+    createdAt: room.createdAt.toISOString(),
+    updatedAt: room.updatedAt.toISOString(),
+  };
 }
 
 interface SerializedMovement {
@@ -53,6 +77,7 @@ function serializeItem(item: ItemRecord): SerializedItem {
     quantity: item.quantity,
     status: item.status,
     note: item.note,
+    roomId: item.roomId,
     createdAt: item.createdAt.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
   };
@@ -163,5 +188,57 @@ export class InventoryController {
     }
     const { movement, item } = await this.inventory.recordMovement(tenantId, user.sub, id, result.data, ip);
     return { movement: serializeMovement(movement), item: serializeItem(item) };
+  }
+
+  // ---- storage rooms (ห้อง/โรงเก็บ) ----
+  @Post("rooms")
+  @Roles(...INVENTORY_WRITE_ROLES)
+  async createRoom(
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentTenant() tenantId: string,
+    @Ip() ip: string,
+    @Body() body: unknown,
+  ): Promise<{ room: SerializedRoom }> {
+    const result = validateCreateRoom(body);
+    if (!result.success) throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ข้อมูลไม่ถูกต้อง", result.errors);
+    const room = await this.inventory.createRoom(tenantId, user.sub, result.data, ip);
+    return { room: serializeRoom({ ...room, itemCount: 0 }) };
+  }
+
+  @Get("rooms")
+  @Roles(...INVENTORY_READ_ROLES)
+  async listRooms(@CurrentTenant() tenantId: string): Promise<{ rooms: SerializedRoom[] }> {
+    return { rooms: (await this.inventory.listRooms(tenantId)).map(serializeRoom) };
+  }
+
+  @Patch("rooms/:id")
+  @Roles(...INVENTORY_WRITE_ROLES)
+  async updateRoom(
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentTenant() tenantId: string,
+    @Ip() ip: string,
+    @Param("id") id: string,
+    @Body() body: unknown,
+  ): Promise<{ room: SerializedRoom }> {
+    assertUuid(id);
+    const result = validateUpdateRoom(body);
+    if (!result.success) throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ข้อมูลไม่ถูกต้อง", result.errors);
+    const room = await this.inventory.updateRoom(tenantId, user.sub, id, result.data, ip);
+    return { room: serializeRoom({ ...room, itemCount: 0 }) };
+  }
+
+  // ---- Excel / bulk import (นำเข้าของภายในวัด) ----
+  @Post("import")
+  @Roles(...INVENTORY_WRITE_ROLES)
+  async importItems(
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentTenant() tenantId: string,
+    @Ip() ip: string,
+    @Body() body: unknown,
+  ): Promise<{ itemsCreated: number; roomsCreated: number }> {
+    const rows = Array.isArray(body) ? body : body && typeof body === "object" ? (body as { rows?: unknown }).rows : undefined;
+    const result = validateImportItems(rows);
+    if (!result.success) throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ข้อมูลนำเข้าไม่ถูกต้อง", result.errors);
+    return this.inventory.importItems(tenantId, user.sub, result.data, ip);
   }
 }
