@@ -1,4 +1,4 @@
-import { ReactElement } from "react";
+import { ReactElement, type Ref } from "react";
 import { Icon, IconName } from "./icons";
 import { EXTRA_NAV, NAV, PageId, TempleRole } from "./nav";
 
@@ -10,6 +10,10 @@ export interface SidebarUser {
 }
 
 export interface SidebarProps {
+  /** Element id so the topbar hamburger can reference it via aria-controls. */
+  id?: string;
+  /** ref to the in-drawer close button so focus can be moved into the drawer on open. */
+  closeButtonRef?: Ref<HTMLButtonElement>;
   page: PageId;
   goto: (id: PageId) => void;
   open?: boolean;
@@ -25,9 +29,9 @@ function avatarInitial(name: string): string {
   return (name || "ผู้ใช้").replace(/^(นาย|นางสาว|นาง|พระ)\s?/, "").charAt(0);
 }
 
-export function Sidebar({ page, goto, open, onClose, counts, user, can, onLogout }: SidebarProps): ReactElement {
+export function Sidebar({ id, closeButtonRef, page, goto, open, onClose, counts, user, can, onLogout }: SidebarProps): ReactElement {
   return (
-    <aside className={`sidebar ${open ? "open" : ""}`.trim()}>
+    <aside id={id} className={`sidebar ${open ? "open" : ""}`.trim()} aria-label="เมนูนำทาง">
       <div className="sb-brand">
         <div className="sb-seal">
           <Icon name="lotus" size={20} />
@@ -36,6 +40,9 @@ export function Sidebar({ page, goto, open, onClose, counts, user, can, onLogout
           <div className="name">วัดธรรมสถิตวนาราม</div>
           <div className="sub">ระบบบริหารจัดการวัด</div>
         </div>
+        <button ref={closeButtonRef} type="button" className="iconbtn sb-close" aria-label="ปิดเมนู" onClick={onClose}>
+          <Icon name="x" size={18} />
+        </button>
       </div>
 
       <nav className="sb-nav">

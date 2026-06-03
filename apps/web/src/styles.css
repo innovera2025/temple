@@ -352,6 +352,10 @@ body {
   min-height: 100vh;
   background: var(--paper);
 }
+/* Set by RoleShell while the mobile hamburger drawer is open. */
+body.drawer-open {
+  overflow: hidden;
+}
 
 .sidebar {
   display: flex;
@@ -391,6 +395,12 @@ body {
 .sb-brand .sub {
   font-size: 11.5px;
   color: var(--ink-3);
+}
+/* In-drawer close button — only shown in the mobile hamburger drawer. */
+.sb-close {
+  display: none;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .sb-nav {
@@ -571,19 +581,44 @@ body {
   display: none;
 }
 
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 @media (max-width: 860px) {
   .sidebar {
     position: fixed;
     inset: 0 auto 0 0;
     z-index: 50;
+    max-width: 86vw;
     transform: translateX(-100%);
-    transition: transform 0.2s ease;
+    /* Hidden (not just translated) when closed so the off-canvas nav controls
+     * leave the tab order + accessibility tree. */
+    visibility: hidden;
+    transition: transform 0.22s ease, visibility 0.22s ease;
+    box-shadow: 0 0 0 1px var(--border), 12px 0 32px -12px rgba(0, 0, 0, 0.35);
   }
   .sidebar.open {
     transform: none;
+    visibility: visible;
+  }
+  .sb-close {
+    display: inline-flex;
   }
   .menu-btn {
     display: inline-flex;
+  }
+  /* Comfortable ~44px touch targets for the primary mobile controls. */
+  .menu-btn,
+  .sb-close,
+  .sb-foot .iconbtn {
+    width: 44px;
+    height: 44px;
   }
   .tb-search {
     display: none;
@@ -593,7 +628,18 @@ body {
     position: fixed;
     inset: 0;
     z-index: 40;
-    background: rgba(0, 0, 0, 0.3);
+    background: rgba(0, 0, 0, 0.35);
+    animation: backdrop-in 0.2s ease;
+  }
+}
+
+/* Respect reduced-motion: skip the drawer slide + backdrop fade. */
+@media (prefers-reduced-motion: reduce) {
+  .sidebar {
+    transition: none;
+  }
+  .backdrop {
+    animation: none;
   }
 }
 

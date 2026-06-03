@@ -49,6 +49,39 @@ describe("rev2 design layout tokens (ds.css 2026-06-02-rev2)", () => {
   });
 });
 
+describe("responsive hamburger drawer (≤860px)", () => {
+  it("hides the hamburger + in-drawer close button on desktop", () => {
+    // Both default to display:none and are only revealed inside the mobile media query.
+    expect(css).toMatch(/\.menu-btn\s*\{\s*display:\s*none;?\s*\}/);
+    expect(css).toMatch(/\.sb-close\s*\{[^}]*display:\s*none/);
+    expect(css).toMatch(/\.backdrop\s*\{\s*display:\s*none;?\s*\}/);
+  });
+
+  it("turns the sidebar into a toggled off-canvas drawer at the 860px breakpoint", () => {
+    expect(css).toContain("@media (max-width: 860px)");
+    // off-canvas + hidden by default, slid in + visible when .open
+    expect(css).toContain("transform: translateX(-100%)");
+    expect(css).toMatch(/\.sidebar\s*\{[^}]*visibility:\s*hidden/);
+    expect(css).toMatch(/\.sidebar\.open\s*\{[^}]*transform:\s*none/);
+    expect(css).toMatch(/\.sidebar\.open\s*\{[^}]*visibility:\s*visible/);
+    // hamburger + close + backdrop become visible inside the breakpoint
+    expect(css).toMatch(/\.menu-btn\s*\{\s*display:\s*inline-flex/);
+    expect(css).toMatch(/\.sb-close\s*\{\s*display:\s*inline-flex/);
+    expect(css).toMatch(/\.backdrop\s*\{[^}]*display:\s*block/);
+  });
+
+  it("gives the primary mobile controls comfortable ~44px touch targets", () => {
+    // hamburger + in-drawer close + logout grow to 44px inside the mobile breakpoint
+    expect(css).toContain("width: 44px");
+    expect(css).toContain("height: 44px");
+  });
+
+  it("locks background scroll while the drawer is open and respects reduced motion", () => {
+    expect(css).toMatch(/body\.drawer-open\s*\{\s*overflow:\s*hidden;?\s*\}/);
+    expect(css).toContain("@media (prefers-reduced-motion: reduce)");
+  });
+});
+
 describe("rev2 :root tokens reconciled to ds.css (exact hexes, not reconstructed rgba)", () => {
   it("uses the design's exact secondary inks / surfaces / borders", () => {
     expect(css).toContain("--ink-2: #5b5448");
