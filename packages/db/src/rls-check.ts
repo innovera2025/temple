@@ -15,6 +15,8 @@ export const tenantTables = [
   "borrowable_items",
   "item_loans",
   "item_loan_settlements",
+  "inventory_items",
+  "inventory_movements",
   "storage_rooms",
 ] as const;
 
