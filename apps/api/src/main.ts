@@ -7,6 +7,18 @@ import { AppModule } from "./app.module";
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Behind a reverse proxy (e.g. the nginx web container) Express must trust a
+  // fixed number of proxy hops so `req.ip` is the real client — the RateLimitGuard
+  // keys pre-auth routes on it. TRUST_PROXY is the hop count (1 = one proxy);
+  // unset/empty leaves it OFF (direct connections), so `req.ip` stays the socket
+  // peer and cannot be spoofed via X-Forwarded-For. NEVER set this to `true`.
+  const trustProxy = process.env.TRUST_PROXY?.trim();
+  if (trustProxy) {
+    const hops = Number(trustProxy);
+    app.set("trust proxy", Number.isInteger(hops) && hops >= 0 ? hops : trustProxy);
+  }
+
   app.enableCors({
     origin: ["http://localhost:5173", "http://127.0.0.1:5173"],
     credentials: false,

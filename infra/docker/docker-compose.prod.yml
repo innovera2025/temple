@@ -1,0 +1,86 @@
+# Production-ish stack for the temple system. Build context is the repo root
+# (two levels up from this file). Run from the repo root:
+#
+#   docker compose -f infra/docker/docker-compose.prod.yml --env-file .env up -d --build
+#
+# Required env (see .env.example): POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB,
+# DATABASE_URL (host must be `db`, user must be able to SET ROLE wat_app/wat_migrate
+# and create roles on first migrate — i.e. the POSTGRES_USER superuser), JWT_SECRET.
+name: wat
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-wat}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - wat_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # One-off: applies committed Prisma migrations, then exits. Never seeds.
+  migrate:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+      target: migrate
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+      target: runner
+    environment:
+      NODE_ENV: production
+      API_PORT: "3000"
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env (>=32 chars)}
+      # Exactly one proxy (the web/nginx container) sits in front of the API, so
+      # trust 1 hop for a correct client IP in rate limiting. See main.ts.
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    # Healthcheck is defined in apps/api/Dockerfile (Node probe on /health).
+
+  web:
+    build:
+      context: ../..
+      dockerfile: apps/web/Dockerfile
+      args:
+        # Same-origin via the nginx /api proxy (no CORS). Override to an absolute
+        # URL only if you serve the API on a different origin (then enable CORS).
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+    ports:
+      - "${WEB_PUBLIC_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  wat_pg_data:

@@ -1,0 +1,24 @@
+# Build context is the repo root (the API/web Dockerfiles need the whole pnpm
+# workspace: lockfile + every package manifest + sources). Keep the context lean
+# and NEVER ship host node_modules, build output, or secrets into an image.
+**/node_modules
+**/dist
+**/.turbo
+.turbo
+.git
+.github
+.corepack
+**/coverage
+**/*.tsbuildinfo
+**/*.log
+
+# Secrets / local env — the runtime reads env at run time, never bake it in.
+.env
+.env.*
+!.env.example
+
+# Editor / OS noise and local artifacts
+.DS_Store
+.vscode
+.idea
+artifacts
