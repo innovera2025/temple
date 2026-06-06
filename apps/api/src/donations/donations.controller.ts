@@ -121,7 +121,12 @@ export class DonationsController {
       throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ข้อมูลไม่ถูกต้อง", result.errors);
     }
 
-    const created = await this.donations.create(tenantId, user.sub, result.data, ip);
+    const created = await this.donations.create(
+      tenantId,
+      { kind: "user", userId: user.sub },
+      result.data,
+      ip,
+    );
     return {
       donation: serializeDonation(created.donation),
       ledgerEntry: serializeLedgerEntry(created.ledgerEntry),
@@ -164,7 +169,13 @@ export class DonationsController {
       throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ข้อมูลไม่ถูกต้อง", result.errors);
     }
 
-    const donation = await this.donations.update(tenantId, user.sub, id, result.data, ip);
+    const donation = await this.donations.update(
+      tenantId,
+      { kind: "user", userId: user.sub },
+      id,
+      result.data,
+      ip,
+    );
     return { donation: serializeDonation(donation) };
   }
 
@@ -183,7 +194,13 @@ export class DonationsController {
       throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ข้อมูลไม่ถูกต้อง", result.errors);
     }
 
-    const donation = await this.donations.void(tenantId, user.sub, id, result.data.reason, ip);
+    const donation = await this.donations.void(
+      tenantId,
+      { kind: "user", userId: user.sub },
+      id,
+      result.data.reason,
+      ip,
+    );
     return { donation: serializeDonation(donation) };
   }
 }

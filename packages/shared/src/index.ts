@@ -16,4 +16,5 @@ export * from "./schemas/inventory";
 export * from "./schemas/item-loan";
 export * from "./schemas/user";
 export * from "./schemas/attachment";
+export * from "./schemas/devotee";
 export * from "./baht-text";

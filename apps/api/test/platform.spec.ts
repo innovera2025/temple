@@ -262,6 +262,17 @@ describe("platform admin", () => {
     expect(adminClaims.tenant_id).toBe(result.temple.id);
     expect(adminClaims.role).toBe("admin");
 
+    // a default chart of accounts is seeded so the temple can post donations
+    // from day one (donation income auto-posts to revenue code "4000").
+    const revenueAccount = await psql(
+      `SELECT account_type FROM ledger_accounts WHERE tenant_id = ${lit(result.temple.id)} AND code = '4000'`,
+    );
+    expect(revenueAccount).toBe("revenue");
+    const accountCount = await psql(
+      `SELECT count(*) FROM ledger_accounts WHERE tenant_id = ${lit(result.temple.id)}`,
+    );
+    expect(accountCount).toBe("4");
+
     // approving again is rejected (already reviewed)
     await expectHttpError(
       applications.approve(actorSuper, ip, appId, { slug: `wat-${randomUUID()}`, adminPassword: devPassword }),

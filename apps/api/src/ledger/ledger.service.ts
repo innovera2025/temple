@@ -1,7 +1,15 @@
 import { Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { type AuditActor, type AuditActorColumns, auditActorData } from "../common/audit/audit-actor";
 import { allocateLedgerEntryNo } from "./ledger-numbering";
 import { assertDateNotInClosedPeriod, lockTenantLedger } from "./ledger-periods";
+
+/** Resolve an audit context to the audit_logs actor columns (legacy actorUserId or full actor). */
+function ledgerActor(audit: LedgerAuditContext): AuditActorColumns {
+  return audit.actor
+    ? auditActorData(audit.actor)
+    : { actorUserId: audit.actorUserId ?? null, actorType: "user", actorDevoteeAccountId: null };
+}
 
 /**
  * Minimal income-posting + reversal helpers for Task 5. Full ledger CRUD is
@@ -25,7 +33,10 @@ export interface LedgerEntryRecord {
 }
 
 export interface LedgerAuditContext {
-  actorUserId: string;
+  /** Legacy staff actor (most callers). Use `actor` for devotee/non-user actors. */
+  actorUserId?: string;
+  /** Full actor descriptor (staff or devotee); takes precedence over actorUserId. */
+  actor?: AuditActor;
   ip?: string;
 }
 
@@ -82,7 +93,7 @@ export class LedgerService {
     await tx.auditLog.create({
       data: {
         tenantId: params.tenantId,
-        actorUserId: audit.actorUserId,
+        ...ledgerActor(audit),
         action: "ledger:post",
         entityType: "ledger_entry",
         entityId: entry.id,
@@ -143,7 +154,7 @@ export class LedgerService {
     await tx.auditLog.create({
       data: {
         tenantId: params.tenantId,
-        actorUserId: audit.actorUserId,
+        ...ledgerActor(audit),
         action: "ledger:update",
         entityType: "ledger_entry",
         entityId: after.id,
@@ -181,7 +192,7 @@ export class LedgerService {
     await tx.auditLog.create({
       data: {
         tenantId: params.tenantId,
-        actorUserId: audit.actorUserId,
+        ...ledgerActor(audit),
         action: "ledger:cancel",
         entityType: "ledger_entry",
         entityId: after.id,

@@ -8,6 +8,7 @@ import { CeremoniesModule } from "./ceremonies/ceremonies.module";
 import { ProjectExceptionFilter } from "./common/filters/project-exception.filter";
 import { validateEnv } from "./config/env.validation";
 import { DashboardModule } from "./dashboard/dashboard.module";
+import { DevoteeModule } from "./devotee/devotee.module";
 import { DonationsModule } from "./donations/donations.module";
 import { DonorsModule } from "./donors/donors.module";
 import { HealthModule } from "./health/health.module";
@@ -51,7 +52,8 @@ import { UsersModule } from "./users/users.module";
     ItemLoansModule,
     UsersModule,
     AttachmentsModule,
-    PlatformModule
+    PlatformModule,
+    DevoteeModule
   ],
   providers: [
     {

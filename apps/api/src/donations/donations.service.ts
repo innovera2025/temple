@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import type { CreateDonationInput, DonationSearchQuery, UpdateDonationInput } from "@wat/shared";
+import { type AuditActor, auditActorData } from "../common/audit/audit-actor";
 import { projectHttpException } from "../common/errors/project-error";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { LedgerEntryRecord, LedgerService } from "../ledger/ledger.service";
@@ -133,59 +134,88 @@ export class DonationsService {
    */
   async create(
     tenantId: string,
-    actorUserId: string,
+    actor: AuditActor,
+    input: CreateDonationInput,
+    ip?: string,
+  ): Promise<CreatedDonation> {
+    return this.prisma.withTenant(tenantId, (tx) => this.createInTx(tx, tenantId, actor, input, ip));
+  }
+
+  /**
+   * Like `create`, but the donor is resolved by `resolveDonorId` **inside the same
+   * transaction** as the donation. Used by the devotee plane to find-or-create the
+   * per-(tenant,devotee) donor atomically with the donation: if the donation fails
+   * (e.g. no revenue account -> 422) the donor insert rolls back too, so a failed
+   * devotee donation never leaves an orphan donor committed.
+   */
+  async createWithResolvedDonor(
+    tenantId: string,
+    actor: AuditActor,
+    resolveDonorId: (tx: Prisma.TransactionClient) => Promise<string>,
+    input: Omit<CreateDonationInput, "donorId">,
+    ip?: string,
+  ): Promise<CreatedDonation> {
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const donorId = await resolveDonorId(tx);
+      return this.createInTx(tx, tenantId, actor, { ...input, donorId }, ip);
+    });
+  }
+
+  /** Donation create + income post + audit, run inside the caller's tenant tx. */
+  private async createInTx(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    actor: AuditActor,
     input: CreateDonationInput,
     ip?: string,
   ): Promise<CreatedDonation> {
     const donationDate = toDateOnly(input.donationDate);
 
-    return this.prisma.withTenant(tenantId, async (tx) => {
-      if (input.donorId) {
-        await this.assertDonorInTenant(tx, input.donorId);
-      }
-      const account = await this.resolveRevenueAccount(tx, input.fundAccountId ?? undefined);
+    if (input.donorId) {
+      await this.assertDonorInTenant(tx, input.donorId);
+    }
+    const account = await this.resolveRevenueAccount(tx, input.fundAccountId ?? undefined);
 
-      const donation = (await tx.donation.create({
-        data: {
-          tenantId,
-          donorId: input.donorId ?? null,
-          amountSatang: BigInt(input.amountSatang),
-          method: input.method,
-          donationDate,
-          status: "confirmed",
-          note: input.note ?? null,
-          fundAccountId: input.fundAccountId ?? null,
-        },
-      })) as DonationRecord;
+    const donation = (await tx.donation.create({
+      data: {
+        tenantId,
+        donorId: input.donorId ?? null,
+        amountSatang: BigInt(input.amountSatang),
+        method: input.method,
+        donationDate,
+        status: "confirmed",
+        note: input.note ?? null,
+        fundAccountId: input.fundAccountId ?? null,
+      },
+    })) as DonationRecord;
 
-      await tx.auditLog.create({
-        data: {
-          tenantId,
-          actorUserId,
-          action: "donation:create",
-          entityType: "donation",
-          entityId: donation.id,
-          after: donationSnapshot(donation),
-          metadata: {},
-          ip,
-        },
-      });
-
-      const ledgerEntry = await this.ledger.postDonationIncome(
-        tx,
-        {
-          tenantId,
-          accountId: account.id,
-          donationId: donation.id,
-          amountSatang: donation.amountSatang,
-          entryDate: donationDate,
-          description: LEDGER_INCOME_DESCRIPTION,
-        },
-        { actorUserId, ip },
-      );
-
-      return { donation, ledgerEntry };
+    await tx.auditLog.create({
+      data: {
+        tenantId,
+        ...auditActorData(actor),
+        action: "donation:create",
+        entityType: "donation",
+        entityId: donation.id,
+        after: donationSnapshot(donation),
+        metadata: {},
+        ip,
+      },
     });
+
+    const ledgerEntry = await this.ledger.postDonationIncome(
+      tx,
+      {
+        tenantId,
+        accountId: account.id,
+        donationId: donation.id,
+        amountSatang: donation.amountSatang,
+        entryDate: donationDate,
+        description: LEDGER_INCOME_DESCRIPTION,
+      },
+      { actor, ip },
+    );
+
+    return { donation, ledgerEntry };
   }
 
   async list(tenantId: string, query: DonationSearchQuery): Promise<DonationRecord[]> {
@@ -244,7 +274,7 @@ export class DonationsService {
    */
   async update(
     tenantId: string,
-    actorUserId: string,
+    actor: AuditActor,
     id: string,
     input: UpdateDonationInput,
     ip?: string,
@@ -320,7 +350,7 @@ export class DonationsService {
       await tx.auditLog.create({
         data: {
           tenantId,
-          actorUserId,
+          ...auditActorData(actor),
           action: "donation:update",
           entityType: "donation",
           entityId: after.id,
@@ -341,7 +371,7 @@ export class DonationsService {
             entryDate: after.donationDate,
             accountId: account.id,
           },
-          { actorUserId, ip },
+          { actor, ip },
         );
       }
 
@@ -357,7 +387,7 @@ export class DonationsService {
    */
   async void(
     tenantId: string,
-    actorUserId: string,
+    actor: AuditActor,
     id: string,
     reason: string,
     ip?: string,
@@ -384,7 +414,7 @@ export class DonationsService {
         await tx.auditLog.create({
           data: {
             tenantId,
-            actorUserId,
+            ...auditActorData(actor),
             action: "receipt:void",
             entityType: "receipt",
             entityId: receipt.id,
@@ -397,7 +427,7 @@ export class DonationsService {
         });
       }
 
-      await this.ledger.voidDonationEntry(tx, { tenantId, donationId: id, reason }, { actorUserId, ip });
+      await this.ledger.voidDonationEntry(tx, { tenantId, donationId: id, reason }, { actor, ip });
 
       const after = (await tx.donation.update({
         where: { id },
@@ -407,7 +437,7 @@ export class DonationsService {
       await tx.auditLog.create({
         data: {
           tenantId,
-          actorUserId,
+          ...auditActorData(actor),
           action: "donation:void",
           entityType: "donation",
           entityId: after.id,

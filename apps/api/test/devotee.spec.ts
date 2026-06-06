@@ -1,0 +1,315 @@
+import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { promisify } from "node:util";
+import { HttpException, INestApplication } from "@nestjs/common";
+import { Test } from "@nestjs/testing";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { AppModule } from "../src/app.module";
+import { AuthService } from "../src/auth/auth.service";
+import { AuthGuard } from "../src/common/guards/auth.guard";
+import { DevoteeAuthService } from "../src/devotee/devotee-auth.service";
+import { DevoteeDonationsController } from "../src/devotee/devotee-donations.controller";
+import { DevoteeRecordsController } from "../src/devotee/devotee-records.controller";
+import { DevoteeTemplesController } from "../src/devotee/devotee-temples.controller";
+import { DevoteeGuard } from "../src/devotee/guards/devotee.guard";
+import { DevoteePrincipal } from "../src/devotee/types/devotee-request";
+
+const execFileAsync = promisify(execFile);
+const templeA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const templeB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const devPassword = "Password123!";
+const ip = "127.0.0.1";
+
+async function psql(sql: string): Promise<string> {
+  const { stdout } = await execFileAsync(
+    "docker",
+    [
+      "exec",
+      "-i",
+      process.env.POSTGRES_CONTAINER ?? "wat-dev-db",
+      "psql",
+      "-U",
+      process.env.POSTGRES_USER ?? "wat_dev",
+      "-d",
+      process.env.POSTGRES_DB ?? "wat_dev",
+      "-At",
+      "-c",
+      sql,
+    ],
+    { maxBuffer: 4 * 1024 * 1024 },
+  );
+  return stdout.trim();
+}
+
+function lit(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+async function returningId(sql: string): Promise<string> {
+  const out = await psql(sql);
+  return out.split("\n")[0]?.trim() ?? "";
+}
+
+async function insertTemple(slug: string, nameTh: string, status: string): Promise<string> {
+  return returningId(
+    `INSERT INTO temples (slug, name_th, status) VALUES (${lit(slug)}, ${lit(nameTh)}, ${lit(status)}) RETURNING id`,
+  );
+}
+
+interface DevoteeJwtClaims {
+  typ: string;
+  sub: string;
+  email: string;
+  tenant_id?: string;
+  role?: string;
+  platform_role?: string;
+}
+
+function decodeJwt(token: string): DevoteeJwtClaims {
+  const segment = token.split(".")[1];
+  if (!segment) {
+    throw new Error("JWT payload segment is missing");
+  }
+  return JSON.parse(Buffer.from(segment, "base64url").toString("utf8")) as DevoteeJwtClaims;
+}
+
+async function expectHttpError(promise: Promise<unknown>, statusCode: number): Promise<void> {
+  try {
+    await promise;
+  } catch (error: unknown) {
+    expect(error).toBeInstanceOf(HttpException);
+    expect((error as HttpException).getStatus()).toBe(statusCode);
+    return;
+  }
+  throw new Error(`Expected ${statusCode} exception`);
+}
+
+describe("devotee self-service plane", () => {
+  let app: INestApplication;
+  let devoteeAuth: DevoteeAuthService;
+  let tenantAuth: AuthService;
+  let temples: DevoteeTemplesController;
+  let donations: DevoteeDonationsController;
+  let records: DevoteeRecordsController;
+  let devoteeGuard: DevoteeGuard;
+  let tenantAuthGuard: AuthGuard;
+
+  let devotee1: DevoteePrincipal;
+  let devotee1Token: string;
+  let devotee2: DevoteePrincipal;
+  let tenantAccessToken: string;
+
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    app = moduleRef.createNestApplication();
+    await app.init();
+
+    devoteeAuth = app.get(DevoteeAuthService);
+    tenantAuth = app.get(AuthService);
+    temples = app.get(DevoteeTemplesController);
+    donations = app.get(DevoteeDonationsController);
+    records = app.get(DevoteeRecordsController);
+    devoteeGuard = app.get(DevoteeGuard);
+    tenantAuthGuard = app.get(AuthGuard);
+
+    const email1 = `devotee-${randomUUID()}@example.com`;
+    const tokens1 = await devoteeAuth.register(
+      { email: email1, displayName: "ญาติโยมหนึ่ง", password: devPassword },
+      ip,
+    );
+    devotee1Token = tokens1.accessToken;
+    const claims1 = decodeJwt(devotee1Token);
+    devotee1 = { sub: claims1.sub, email: claims1.email };
+
+    const email2 = `devotee-${randomUUID()}@example.com`;
+    const tokens2 = await devoteeAuth.register(
+      { email: email2, displayName: "ญาติโยมสอง", password: devPassword },
+      ip,
+    );
+    const claims2 = decodeJwt(tokens2.accessToken);
+    devotee2 = { sub: claims2.sub, email: claims2.email };
+
+    tenantAccessToken = (await tenantAuth.login({ email: "admin@wat-arun.example", password: devPassword }))
+      .accessToken;
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it("issues a devotee access token with typ=devotee_access and NO tenant_id/role", () => {
+    const claims = decodeJwt(devotee1Token);
+    expect(claims.typ).toBe("devotee_access");
+    expect(claims.tenant_id).toBeUndefined();
+    expect(claims.role).toBeUndefined();
+    expect(claims.platform_role).toBeUndefined();
+  });
+
+  it("rejects a duplicate-email registration with 409", async () => {
+    const email = `dup-${randomUUID()}@example.com`;
+    await devoteeAuth.register({ email, displayName: "ซ้ำ", password: devPassword }, ip);
+    await expectHttpError(
+      devoteeAuth.register({ email, displayName: "ซ้ำอีก", password: devPassword }, ip),
+      409,
+    );
+  });
+
+  it("rejects a wrong password at login with 401", async () => {
+    await expectHttpError(devoteeAuth.login({ email: devotee1.email, password: "wrong" }), 401);
+  });
+
+  it("isolates the token planes (devotee token rejected by tenant guard, and vice-versa)", async () => {
+    const tenantCtxWithDevoteeToken = {
+      switchToHttp: () => ({ getRequest: () => ({ headers: { authorization: `Bearer ${devotee1Token}` } }) }),
+    } as never;
+    await expect(tenantAuthGuard.canActivate(tenantCtxWithDevoteeToken)).rejects.toThrow();
+
+    const devoteeCtxWithTenantToken = {
+      switchToHttp: () => ({ getRequest: () => ({ headers: { authorization: `Bearer ${tenantAccessToken}` } }) }),
+    } as never;
+    await expect(devoteeGuard.canActivate(devoteeCtxWithTenantToken)).rejects.toThrow();
+  });
+
+  it("lists ACTIVE temples only and exposes no internal columns", async () => {
+    const inactiveId = await insertTemple(`wat-inactive-${randomUUID()}`, "วัดปิดรับ", "suspended");
+    const { temples: list } = await temples.list();
+
+    expect(list.some((t) => t.id === templeA)).toBe(true);
+    expect(list.some((t) => t.id === inactiveId)).toBe(false);
+    const sample = list[0];
+    expect(sample).toBeDefined();
+    expect(sample).not.toHaveProperty("taxId");
+    expect(sample).not.toHaveProperty("registrationNo");
+    expect(sample).not.toHaveProperty("slug");
+    expect(sample).not.toHaveProperty("receiptHeaderTh");
+  });
+
+  it("returns a public temple profile by id, but 404 for an inactive temple", async () => {
+    const { temple } = await temples.getById(templeA);
+    expect(temple.id).toBe(templeA);
+    expect(temple).not.toHaveProperty("taxId");
+    expect(temple).not.toHaveProperty("registrationNo");
+    expect(temple).not.toHaveProperty("slug");
+
+    const inactiveId = await insertTemple(`wat-inactive-${randomUUID()}`, "วัดปิดรับ", "suspended");
+    await expectHttpError(temples.getById(inactiveId), 404);
+  });
+
+  it("records a donation under the selected temple, tags the donor to the devotee, and audits as actor_type=devotee", async () => {
+    const result = await donations.create(devotee1, templeA, ip, {
+      amountSatang: 50000,
+      method: "cash",
+      donationDate: "2026-06-01",
+      // A forged devotee/donor field in the body must be ignored (validator strips it).
+      donorId: randomUUID(),
+      devoteeAccountId: randomUUID(),
+    } as never);
+
+    expect(result.donation.status).toBe("confirmed");
+    expect(result.donation.amountSatang).toBe("50000");
+    expect(result.ledgerEntry.entryNo).toBeTruthy();
+
+    // The donor is keyed to THIS devotee (token), never the forged id.
+    const donorDevotee = await psql(
+      `SELECT devotee_account_id FROM donors WHERE id = ${lit(result.donation.donorId ?? "")}`,
+    );
+    expect(donorDevotee).toBe(devotee1.sub);
+
+    // The donation + ledger entry belong to temple A.
+    const donationTenant = await psql(
+      `SELECT tenant_id FROM donations WHERE id = ${lit(result.donation.id)}`,
+    );
+    expect(donationTenant).toBe(templeA);
+
+    // The donation:create audit row records the devotee actor, NOT a user.
+    const auditRow = await psql(
+      `SELECT actor_type || '|' || coalesce(actor_user_id::text,'NULL') || '|' || coalesce(actor_devotee_account_id::text,'NULL') FROM audit_logs WHERE action = 'donation:create' AND entity_id = ${lit(result.donation.id)}`,
+    );
+    expect(auditRow).toBe(`devotee|NULL|${devotee1.sub}`);
+
+    // The ledger:post audit row carries the devotee actor too.
+    const ledgerAudit = await psql(
+      `SELECT actor_type, actor_user_id FROM audit_logs WHERE action = 'ledger:post' AND entity_id = ${lit(result.ledgerEntry.id)}`,
+    );
+    expect(ledgerAudit.startsWith("devotee|")).toBe(true);
+  });
+
+  it("reuses ONE donor per (temple, devotee) across repeat donations", async () => {
+    const first = await donations.create(devotee1, templeB, ip, {
+      amountSatang: 10000,
+      method: "cash",
+      donationDate: "2026-06-02",
+    } as never);
+    const second = await donations.create(devotee1, templeB, ip, {
+      amountSatang: 20000,
+      method: "qr",
+      donationDate: "2026-06-03",
+    } as never);
+    expect(first.donation.donorId).toBe(second.donation.donorId);
+
+    const donorCount = await psql(
+      `SELECT count(*) FROM donors WHERE tenant_id = ${lit(templeB)} AND devotee_account_id = ${lit(devotee1.sub)}`,
+    );
+    expect(donorCount).toBe("1");
+  });
+
+  it("rejects an invalid calendar date (2026-02-31) with 422 (not just a shape regex)", async () => {
+    await expectHttpError(
+      donations.create(devotee1, templeA, ip, {
+        amountSatang: 10000,
+        method: "cash",
+        donationDate: "2026-02-31",
+      } as never),
+      422,
+    );
+  });
+
+  it("rejects a donation to an inactive temple with 404", async () => {
+    const inactiveId = await insertTemple(`wat-inactive-${randomUUID()}`, "วัดปิดรับ", "suspended");
+    await expectHttpError(
+      donations.create(devotee1, inactiveId, ip, {
+        amountSatang: 10000,
+        method: "cash",
+        donationDate: "2026-06-01",
+      } as never),
+      404,
+    );
+  });
+
+  it("returns ONLY the requesting devotee's own donations across temples (cross-read isolation)", async () => {
+    await donations.create(devotee2, templeA, ip, {
+      amountSatang: 30000,
+      method: "cash",
+      donationDate: "2026-06-04",
+    } as never);
+
+    const { donations: mine } = await records.myDonations(devotee1);
+    const { donations: theirs } = await records.myDonations(devotee2);
+
+    // devotee1 donated to both temple A and temple B above.
+    expect(mine.some((d) => d.templeId === templeA)).toBe(true);
+    expect(mine.some((d) => d.templeId === templeB)).toBe(true);
+    // none of devotee1's rows may belong to devotee2 (verified by donor linkage).
+    const mineDonorOk = await Promise.all(
+      mine.map(async (d) => {
+        const owner = await psql(
+          `SELECT dn.devotee_account_id FROM donations d JOIN donors dn ON dn.id = d.donor_id WHERE d.id = ${lit(d.id)}`,
+        );
+        return owner === devotee1.sub;
+      }),
+    );
+    expect(mineDonorOk.every(Boolean)).toBe(true);
+
+    // devotee2 sees only its own (1+) and never devotee1's.
+    expect(theirs.length).toBeGreaterThanOrEqual(1);
+    const theirsDonorOk = await Promise.all(
+      theirs.map(async (d) => {
+        const owner = await psql(
+          `SELECT dn.devotee_account_id FROM donations d JOIN donors dn ON dn.id = d.donor_id WHERE d.id = ${lit(d.id)}`,
+        );
+        return owner === devotee2.sub;
+      }),
+    );
+    expect(theirsDonorOk.every(Boolean)).toBe(true);
+  });
+});

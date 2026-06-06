@@ -7,6 +7,9 @@ interface RateLimitedRequest {
   ip?: string;
   socket?: { remoteAddress?: string };
   user?: { sub?: string };
+  // The devotee plane sets its principal on request.devotee (not request.user),
+  // so include it here to key per-devotee-account rather than per-IP.
+  devotee?: { sub?: string };
 }
 
 interface WindowEntry {
@@ -45,7 +48,12 @@ export class RateLimitGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<RateLimitedRequest>();
-    const principal = request.user?.sub ?? request.ip ?? request.socket?.remoteAddress ?? "anonymous";
+    const principal =
+      request.user?.sub ??
+      request.devotee?.sub ??
+      request.ip ??
+      request.socket?.remoteAddress ??
+      "anonymous";
     const key = `${context.getClass().name}.${(context.getHandler() as { name?: string }).name ?? "h"}:${principal}`;
 
     const now = Date.now();

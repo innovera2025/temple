@@ -358,12 +358,19 @@ body.drawer-open {
 }
 
 .sidebar {
+  /* Self-contained viewport-height column (design ds.css rev2): the sidebar sticks
+   * to the top and never grows past 100vh, so .sb-nav scrolls internally and the
+   * .sb-foot user block + logout stay pinned to the bottom on long pages. */
+  position: sticky;
+  top: 0;
+  height: 100vh;
   display: flex;
   flex-direction: column;
   width: var(--sidebar-w);
   flex-shrink: 0;
   background: var(--surface-2);
   border-right: 1px solid var(--border);
+  overflow: hidden;
 }
 
 .sb-brand {
@@ -722,7 +729,105 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .bars-x { display: flex; gap: 7px; margin-top: 7px; }
 .bars-x span { flex: 1; text-align: center; font-size: 11px; color: var(--ink-3); }
 .doc { background: #fffdf9; border: 1px solid var(--border); border-radius: var(--r); padding: 40px 44px; font-family: var(--font-serif); color: var(--ink); box-shadow: 0 1px 2px rgba(29,26,22,.06); position: relative; }
-.doc .doc-seal { width: 60px; height: 60px; border-radius: 50%; border: 2px solid var(--accent); color: var(--accent); display: grid; place-items: center; }
+.doc .doc-seal { width: 56px; height: 56px; border-radius: 50%; border: 2px solid var(--accent); color: var(--accent); display: grid; place-items: center; flex-shrink: 0; }
+
+/* ---- Anumodana certificate (ใบอนุโมทนาบัตร): a formal, framed temple document ---- */
+.doc.cert {
+  padding: 50px 56px 40px;
+  background:
+    radial-gradient(120% 80% at 50% 0%, var(--accent-tint-2) 0%, transparent 55%),
+    #fffdf9;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  /* keep the gold frame, tinted band and seal colours when printed */
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+/* inner gold hairline frame */
+.cert::before {
+  content: "";
+  position: absolute;
+  inset: 14px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r);
+  pointer-events: none;
+  z-index: 1;
+}
+/* faint lotus seal watermark behind the text */
+.cert-watermark {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  opacity: 0.05;
+  z-index: 0;
+  pointer-events: none;
+}
+.cert > *:not(.cert-watermark) {
+  position: relative;
+  z-index: 2;
+}
+
+.cert-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 6px; }
+.cert-temple { display: flex; gap: 14px; align-items: center; }
+.cert-temple-name { font-size: 20px; font-weight: 600; letter-spacing: 0.01em; }
+.cert-temple-addr { font-size: 12.5px; color: var(--ink-2); margin-top: 2px; }
+.cert-no { text-align: right; flex-shrink: 0; }
+.cert-no-label { font-size: 12px; color: var(--ink-3); }
+.cert-no-val { font-size: 15px; font-weight: 600; }
+
+.cert-title-block { text-align: center; margin: 22px 0 18px; }
+.cert-title { margin: 0; font-family: var(--font-serif); font-size: 34px; font-weight: 700; color: var(--accent); line-height: 1.25; }
+.cert-ornament { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 12px 0; color: var(--accent); }
+.cert-rule { display: block; width: 56px; height: 1px; background: var(--accent-line); }
+.cert-issued { font-size: 13.5px; color: var(--ink-2); }
+
+.cert-recipient { text-align: center; margin: 4px 0 6px; }
+.cert-recipient-lead { font-size: 16px; color: var(--ink-2); }
+.cert-recipient-name { font-size: 24px; font-weight: 600; margin-top: 6px; }
+.cert-recipient-addr { font-size: 13px; color: var(--ink-2); margin-top: 4px; }
+
+.cert-amount { max-width: 460px; margin: 26px auto; padding: 20px 28px; text-align: center; background: var(--accent-tint-2); border: 1px solid var(--accent-line); border-radius: var(--r); }
+.cert-amount-label { font-size: 13px; color: var(--ink-2); }
+/* Amount uses the UI sans stack (not the document serif), so the figures render as
+ * clean lining/tabular numerals — consistent with money shown elsewhere in the app
+ * and free of Georgia's uneven old-style digits. */
+.cert-amount-baht { font-family: "IBM Plex Sans Thai", Inter, "Noto Sans Thai", system-ui, sans-serif; font-size: 35px; font-weight: 700; color: var(--accent); margin-top: 4px; letter-spacing: 0.01em; font-variant-numeric: lining-nums tabular-nums; }
+.cert-amount-unit { font-size: 19px; font-weight: 600; color: var(--accent); margin-left: 8px; letter-spacing: 0; }
+.cert-amount-text { font-size: 13.5px; color: var(--ink-2); margin-top: 2px; }
+
+.cert-blessing { text-align: center; font-size: 15px; line-height: 1.95; margin-top: 6px; }
+
+.cert-foot { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 40px; }
+.cert-edoc { font-size: 12px; color: var(--ink-3); }
+.cert-sign { text-align: center; }
+.cert-sign-line { width: 200px; height: 36px; border-bottom: 1px solid var(--ink-3); margin-bottom: 8px; }
+.cert-sign-name { font-family: var(--font-serif); font-size: 14.5px; }
+.cert-sign-role { font-size: 12.5px; color: var(--ink-2); }
+
+/* ---- Print: output ONLY the selected certificate, nothing else ---- */
+@media print {
+  .sidebar,
+  .topbar,
+  .backdrop,
+  .menu-btn {
+    display: none !important;
+  }
+  body { background: #fff !important; }
+  .app,
+  .tb-main { display: block !important; }
+  .tb-content { overflow: visible !important; padding: 0 !important; }
+  /* receipt page: hide the page header/buttons and the recent-receipts list,
+   * leaving just the .doc certificate on a single page. */
+  .receipt-page .page-head { display: none !important; }
+  .receipt-page .split { display: block !important; }
+  .receipt-page .split > *:not(.doc) { display: none !important; }
+  .receipt-page .doc.cert { margin: 0 auto !important; box-shadow: none !important; page-break-inside: avoid; }
+  @page { margin: 14mm; }
+}
 @media (max-width: 1080px){ .g-4{grid-template-columns:repeat(2,minmax(0,1fr))} .g-3{grid-template-columns:1fr} .split,.split-wide{grid-template-columns:1fr} }
 @media (max-width: 640px){ .g-4,.g-2{grid-template-columns:1fr} }
 
@@ -734,8 +839,13 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 
 .auth {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* minmax(0, 1fr) (not 1fr) so a column never grows to its content's min-content
+   * and overflow the viewport — the cause of the login "จอไม่นิ่ง" wobble. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   min-height: 100vh;
+  /* dvh tracks the *dynamic* viewport so the page doesn't jump when the mobile
+   * address bar shows/hides on scroll (the "จอไม่นิ่ง" instability). */
+  min-height: 100dvh;
   background: #f7f1e3;
   background-image:
     radial-gradient(circle at 0 0, rgba(212, 179, 98, 0.10), transparent 40%),
@@ -871,6 +981,11 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .auth-card {
   width: 100%;
   max-width: 440px;
+  /* min-width:0 lets the card shrink to the column; overflow-wrap lets long Thai
+   * runs (e.g. the demo-accounts divider label, which has no spaces to break at)
+   * wrap instead of forcing the card wider than the phone screen. */
+  min-width: 0;
+  overflow-wrap: anywhere;
   padding: 28px;
   border: 1px solid rgba(106, 74, 23, 0.12);
   border-radius: 18px;
@@ -992,6 +1107,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 }
 .control {
   width: 100%;
+  min-width: 0;
   padding: 9px 11px;
   border: 1px solid var(--border);
   border-radius: var(--r);
@@ -1020,7 +1136,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 }
 .form-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -1160,10 +1276,17 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 
 @media (max-width: 860px) {
   .auth {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .auth-art {
     display: none;
+  }
+  /* Top-align the card on phones: a card taller than the viewport stays put and
+   * scrolls naturally (vertical-centering would lurch it up when the keyboard
+   * opens and could push the top out of reach). */
+  .auth-panel {
+    align-items: flex-start;
+    padding: 24px 16px;
   }
 }
 
@@ -1208,3 +1331,149 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 /* Avatar colour variants (finance/staff/success). */
 .av.blue { background: var(--reconciled-tint); color: var(--reconciled); }
 .av.green { background: var(--credit-tint); color: var(--credit); }
+
+/* ===========================================================================
+ * Mobile responsiveness — keep page content within the viewport (≤860 / ≤640).
+ * ======================================================================== */
+
+/* A wide segmented control (filter tabs, the roles sub-tabs) must scroll, not
+ * clip — an inline-flex .seg with many long Thai labels otherwise overflows the
+ * card/page and the last option becomes unreachable. */
+@media (max-width: 860px) {
+  .seg {
+    display: flex;
+    max-width: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .seg button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 640px) {
+  /* Two-column form grids stack on phones (modals + intake forms). */
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+  /* Anumodana certificate: reclaim side padding, scale headings, and let the
+   * footer (e-doc note + signature) wrap instead of clipping inside the
+   * overflow:hidden frame. */
+  .doc.cert {
+    padding: 28px 18px 24px;
+  }
+  .cert::before {
+    inset: 8px;
+  }
+  .cert-title {
+    font-size: 26px;
+  }
+  .cert-amount-baht {
+    font-size: 28px;
+  }
+  .cert-recipient-name {
+    font-size: 20px;
+  }
+  .cert-foot {
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  .cert-foot .cert-sign {
+    width: 100%;
+  }
+  .cert-sign-line {
+    width: 100%;
+    max-width: 200px;
+  }
+}
+
+/* ============================================================================
+ * Devotee (ญาติโยม) self-service portal (#/devotee). A separate public-facing
+ * plane — NOT the staff RoleShell. Reuses the design tokens + .card/.field/.seg.
+ * ============================================================================ */
+.page-sub { color: var(--ink-2); font-size: 14px; margin: 6px 0 0; line-height: 1.6; }
+.link-btn { border: 0; background: transparent; color: var(--accent); font: inherit; cursor: pointer; padding: 0; }
+.link-btn:hover { text-decoration: underline; }
+.auth-success {
+  margin: 4px 0 14px; padding: 12px 14px; border-radius: var(--r);
+  background: #eef6ef; border: 1px solid #cfe4d4; color: #2f5d3c; font-size: 14px; line-height: 1.6;
+}
+.auth-success p { margin: 0; }
+.auth-success .muted { margin-top: 4px; }
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 32px; text-align: center; color: var(--ink-2);
+}
+.empty-state p { margin: 0; }
+
+.a-seal.sm { width: 32px; height: 32px; border-radius: 9px; }
+.a-seal.lg { width: 64px; height: 64px; border-radius: 18px; }
+
+/* Login / register */
+.devotee-auth {
+  min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 32px 16px;
+  background: #f7f1e3;
+  background-image:
+    radial-gradient(circle at 0 0, rgba(212, 179, 98, 0.10), transparent 40%),
+    radial-gradient(circle at 100% 100%, rgba(126, 179, 147, 0.08), transparent 40%);
+}
+.devotee-auth-card { width: 100%; max-width: 420px; min-width: 0; padding: 26px; }
+.devotee-auth-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+.devotee-auth-title { font-family: var(--font-serif); font-size: 20px; font-weight: 600; color: var(--ink); }
+.devotee-auth-sub { font-size: 12.5px; color: var(--ink-2); line-height: 1.5; }
+.devotee-auth .seg { display: flex; width: 100%; margin-bottom: 18px; }
+.devotee-auth .seg button { flex: 1; justify-content: center; }
+
+/* Portal shell */
+.devotee-shell { min-height: 100vh; min-height: 100dvh; background: var(--surface-2); }
+.devotee-topbar {
+  position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  padding: 10px 20px; background: var(--surface); border-bottom: 1px solid var(--border);
+}
+.devotee-brand {
+  display: inline-flex; align-items: center; gap: 9px; border: 0; background: transparent; cursor: pointer;
+  font-family: var(--font-serif); font-weight: 600; font-size: 16px; color: var(--ink);
+}
+.devotee-nav { display: flex; gap: 4px; margin-right: auto; }
+.devotee-nav button {
+  border: 0; background: transparent; color: var(--ink-2); font: inherit; font-weight: 500;
+  padding: 7px 12px; border-radius: var(--r); cursor: pointer;
+}
+.devotee-nav button.active { background: var(--accent-tint); color: var(--accent); font-weight: 600; }
+.devotee-account { display: inline-flex; align-items: center; gap: 12px; }
+.devotee-account-name { font-size: 13px; color: var(--ink-2); font-weight: 500; }
+.devotee-main { padding: 28px 20px 56px; }
+
+/* Temple directory */
+.devotee-temple-grid {
+  display: grid; gap: 16px; margin-top: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+.devotee-temple-card { display: flex; flex-direction: column; gap: 12px; padding: 18px; }
+.devotee-temple-logo {
+  width: 48px; height: 48px; border-radius: 12px; display: grid; place-items: center; overflow: hidden;
+  background: var(--accent-tint); color: var(--accent);
+}
+.devotee-temple-logo.lg { width: 72px; height: 72px; border-radius: 16px; }
+.devotee-temple-logo img { width: 100%; height: 100%; object-fit: cover; }
+.devotee-temple-body { flex: 1; }
+.devotee-temple-name { font-family: var(--font-serif); font-size: 17px; font-weight: 600; color: var(--ink); }
+.devotee-temple-en { font-size: 12.5px; color: var(--ink-3); margin-top: 2px; }
+.devotee-temple-place { font-size: 13px; color: var(--ink-2); margin-top: 6px; }
+
+/* Temple detail + donate */
+.devotee-temple-detail { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 900px) { .devotee-temple-detail { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); align-items: start; } }
+.devotee-temple-info { display: flex; gap: 18px; padding: 20px; }
+.devotee-info-list { margin: 0; flex: 1; display: flex; flex-direction: column; gap: 10px; }
+.devotee-info-row { display: grid; grid-template-columns: 92px 1fr; gap: 10px; font-size: 14px; }
+.devotee-info-row dt { color: var(--ink-3); }
+.devotee-info-row dd { margin: 0; color: var(--ink); }
+.devotee-donate { padding: 20px; }
+.devotee-donate-title { margin: 0 0 14px; font-family: var(--font-serif); font-size: 18px; font-weight: 600; color: var(--ink); }
+
+/* My records */
+.devotee-records-section { margin-top: 26px; }
+.devotee-records-section h2 { margin: 0 0 12px; font-size: 16px; font-weight: 600; color: var(--ink); }

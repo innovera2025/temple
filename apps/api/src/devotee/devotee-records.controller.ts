@@ -1,0 +1,44 @@
+import { Controller, Get, Inject, UseGuards } from "@nestjs/common";
+import { RateLimit } from "../common/decorators/rate-limit.decorator";
+import { RateLimitGuard } from "../common/guards/rate-limit.guard";
+import { unauthorized } from "../common/errors/project-error";
+import { CurrentDevotee } from "./decorators/current-devotee.decorator";
+import { DevoteeGuard } from "./guards/devotee.guard";
+import {
+  DevoteeDonationView,
+  DevoteeReceiptView,
+  DevoteeRecordsService,
+} from "./devotee-records.service";
+import { DevoteePrincipal } from "./types/devotee-request";
+
+/**
+ * A devotee's own cross-temple history. Mounts ONLY the DevoteeGuard. The
+ * `devoteeAccountId` predicate is taken from the token (`devotee.sub`), never
+ * from the request, so a devotee can only ever read their own records.
+ */
+@Controller("devotee/me")
+@UseGuards(DevoteeGuard, RateLimitGuard)
+@RateLimit({ limit: 60, windowMs: 60_000 })
+export class DevoteeRecordsController {
+  constructor(@Inject(DevoteeRecordsService) private readonly records: DevoteeRecordsService) {}
+
+  @Get("donations")
+  async myDonations(
+    @CurrentDevotee() devotee: DevoteePrincipal | undefined,
+  ): Promise<{ donations: DevoteeDonationView[] }> {
+    if (!devotee) {
+      throw unauthorized("Missing access token");
+    }
+    return { donations: await this.records.listMyDonations(devotee.sub) };
+  }
+
+  @Get("receipts")
+  async myReceipts(
+    @CurrentDevotee() devotee: DevoteePrincipal | undefined,
+  ): Promise<{ receipts: DevoteeReceiptView[] }> {
+    if (!devotee) {
+      throw unauthorized("Missing access token");
+    }
+    return { receipts: await this.records.listMyReceipts(devotee.sub) };
+  }
+}

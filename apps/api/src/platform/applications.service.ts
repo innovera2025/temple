@@ -121,6 +121,20 @@ export class ApplicationsService {
           select: { id: true },
         });
         adminUserId = adminUser.id;
+
+        // Seed a default chart of accounts so the temple can post donations from
+        // day one. Donation income auto-posts to revenue account code "4000"
+        // (DonationsService.DEFAULT_REVENUE_ACCOUNT_CODE); without it every
+        // donation — staff or devotee — would 422 "ไม่พบบัญชีรายรับ". Mirrors the
+        // dev seed (packages/db/prisma/seed.ts) and stays atomic with approval.
+        await tx.ledgerAccount.createMany({
+          data: [
+            { tenantId: temple.id, code: "1000", nameTh: "เงินสด", accountType: "asset" },
+            { tenantId: temple.id, code: "1100", nameTh: "เงินฝากธนาคาร", accountType: "asset" },
+            { tenantId: temple.id, code: "4000", nameTh: "รายรับเงินบริจาค", accountType: "revenue" },
+            { tenantId: temple.id, code: "5000", nameTh: "ค่าใช้จ่ายทั่วไป", accountType: "expense" },
+          ],
+        });
       } catch (error: unknown) {
         if (isUniqueViolation(error)) {
           throw conflict("slug หรืออีเมลแอดมินถูกใช้แล้ว");

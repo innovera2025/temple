@@ -4,6 +4,7 @@ import { RoleShell } from "./layout/RoleShell";
 import { defaultPageFor, PageId, TempleRole } from "./layout/nav";
 import { PageContent } from "./features/page-content";
 import { LoginScreen } from "./features/auth/login-view";
+import { DevoteePortal } from "./features/devotee/devotee-portal";
 import {
   clearSession,
   createAuthApiClient,
@@ -19,11 +20,16 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000
 // later slice; for now the default route is the temple product and #/smoke is a
 // dev-only escape hatch to the backend smoke shell. The Agent Control Tower is a
 // separate dev artifact and is never rendered here.
-type Route = "app" | "smoke";
+type Route = "app" | "smoke" | "devotee";
 
 function readRoute(): Route {
   if (typeof window === "undefined") return "app";
-  return window.location.hash.replace(/^#\/?/, "") === "smoke" ? "smoke" : "app";
+  // The devotee (ญาติโยม) self-service portal is a separate top-level plane —
+  // its own identity/session and NEVER the staff RoleShell/back-office.
+  const hash = window.location.hash.replace(/^#\/?/, "");
+  if (hash === "smoke") return "smoke";
+  if (hash === "devotee" || hash.startsWith("devotee/")) return "devotee";
+  return "app";
 }
 
 function useRoute(): Route {
@@ -88,6 +94,9 @@ export function App(): ReactElement {
   const route = useRoute();
   if (route === "smoke") {
     return <SmokeShell />;
+  }
+  if (route === "devotee") {
+    return <DevoteePortal baseUrl={API_BASE_URL} today={todayIso()} />;
   }
   return <TempleApp />;
 }

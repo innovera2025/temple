@@ -76,6 +76,8 @@ const platformUserValues = (
   )
 ).join(",\n    ");
 
+const devoteeHash = await devPasswordHash("devotee@example.com");
+
 await psql(`
   SET ROLE wat_migrate;
 
@@ -138,6 +140,15 @@ await psql(`
       contact_email = EXCLUDED.contact_email,
       updated_at = now()
   WHERE temple_applications.status = 'pending';
+
+  -- One demo devotee (ญาติโยม) self-service account. Password: ${devPassword}
+  INSERT INTO devotee_accounts (id, email, display_name, password_hash)
+  VALUES ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'devotee@example.com', 'คุณญาติโยมเดโม', ${sqlLiteral(devoteeHash)})
+  ON CONFLICT (id) DO UPDATE
+  SET display_name = EXCLUDED.display_name,
+      password_hash = EXCLUDED.password_hash,
+      is_active = true,
+      updated_at = now();
 
   RESET ROLE;
 `);

@@ -252,6 +252,39 @@ model TempleApplication {
   @@map("temple_applications")
 }
 
+// Devotee (ญาติโยม) self-service identity — tenant-INDEPENDENT (no tenantId), its
+// own auth plane. Mirrors PlatformUser. The selected temple is chosen per request.
+model DevoteeAccount {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String   @unique
+  displayName  String   @map("display_name")
+  passwordHash String?  @map("password_hash")
+  phone        String?
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  donors        Donor[]
+  refreshTokens DevoteeRefreshToken[]
+
+  @@map("devotee_accounts")
+}
+
+model DevoteeRefreshToken {
+  id                String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  devoteeAccountId  String               @map("devotee_account_id") @db.Uuid
+  devoteeAccount    DevoteeAccount       @relation(fields: [devoteeAccountId], references: [id])
+  tokenHash         String               @unique @map("token_hash")
+  expiresAt         DateTime             @map("expires_at") @db.Timestamptz(6)
+  revokedAt         DateTime?            @map("revoked_at") @db.Timestamptz(6)
+  replacedByTokenId String?              @map("replaced_by_token_id") @db.Uuid
+  replacedByToken   DevoteeRefreshToken? @relation("DevoteeRefreshTokenReplacement", fields: [replacedByTokenId], references: [id])
+  replacesTokens    DevoteeRefreshToken[] @relation("DevoteeRefreshTokenReplacement")
+  createdAt         DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([devoteeAccountId])
+  @@map("devotee_refresh_tokens")
+}
+
 model PlatformRefreshToken {
   id                String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   platformUserId    String                @map("platform_user_id") @db.Uuid
@@ -332,10 +365,13 @@ model Donor {
   tags        String[]    @default([])
   notes       String?
   consent     Boolean     @default(false)
+  devoteeAccountId String?  @map("devotee_account_id") @db.Uuid
+  devoteeAccount   DevoteeAccount? @relation(fields: [devoteeAccountId], references: [id])
   createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime    @default(now()) @map("updated_at") @db.Timestamptz(6)
   donations   Donation[]
 
+  @@unique([tenantId, devoteeAccountId])
   @@index([tenantId])
   @@map("donors")
 }
@@ -484,6 +520,7 @@ model ItemLoan {
   borrowedAt    DateTime             @map("borrowed_at") @db.Date
   dueAt         DateTime?            @map("due_at") @db.Date
   borrowPhotoId String?              @map("borrow_photo_id") @db.Uuid
+  borrowPhotoIds Json?               @map("borrow_photo_ids")
   status        LoanStatus           @default(borrowed)
   returnedAt    DateTime?            @map("returned_at") @db.Date
   returnedQty   Int?                 @map("returned_qty")
@@ -660,6 +697,8 @@ model AuditLog {
   tenant      Temple    @relation(fields: [tenantId], references: [id])
   actorUserId String?   @map("actor_user_id") @db.Uuid
   actorUser   User?     @relation(fields: [actorUserId], references: [id])
+  actorType   String    @default("user") @map("actor_type")
+  actorDevoteeAccountId String? @map("actor_devotee_account_id") @db.Uuid
   action      String
   entityType  String    @map("entity_type")
   entityId    String?   @map("entity_id") @db.Uuid
