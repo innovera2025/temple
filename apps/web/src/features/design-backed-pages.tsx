@@ -1,24 +1,42 @@
 import { type ReactElement, type ReactNode, useEffect, useMemo, useState } from "react";
-import { type FieldError, bahtText } from "@wat/shared";
+import { type FieldError, bahtText, formatSatang } from "@wat/shared";
 import { Badge, Button, Card, Modal, SearchBox, Toast, Toolbar } from "../design-system";
 import { Icon, type IconName } from "../layout/icons";
 import type { PageId, TempleRole } from "../layout/nav";
 import { type DashboardApi, type DashboardView, displayBaht, methodLabel, statusLabel } from "./dashboard/dashboard";
-import { type LedgerApi, type LedgerEntryView, type LedgerSummaryView } from "./ledger/ledger";
+import {
+  type LedgerAccountView,
+  type LedgerApi,
+  type LedgerEntryView,
+  type LedgerFormValues,
+  type LedgerSummaryView,
+  accountOptionLabel,
+  directionLabel,
+  emptyLedgerForm,
+  postableAccounts,
+  validateLedgerEntryForm,
+} from "./ledger/ledger";
 import {
   type CeremoniesApi,
   type Ceremony,
+  type CeremonyType,
+  type CreateCeremonyInput,
+  CEREMONY_FORM_SECTIONS,
   CEREMONY_TYPE_OPTIONS,
   ceremonyStatusLabel,
   ceremonyTypeLabel,
 } from "./ceremonies/ceremonies";
 import {
+  type CreatePersonnelInput,
   type Personnel,
   type PersonnelApi,
+  type PersonnelType,
+  PERSONNEL_FORM_SECTIONS,
+  PERSONNEL_TYPE_OPTIONS,
   personnelStatusLabel,
   personnelTypeLabel,
 } from "./personnel/personnel";
-import { type TenantUser, type UsersApi, roleLabel } from "./users/users";
+import { type CreateUserInput, type TenantUser, type UpdateUserInput, type UsersApi, ROLE_OPTIONS, roleLabel } from "./users/users";
 import { type CreateDonorInput, type DonorRecord, type DonorsApi, donorTypeLabel } from "./donors/donors";
 import {
   type DonationFormValues,
@@ -462,6 +480,11 @@ export function DesignDonors({ api, canWrite }: { api?: DonorsApi; canWrite: boo
 // ============ 4. RECEIPT / ANUMODANA ============
 const RECEIPT_STATUS_KIND: Record<string, "credit" | "void" | "neutral"> = { issued: "credit", voided: "void", superseded: "neutral" };
 
+// Arabic → Thai numerals (๐–๙) for the formal certificate; separators/decimals stay as-is.
+function toThaiDigits(s: string): string {
+  return s.replace(/[0-9]/g, (d) => "๐๑๒๓๔๕๖๗๘๙".charAt(d.charCodeAt(0) - 48));
+}
+
 export function DesignReceipt({ api, donationsApi, donorsApi }: { api?: ReceiptsApi; donationsApi?: DonationsApi; donorsApi?: DonorsApi }): ReactElement {
   const [receipts, setReceipts] = useState<ReceiptView[] | null>(null);
   const [donations, setDonations] = useState<DonationView[]>([]);
@@ -513,7 +536,7 @@ export function DesignReceipt({ api, donationsApi, donorsApi }: { api?: Receipts
   }
 
   return (
-    <div className="content-wrap">
+    <div className="content-wrap receipt-page">
       <PageHead eyebrow="การบริจาค" title="ใบอนุโมทนาบัตร" desc="ดูตัวอย่าง พิมพ์ หรือยกเลิกใบอนุโมทนาบัตร รูปแบบเอกสารทางการของวัด"
         actions={<>
           <Button variant="secondary" icon={<Icon name="print" size={15} />} onClick={() => { if (typeof window !== "undefined") window.print(); }}>พิมพ์</Button>
@@ -521,30 +544,51 @@ export function DesignReceipt({ api, donationsApi, donorsApi }: { api?: Receipts
         </>} />
       {error ? <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: "var(--r)", background: "var(--danger-tint)", color: "var(--danger)", fontSize: 13 }}>โหลดข้อมูลใบอนุโมทนาบัตรไม่สำเร็จ: {error}</div> : null}
       <div className="split">
-        <div className="doc">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
-            <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+        <div className="doc cert">
+          <div className="cert-watermark" aria-hidden="true"><Icon name="lotus" size={300} /></div>
+
+          <div className="cert-head">
+            <div className="cert-temple">
               <div className="doc-seal"><Icon name="lotus" size={30} /></div>
-              <div><div style={{ fontSize: 19, fontWeight: 600 }}>วัดธรรมสถิตวนาราม</div><div style={{ fontSize: 12.5, color: "var(--ink-2)" }}>๑๒๓ หมู่ ๔ ต.ในเมือง อ.เมือง จ.เชียงใหม่ ๕๐๐๐๐ · โทร. ๐๕๓-๑๒๓-๔๕๖๗</div></div>
+              <div>
+                <div className="cert-temple-name">วัดธรรมสถิตวนาราม</div>
+                <div className="cert-temple-addr">๑๒๓ หมู่ ๔ ต.ในเมือง อ.เมือง จ.เชียงใหม่ ๕๐๐๐๐ · โทร. ๐๕๓-๑๒๓-๔๕๖๗</div>
+              </div>
             </div>
-            <div style={{ textAlign: "right" }}><div style={{ fontSize: 12, color: "var(--ink-3)" }}>เลขที่</div><div style={{ fontSize: 15, fontWeight: 600 }} className="mono">{sel?.receiptNo ?? "—"}</div>{sel ? <div style={{ marginTop: 4 }}><Badge kind={RECEIPT_STATUS_KIND[sel.status] ?? "neutral"} dot>{receiptStatusLabel(sel.status)}</Badge></div> : null}</div>
-          </div>
-          <div style={{ textAlign: "center", margin: "18px 0 24px" }}>
-            <div style={{ fontSize: 26, fontWeight: 700, color: "var(--accent)" }}>ใบอนุโมทนาบัตร</div>
-            <div style={{ width: 64, height: 2, background: "var(--accent-line)", margin: "10px auto" }} />
-            <div style={{ fontSize: 13.5, color: "var(--ink-2)" }}>ออกให้ ณ วันที่ {sel?.issuedAt ?? "—"}</div>
-          </div>
-          <div style={{ fontSize: 16, lineHeight: 2, textAlign: "center" }}>ขออนุโมทนาบุญแด่<br /><span style={{ fontSize: 22, fontWeight: 600 }}>{sel?.donorName ?? "—"}</span><br /><span style={{ fontSize: 13.5, color: "var(--ink-2)" }}>{sel?.address ?? ""}</span></div>
-          <div style={{ margin: "24px 0", padding: "18px 22px", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: "var(--r)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div><div style={{ fontSize: 12.5, color: "var(--ink-3)" }}>ได้บริจาคทรัพย์เป็นจำนวน</div></div>
-              <div style={{ textAlign: "right" }}><div className="tnum" style={{ fontSize: 30, fontWeight: 700, color: "var(--accent)" }}>{sel?.amountSatang ? displayBaht(sel.amountSatang) : "—"}</div><div style={{ fontSize: 12.5, color: "var(--ink-2)" }}>{sel?.amountSatang ? `(${bahtText(Number(sel.amountSatang))})` : ""}</div></div>
+            <div className="cert-no">
+              <div className="cert-no-label">เลขที่</div>
+              <div className="cert-no-val mono">{sel?.receiptNo ?? "—"}</div>
+              {sel ? <div style={{ marginTop: 6 }}><Badge kind={RECEIPT_STATUS_KIND[sel.status] ?? "neutral"} dot>{receiptStatusLabel(sel.status)}</Badge></div> : null}
             </div>
           </div>
-          <div style={{ textAlign: "center", fontSize: 15, lineHeight: 1.9 }}>ขออำนาจคุณพระศรีรัตนตรัยและสิ่งศักดิ์สิทธิ์ทั้งหลาย<br />จงดลบันดาลให้ท่านและครอบครัว ประสบแต่ความสุขความเจริญ เทอญ</div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginTop: 36 }}>
-            <div style={{ fontSize: 12, color: "var(--ink-3)" }}>เอกสารนี้ออกโดยระบบอิเล็กทรอนิกส์</div>
-            <div style={{ textAlign: "center" }}><div style={{ borderBottom: "1px solid var(--ink-3)", width: 200, marginBottom: 8, height: 34 }} /><div style={{ fontFamily: "var(--font-serif)", fontSize: 14 }}>พระอธิการสมหวัง สุจิตฺโต</div><div style={{ fontSize: 12.5, color: "var(--ink-2)" }}>เจ้าอาวาส</div></div>
+
+          <div className="cert-title-block">
+            <h2 className="cert-title">ใบอนุโมทนาบัตร</h2>
+            <div className="cert-ornament" aria-hidden="true"><span className="cert-rule" /><Icon name="lotus" size={15} /><span className="cert-rule" /></div>
+            <div className="cert-issued">ออกให้ ณ วันที่ {sel?.issuedAt ?? "—"}</div>
+          </div>
+
+          <div className="cert-recipient">
+            <div className="cert-recipient-lead">ขออนุโมทนาบุญแด่</div>
+            <div className="cert-recipient-name">{sel?.donorName ?? "—"}</div>
+            {sel?.address ? <div className="cert-recipient-addr">{sel.address}</div> : null}
+          </div>
+
+          <div className="cert-amount">
+            <div className="cert-amount-label">ได้บริจาคทรัพย์เป็นจำนวน</div>
+            <div className="cert-amount-baht tnum">{sel?.amountSatang ? <>{toThaiDigits(formatSatang(sel.amountSatang))}<span className="cert-amount-unit">บาท</span></> : "—"}</div>
+            <div className="cert-amount-text">{sel?.amountSatang ? `(${bahtText(Number(sel.amountSatang))})` : ""}</div>
+          </div>
+
+          <div className="cert-blessing">ขออำนาจคุณพระศรีรัตนตรัยและสิ่งศักดิ์สิทธิ์ทั้งหลาย<br />จงดลบันดาลให้ท่านและครอบครัว ประสบแต่ความสุขความเจริญ เทอญ</div>
+
+          <div className="cert-foot">
+            <div className="cert-edoc">เอกสารนี้ออกโดยระบบอิเล็กทรอนิกส์</div>
+            <div className="cert-sign">
+              <div className="cert-sign-line" aria-hidden="true" />
+              <div className="cert-sign-name">พระอธิการสมหวัง สุจิตฺโต</div>
+              <div className="cert-sign-role">เจ้าอาวาส</div>
+            </div>
           </div>
         </div>
         <div>
@@ -598,23 +642,76 @@ function ledgerDisplayStatus(e: LedgerEntryView): "reconciled" | "posted" | "pen
   return "pending"; // draft
 }
 
-export function DesignLedger({ api, today }: { api?: LedgerApi; today?: string }): ReactElement {
+export function DesignLedger({ api, reportsApi, today, canWrite }: { api?: LedgerApi; reportsApi?: ReportsApi; today?: string; canWrite?: boolean }): ReactElement {
   const [entries, setEntries] = useState<LedgerEntryView[] | null>(null);
   const [summary, setSummary] = useState<LedgerSummaryView | null>(null);
+  const [accounts, setAccounts] = useState<LedgerAccountView[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [kind, setKind] = useState("all");
   const [status, setStatus] = useState("all");
+  const [reloadKey, setReloadKey] = useState(0);
+  const [exporting, setExporting] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [form, setForm] = useState<LedgerFormValues>(() => emptyLedgerForm(today ?? ""));
+  const [formErrors, setFormErrors] = useState<FieldError[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
 
   useEffect(() => {
     if (!api) return;
     let active = true;
-    Promise.all([api.listEntries(), api.summary(today ? { month: today.slice(0, 7) } : undefined)]).then(
-      ([es, sm]) => { if (active) { setEntries(es); setSummary(sm); } },
+    Promise.all([
+      api.listEntries(),
+      api.summary(today ? { month: today.slice(0, 7) } : undefined),
+      api.listAccounts(),
+    ]).then(
+      ([es, sm, accs]) => { if (active) { setEntries(es); setSummary(sm); setAccounts(accs ?? []); } },
       (err: unknown) => { if (active) setError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ"); },
     );
     return () => { active = false; };
-  }, [api, today]);
+  }, [api, today, reloadKey]);
+
+  const postable = postableAccounts(accounts);
+  const amountErr = firstError(formErrors, "amountBaht") ?? firstError(formErrors, "amountSatang");
+
+  function openCreate(): void {
+    setForm(emptyLedgerForm(today ?? new Date().toISOString().slice(0, 10)));
+    setFormErrors([]);
+    setSaveErr(null);
+    setCreating(true);
+  }
+
+  async function submitCreate(): Promise<void> {
+    if (!api) return;
+    const result = validateLedgerEntryForm(form);
+    if (!result.success) { setFormErrors(result.errors); return; }
+    setSaving(true);
+    setSaveErr(null);
+    try {
+      await api.create(result.data);
+      setCreating(false);
+      setReloadKey((k) => k + 1);
+    } catch (e) {
+      setSaveErr(e instanceof Error ? e.message : "บันทึกรายการไม่สำเร็จ");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function exportCsv(): Promise<void> {
+    if (!reportsApi) return;
+    setExporting(true);
+    setError(null);
+    try {
+      const report = await reportsApi.get("ledger");
+      downloadCsv(reportFilename("ledger", today ?? new Date().toISOString().slice(0, 10)), report.csv);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "ส่งออกบัญชีไม่สำเร็จ");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const rows = useMemo(() => (entries ?? []).map((e) => ({
     id: e.entryNo,
@@ -639,7 +736,7 @@ export function DesignLedger({ api, today }: { api?: LedgerApi; today?: string }
   return (
     <div className="content-wrap">
       <PageHead eyebrow="การเงิน" title="บัญชีรายรับ-รายจ่าย" desc="สมุดบัญชีของวัด บันทึกและกระทบยอดรายการเงินเข้า-ออกทุกประเภท"
-        actions={<><Button variant="secondary" icon={<Icon name="download" size={15} />} disabled title="เร็ว ๆ นี้">ส่งออก</Button><Button variant="primary" icon={<Icon name="plus" size={15} />} disabled title="เร็ว ๆ นี้">เพิ่มรายการ</Button></>} />
+        actions={<>{reportsApi ? <Button variant="secondary" icon={<Icon name="download" size={15} />} disabled={exporting} onClick={() => void exportCsv()}>{exporting ? "กำลังส่งออก…" : "ส่งออก"}</Button> : null}{canWrite ? <Button variant="primary" icon={<Icon name="plus" size={15} />} onClick={openCreate}>เพิ่มรายการ</Button> : null}</>} />
       {error ? <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: "var(--r)", background: "var(--danger-tint)", color: "var(--danger)", fontSize: 13 }}>โหลดข้อมูลบัญชีไม่สำเร็จ: {error}</div> : null}
       <div className="grid g-3" style={{ marginBottom: 16 }}>
         <KPI label="รายรับรวม (เดือนนี้)" value={money(summary?.incomeSatang)} tone="credit" />
@@ -681,6 +778,45 @@ export function DesignLedger({ api, today }: { api?: LedgerApi; today?: string }
         </Table>
         <div className="t-foot"><span>แสดง {filtered.length} จาก {rows.length} รายการ</span><span>ยอดสุทธิที่แสดง: <b className="tnum" style={{ color: "var(--ink)" }}>{summary ? displayBaht(String(netShownSatang)) : "…"}</b></span></div>
       </Card>
+
+      {creating ? (
+        <Modal title="เพิ่มรายการบัญชี" sub="บันทึกรายรับหรือรายจ่ายของวัด" onClose={() => setCreating(false)}
+          footer={<><Button variant="secondary" onClick={() => setCreating(false)}>ยกเลิก</Button><Button variant="primary" disabled={saving || postable.length === 0} onClick={() => void submitCreate()}>{saving ? "กำลังบันทึก…" : "บันทึก"}</Button></>}>
+          {postable.length === 0 ? (
+            <p className="error-text">ยังไม่มีผังบัญชีสำหรับบันทึกรายการ — โปรดตั้งค่าผังบัญชีก่อน</p>
+          ) : (
+            <>
+              <div className="field">
+                <label>บัญชี/หมวด</label>
+                <select className="control" value={form.accountId} onChange={(e) => setForm({ ...form, accountId: e.target.value })}>
+                  <option value="">เลือกบัญชี</option>
+                  {postable.map((a) => <option key={a.id} value={a.id}>{accountOptionLabel(a)} ({directionLabel(a.direction)})</option>)}
+                </select>
+                {firstError(formErrors, "accountId") ? <p className="error-text">{firstError(formErrors, "accountId")}</p> : null}
+              </div>
+              <div className="field">
+                <label>จำนวนเงิน (บาท)</label>
+                <input className="control" inputMode="decimal" value={form.amountBaht} onChange={(e) => setForm({ ...form, amountBaht: e.target.value })} placeholder="0.00" />
+                {amountErr ? <p className="error-text">{amountErr}</p> : null}
+              </div>
+              <div className="field">
+                <label>วันที่</label>
+                <input className="control" type="date" value={form.entryDate} onChange={(e) => setForm({ ...form, entryDate: e.target.value })} />
+                {firstError(formErrors, "entryDate") ? <p className="error-text">{firstError(formErrors, "entryDate")}</p> : null}
+              </div>
+              <div className="field">
+                <label>ผู้รับเงิน/ผู้จ่าย (ไม่บังคับ)</label>
+                <input className="control" value={form.payee ?? ""} onChange={(e) => setForm({ ...form, payee: e.target.value })} placeholder="ชื่อร้าน/ผู้รับเงิน" />
+              </div>
+              <div className="field">
+                <label>รายละเอียด (ไม่บังคับ)</label>
+                <textarea className="control" value={form.note ?? ""} onChange={(e) => setForm({ ...form, note: e.target.value })} style={{ minHeight: 64 }} />
+              </div>
+              {saveErr ? <p className="error-text">{saveErr}</p> : null}
+            </>
+          )}
+        </Modal>
+      ) : null}
     </div>
   );
 }
@@ -693,10 +829,16 @@ function ceremonyStatusKind(status: string): "credit" | "pending" | "void" {
   return status === "confirmed" ? "credit" : status === "cancelled" ? "void" : "pending";
 }
 
-export function DesignEvents({ api }: { api?: CeremoniesApi }): ReactElement {
+export function DesignEvents({ api, canWrite }: { api?: CeremoniesApi; canWrite?: boolean }): ReactElement {
   const [items, setItems] = useState<Ceremony[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [type, setType] = useState("all");
+  const [reloadKey, setReloadKey] = useState(0);
+  const [creating, setCreating] = useState(false);
+  const [cType, setCType] = useState<CeremonyType>("merit");
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
   useEffect(() => {
     if (!api) return;
     let active = true;
@@ -705,13 +847,34 @@ export function DesignEvents({ api }: { api?: CeremoniesApi }): ReactElement {
       (err: unknown) => { if (active) setError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ"); },
     );
     return () => { active = false; };
-  }, [api]);
+  }, [api, reloadKey]);
   const filtered = (items ?? []).filter((e) => type === "all" || e.ceremonyType === type);
   const eventDays = DEMO_EVENT_DAYS;
+
+  function openCreate(): void {
+    setCType("merit");
+    setDraft({});
+    setSaveErr(null);
+    setCreating(true);
+  }
+  async function submitCreate(): Promise<void> {
+    if (!api) return;
+    setSaving(true);
+    setSaveErr(null);
+    try {
+      await api.create({ ceremonyType: cType, status: "planned", ...draft } as unknown as CreateCeremonyInput);
+      setCreating(false);
+      setReloadKey((k) => k + 1);
+    } catch (e) {
+      setSaveErr(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ");
+    } finally {
+      setSaving(false);
+    }
+  }
   return (
     <div className="content-wrap">
       <PageHead eyebrow="งานวัด" title="กิจกรรมและพิธี" desc="จองและจัดการกิจกรรม งานบุญ พิธีอุปสมบท ฌาปนกิจ และการปฏิบัติธรรม"
-        actions={<Button variant="primary" icon={<Icon name="plus" size={15} />} disabled title="เร็ว ๆ นี้">จองกิจกรรม</Button>} />
+        actions={canWrite ? <Button variant="primary" icon={<Icon name="plus" size={15} />} onClick={openCreate}>จองกิจกรรม</Button> : undefined} />
       {error ? <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: "var(--r)", background: "var(--danger-tint)", color: "var(--danger)", fontSize: 13 }}>โหลดข้อมูลกิจกรรมไม่สำเร็จ: {error}</div> : null}
       <div className="split">
         <Card>
@@ -764,6 +927,28 @@ export function DesignEvents({ api }: { api?: CeremoniesApi }): ReactElement {
           </div>
         </Card>
       </div>
+
+      {creating ? (
+        <Modal title="จองกิจกรรม / พิธี" sub="บันทึกงานบุญ พิธี หรือกิจกรรมใหม่" onClose={() => setCreating(false)}
+          footer={<><Button variant="secondary" onClick={() => setCreating(false)}>ยกเลิก</Button><Button variant="primary" disabled={saving} onClick={() => void submitCreate()}>{saving ? "กำลังบันทึก…" : "บันทึก"}</Button></>}>
+          <div className="field"><label>ประเภทงาน</label>
+            <select className="control" value={cType} onChange={(e) => setCType(e.target.value as CeremonyType)}>
+              {CEREMONY_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          {CEREMONY_FORM_SECTIONS.flatMap((section) => section.fields).map((f) => (
+            <div className="field" key={f.key as string}>
+              <label>{f.label}</label>
+              {f.type === "textarea" ? (
+                <textarea className="control" style={{ minHeight: 56 }} value={draft[f.key as string] ?? ""} onChange={(e) => setDraft({ ...draft, [f.key as string]: e.target.value })} />
+              ) : (
+                <input className="control" type={f.type === "date" ? "date" : "text"} inputMode={f.type === "number" ? "numeric" : undefined} value={draft[f.key as string] ?? ""} onChange={(e) => setDraft({ ...draft, [f.key as string]: e.target.value })} />
+              )}
+            </div>
+          ))}
+          {saveErr ? <p className="error-text">{saveErr}</p> : null}
+        </Modal>
+      ) : null}
     </div>
   );
 }
@@ -773,11 +958,17 @@ function isMonkish(type: string): boolean {
   return type === "monk" || type === "novice";
 }
 
-export function DesignPeople({ api }: { api?: PersonnelApi }): ReactElement {
+export function DesignPeople({ api, canWrite }: { api?: PersonnelApi; canWrite?: boolean }): ReactElement {
   const [people, setPeople] = useState<Personnel[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [kind, setKind] = useState("all");
+  const [reloadKey, setReloadKey] = useState(0);
+  const [creating, setCreating] = useState(false);
+  const [pType, setPType] = useState<PersonnelType>("monk");
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
   useEffect(() => {
     if (!api) return;
     let active = true;
@@ -786,7 +977,28 @@ export function DesignPeople({ api }: { api?: PersonnelApi }): ReactElement {
       (err: unknown) => { if (active) setError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ"); },
     );
     return () => { active = false; };
-  }, [api]);
+  }, [api, reloadKey]);
+
+  function openCreate(): void {
+    setPType("monk");
+    setDraft({});
+    setSaveErr(null);
+    setCreating(true);
+  }
+  async function submitCreate(): Promise<void> {
+    if (!api) return;
+    setSaving(true);
+    setSaveErr(null);
+    try {
+      await api.create({ personnelType: pType, status: "active", ...draft } as unknown as CreatePersonnelInput);
+      setCreating(false);
+      setReloadKey((k) => k + 1);
+    } catch (e) {
+      setSaveErr(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   const all = people ?? [];
   const monkCount = all.filter((p) => isMonkish(p.personnelType)).length;
@@ -803,7 +1015,7 @@ export function DesignPeople({ api }: { api?: PersonnelApi }): ReactElement {
   return (
     <div className="content-wrap">
       <PageHead eyebrow="งานวัด" title="พระสงฆ์และเจ้าหน้าที่" desc="ทะเบียนพระภิกษุ สามเณร และเจ้าหน้าที่ของวัด พร้อมประวัติและข้อมูลติดต่อ"
-        actions={<Button variant="primary" icon={<Icon name="plus" size={15} />} disabled title="เร็ว ๆ นี้">เพิ่มบุคลากร</Button>} />
+        actions={canWrite ? <Button variant="primary" icon={<Icon name="plus" size={15} />} onClick={openCreate}>เพิ่มบุคลากร</Button> : undefined} />
       {error ? <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: "var(--r)", background: "var(--danger-tint)", color: "var(--danger)", fontSize: 13 }}>โหลดข้อมูลบุคลากรไม่สำเร็จ: {error}</div> : null}
       <Card>
         <Toolbar>
@@ -845,6 +1057,28 @@ export function DesignPeople({ api }: { api?: PersonnelApi }): ReactElement {
           </tbody>
         </Table>
       </Card>
+
+      {creating ? (
+        <Modal title="เพิ่มบุคลากร" sub="บันทึกพระภิกษุ สามเณร หรือเจ้าหน้าที่ใหม่" onClose={() => setCreating(false)}
+          footer={<><Button variant="secondary" onClick={() => setCreating(false)}>ยกเลิก</Button><Button variant="primary" disabled={saving} onClick={() => void submitCreate()}>{saving ? "กำลังบันทึก…" : "บันทึก"}</Button></>}>
+          <div className="field"><label>ประเภท</label>
+            <select className="control" value={pType} onChange={(e) => setPType(e.target.value as PersonnelType)}>
+              {PERSONNEL_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          {PERSONNEL_FORM_SECTIONS.flatMap((section) => section.fields).map((f) => (
+            <div className="field" key={f.key as string}>
+              <label>{f.label}</label>
+              {f.type === "textarea" ? (
+                <textarea className="control" style={{ minHeight: 56 }} value={draft[f.key as string] ?? ""} onChange={(e) => setDraft({ ...draft, [f.key as string]: e.target.value })} />
+              ) : (
+                <input className="control" type={f.type === "date" ? "date" : "text"} inputMode={f.type === "number" ? "numeric" : undefined} value={draft[f.key as string] ?? ""} onChange={(e) => setDraft({ ...draft, [f.key as string]: e.target.value })} />
+              )}
+            </div>
+          ))}
+          {saveErr ? <p className="error-text">{saveErr}</p> : null}
+        </Modal>
+      ) : null}
     </div>
   );
 }
@@ -966,6 +1200,12 @@ export function DesignRoles({ role, api }: { role: TempleRole; api?: UsersApi })
   const [roleFilter, setRoleFilter] = useState("all");
   const [users, setUsers] = useState<TenantUser[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [modal, setModal] = useState<{ kind: "create" } | { kind: "edit"; user: TenantUser } | null>(null);
+  const [form, setForm] = useState<{ email: string; displayName: string; role: TempleRole; password: string; isActive: boolean }>({ email: "", displayName: "", role: "staff", password: "", isActive: true });
+  const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
+  const canManage = role === "admin";
   useEffect(() => {
     if (!api) return;
     let active = true;
@@ -974,7 +1214,39 @@ export function DesignRoles({ role, api }: { role: TempleRole; api?: UsersApi })
       (err: unknown) => { if (active) setError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ"); },
     );
     return () => { active = false; };
-  }, [api]);
+  }, [api, reloadKey]);
+
+  function openCreate(): void {
+    setForm({ email: "", displayName: "", role: "staff", password: "", isActive: true });
+    setSaveErr(null);
+    setModal({ kind: "create" });
+  }
+  function openEdit(user: TenantUser): void {
+    setForm({ email: user.email, displayName: user.displayName, role: user.role, password: "", isActive: user.isActive });
+    setSaveErr(null);
+    setModal({ kind: "edit", user });
+  }
+  async function submitUser(): Promise<void> {
+    if (!api || !modal) return;
+    setSaving(true);
+    setSaveErr(null);
+    try {
+      if (modal.kind === "create") {
+        const payload: CreateUserInput = { email: form.email.trim(), displayName: form.displayName.trim(), role: form.role, password: form.password };
+        await api.create(payload);
+      } else {
+        const patch: UpdateUserInput = { displayName: form.displayName.trim(), role: form.role, isActive: form.isActive };
+        if (form.password.trim() !== "") patch.password = form.password;
+        await api.update(modal.user.id, patch);
+      }
+      setModal(null);
+      setReloadKey((k) => k + 1);
+    } catch (e) {
+      setSaveErr(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ");
+    } finally {
+      setSaving(false);
+    }
+  }
   const all = users ?? [];
   const filtered = all.filter((u) => {
     if (roleFilter !== "all" && u.role !== roleFilter) return false;
@@ -986,7 +1258,7 @@ export function DesignRoles({ role, api }: { role: TempleRole; api?: UsersApi })
   return (
     <div className="content-wrap">
       <PageHead eyebrow="ระบบ" title="สิทธิ์ผู้ใช้งาน" desc="จัดการบัญชีผู้ใช้ของวัด กำหนดบทบาทและระดับสิทธิ์การเข้าถึงแต่ละส่วนของระบบ"
-        actions={role === "admin" ? (tab === "users" ? <Button variant="primary" icon={<Icon name="plus" size={15} />} disabled title="เร็ว ๆ นี้">เพิ่มบัญชีผู้ใช้</Button> : <Button variant="primary" icon={<Icon name="check" size={15} />} disabled title="เร็ว ๆ นี้">บันทึกการเปลี่ยนแปลง</Button>) : undefined} />
+        actions={canManage ? (tab === "users" ? <Button variant="primary" icon={<Icon name="plus" size={15} />} onClick={openCreate}>เพิ่มบัญชีผู้ใช้</Button> : <Button variant="primary" icon={<Icon name="check" size={15} />} disabled title="ตารางสิทธิ์เป็นค่ามาตรฐานของระบบ">บันทึกการเปลี่ยนแปลง</Button>) : undefined} />
       <div className="seg" style={{ marginBottom: 16 }}>
         <button type="button" className={tab === "users" ? "active" : ""} onClick={() => setTab("users")}><Icon name="donors" size={14} />บัญชีผู้ใช้งาน</button>
         <button type="button" className={tab === "perms" ? "active" : ""} onClick={() => setTab("perms")}><Icon name="roles" size={14} />บทบาทและสิทธิ์</button>
@@ -1024,7 +1296,7 @@ export function DesignRoles({ role, api }: { role: TempleRole; api?: UsersApi })
                       <td><Badge kind={ROLE_TAG[u.role]} dot>{roleLabel(u.role)}</Badge></td>
                       <td className="muted" style={{ fontSize: 13 }}>{u.createdAt.slice(0, 10)}</td>
                       <td><Badge kind={u.isActive ? "credit" : "void"} dot>{u.isActive ? "ใช้งาน" : "ปิดใช้งาน"}</Badge></td>
-                      <td className="num" style={{ whiteSpace: "nowrap" }} />
+                      <td className="num" style={{ whiteSpace: "nowrap" }}>{canManage ? <Button variant="tertiary" size="sm" onClick={() => openEdit(u)}>แก้ไข</Button> : null}</td>
                     </tr>
                   ))
                 )}
@@ -1062,6 +1334,32 @@ export function DesignRoles({ role, api }: { role: TempleRole; api?: UsersApi })
           </Card>
         </>
       )}
+
+      {modal ? (
+        <Modal
+          title={modal.kind === "create" ? "เพิ่มบัญชีผู้ใช้" : "แก้ไขบัญชีผู้ใช้"}
+          sub={modal.kind === "edit" ? modal.user.email : "สร้างบัญชีผู้ใช้งานใหม่ของวัด"}
+          onClose={() => setModal(null)}
+          footer={<><Button variant="secondary" onClick={() => setModal(null)}>ยกเลิก</Button><Button variant="primary" disabled={saving} onClick={() => void submitUser()}>{saving ? "กำลังบันทึก…" : "บันทึก"}</Button></>}
+        >
+          {modal.kind === "create" ? (
+            <div className="field"><label>อีเมล</label><input className="control" type="email" autoComplete="off" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="name@wat.local" /></div>
+          ) : (
+            <div className="field"><label>อีเมล</label><input className="control" value={form.email} disabled /><span className="hint">อีเมลแก้ไขไม่ได้</span></div>
+          )}
+          <div className="field"><label>ชื่อ-นามสกุล</label><input className="control" value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} placeholder="ชื่อ-นามสกุล" /></div>
+          <div className="field"><label>บทบาท</label>
+            <select className="control" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as TempleRole })}>
+              {ROLE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div className="field"><label>รหัสผ่าน</label><input className="control" type="password" autoComplete="new-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder={modal.kind === "edit" ? "เว้นว่างถ้าไม่เปลี่ยน" : "อย่างน้อย 8 ตัวอักษร"} /></div>
+          {modal.kind === "edit" ? (
+            <label className="row" style={{ gap: 8, cursor: "pointer", fontSize: 13 }}><input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} />เปิดใช้งานบัญชี</label>
+          ) : null}
+          {saveErr ? <p className="error-text">{saveErr}</p> : null}
+        </Modal>
+      ) : null}
     </div>
   );
 }

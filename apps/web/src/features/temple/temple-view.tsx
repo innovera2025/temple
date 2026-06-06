@@ -1,4 +1,5 @@
-import { useEffect, useState, type ReactElement } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type ReactElement } from "react";
+import { Button, Card } from "../../design-system";
 import {
   diffProfile,
   TEMPLE_FIELD_GROUPS,
@@ -17,27 +18,138 @@ function draftFromProfile(profile: TempleProfile): Record<string, string> {
   return draft;
 }
 
+// Logo upload: read the chosen image, downscale it client-side, and embed it as a
+// compact base64 data URL stored in `logoUrl` (the shared schema accepts data URLs).
+const MAX_LOGO_DIM = 400; // px, longest side
+const MAX_LOGO_BYTES = 550_000; // keep within the shared logoUrl limit (600k)
+
+async function fileToResizedDataUrl(file: File): Promise<string> {
+  const sourceUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error("อ่านไฟล์ไม่สำเร็จ"));
+    reader.readAsDataURL(file);
+  });
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const el = new Image();
+    el.onload = () => resolve(el);
+    el.onerror = () => reject(new Error("ไฟล์รูปไม่ถูกต้อง"));
+    el.src = sourceUrl;
+  });
+  const scale = Math.min(1, MAX_LOGO_DIM / Math.max(img.width || 1, img.height || 1));
+  const w = Math.max(1, Math.round((img.width || 1) * scale));
+  const h = Math.max(1, Math.round((img.height || 1) * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return sourceUrl; // no canvas (e.g. jsdom) — fall back to the original
+  ctx.drawImage(img, 0, 0, w, h);
+  // PNG keeps logo transparency; switch to JPEG if the PNG is too large.
+  let out = canvas.toDataURL("image/png");
+  if (out.length > MAX_LOGO_BYTES) out = canvas.toDataURL("image/jpeg", 0.85);
+  return out;
+}
+
+const LOGO_BOX = {
+  width: 80,
+  height: 80,
+  borderRadius: "var(--r)",
+  border: "1px solid var(--border)",
+  background: "var(--surface)",
+  objectFit: "contain" as const,
+};
+
+/** Logo image picker with preview + remove, used in place of a plain logoUrl text input. */
+function LogoUploadField({ value, onChange }: { value: string; onChange: (next: string) => void }): ReactElement {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function onPick(event: ChangeEvent<HTMLInputElement>): Promise<void> {
+    const file = event.target.files?.[0];
+    event.target.value = ""; // allow re-selecting the same file
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setErr("กรุณาเลือกไฟล์รูปภาพ");
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    try {
+      const dataUrl = await fileToResizedDataUrl(file);
+      if (dataUrl.length > MAX_LOGO_BYTES) {
+        setErr("รูปใหญ่เกินไป กรุณาใช้รูปที่เล็กลง");
+        return;
+      }
+      onChange(dataUrl);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "อัปโหลดรูปไม่สำเร็จ");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="field" style={{ gridColumn: "1 / -1" }}>
+      <label>โลโก้วัด</label>
+      <div className="row" style={{ gap: 16, alignItems: "center" }}>
+        {value ? (
+          <img src={value} alt="โลโก้วัด" style={LOGO_BOX} />
+        ) : (
+          <div style={{ ...LOGO_BOX, border: "1px dashed var(--border-2)", display: "grid", placeItems: "center", fontSize: 12, color: "var(--ink-3)" }}>ไม่มีโลโก้</div>
+        )}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={(event) => void onPick(event)} />
+          <div className="row" style={{ gap: 8 }}>
+            <Button type="button" variant="secondary" size="sm" onClick={() => inputRef.current?.click()} disabled={busy}>
+              {busy ? "กำลังประมวลผล…" : value ? "เปลี่ยนรูป" : "อัปโหลดรูป"}
+            </Button>
+            {value ? (
+              <Button type="button" variant="tertiary" size="sm" onClick={() => onChange("")} disabled={busy}>ลบโลโก้</Button>
+            ) : null}
+          </div>
+          <span className="hint">PNG/JPG · ระบบจะย่อรูปให้อัตโนมัติ</span>
+        </div>
+      </div>
+      {err ? <p className="error-text">{err}</p> : null}
+    </div>
+  );
+}
+
 /** Read-only display of the temple profile, grouped, with a Thai empty state. */
 export function TempleProfileView({ profile }: { profile: TempleProfile }): ReactElement {
   return (
-    <div className="flex flex-col gap-6">
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {TEMPLE_FIELD_GROUPS.map((group) => (
-        <section key={group.title} className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-          <h3 className="mb-3 text-sm font-semibold text-stone-700">{group.title}</h3>
-          <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+        <Card pad key={group.title}>
+          <h3 style={{ margin: "0 0 14px", fontSize: 15, fontWeight: 600 }}>{group.title}</h3>
+          <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2" style={{ margin: 0 }}>
             {group.fields.map(({ key, label }) => {
               const value = (profile[key] ?? "") as string;
+              if (key === "logoUrl") {
+                return (
+                  <div key="logoUrl" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <dt style={{ fontSize: 12, color: "var(--ink-3)" }}>โลโก้วัด</dt>
+                    <dd style={{ margin: 0 }}>
+                      {value ? (
+                        <img src={value} alt="โลโก้วัด" style={{ ...LOGO_BOX, width: 64, height: 64, marginTop: 2 }} />
+                      ) : (
+                        <span style={{ fontSize: 13.5, color: "var(--ink-3)" }}>— ยังไม่ระบุ</span>
+                      )}
+                    </dd>
+                  </div>
+                );
+              }
               return (
-                <div key={key as string} className="flex flex-col">
-                  <dt className="text-xs text-stone-500">{label}</dt>
-                  <dd className={value ? "text-sm text-stone-800" : "text-sm text-stone-400"}>
-                    {value || "— ยังไม่ระบุ"}
-                  </dd>
+                <div key={key as string} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <dt style={{ fontSize: 12, color: "var(--ink-3)" }}>{label}</dt>
+                  <dd style={{ margin: 0, fontSize: 13.5, color: value ? "var(--ink)" : "var(--ink-3)" }}>{value || "— ยังไม่ระบุ"}</dd>
                 </div>
               );
             })}
           </dl>
-        </section>
+        </Card>
       ))}
     </div>
   );
@@ -58,56 +170,33 @@ export function TempleProfileForm({
   onCancel: () => void;
 }): ReactElement {
   return (
-    <form
-      className="flex flex-col gap-6"
-      onSubmit={(event) => {
-        event.preventDefault();
-        onSubmit();
-      }}
-    >
+    <form style={{ display: "flex", flexDirection: "column", gap: 16 }} onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
       {TEMPLE_FIELD_GROUPS.map((group) => (
-        <section key={group.title} className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-          <h3 className="mb-3 text-sm font-semibold text-stone-700">{group.title}</h3>
+        <Card pad key={group.title}>
+          <h3 style={{ margin: "0 0 14px", fontSize: 15, fontWeight: 600 }}>{group.title}</h3>
           <div className="grid gap-4 sm:grid-cols-2">
-            {group.fields.map(({ key, label, multiline }) => (
-              <label key={key as string} className={`flex flex-col gap-1 text-sm ${multiline ? "sm:col-span-2" : ""}`}>
-                <span className="font-medium text-stone-700">{label}</span>
-                {multiline ? (
-                  <textarea
-                    className="rounded-lg border border-stone-300 px-3 py-2"
-                    rows={2}
-                    value={draft[key as string] ?? ""}
-                    onChange={(event) => onChange(key as string, event.target.value)}
-                  />
-                ) : (
-                  <input
-                    className="rounded-lg border border-stone-300 px-3 py-2"
-                    value={draft[key as string] ?? ""}
-                    onChange={(event) => onChange(key as string, event.target.value)}
-                  />
-                )}
-              </label>
-            ))}
+            {group.fields.map(({ key, label, multiline }) => {
+              if (key === "logoUrl") {
+                return <LogoUploadField key="logoUrl" value={draft.logoUrl ?? ""} onChange={(next) => onChange("logoUrl", next)} />;
+              }
+              return (
+                <div className="field" key={key as string} style={multiline ? { gridColumn: "1 / -1" } : undefined}>
+                  <label>{label}</label>
+                  {multiline ? (
+                    <textarea className="control" style={{ minHeight: 56 }} value={draft[key as string] ?? ""} onChange={(event) => onChange(key as string, event.target.value)} />
+                  ) : (
+                    <input className="control" value={draft[key as string] ?? ""} onChange={(event) => onChange(key as string, event.target.value)} />
+                  )}
+                </div>
+              );
+            })}
           </div>
-        </section>
+        </Card>
       ))}
 
-      <div className="flex gap-3">
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded-lg bg-stone-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-        >
-          {submitting ? "กำลังบันทึก…" : "บันทึก"}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={submitting}
-          className="rounded-lg border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700 disabled:opacity-50"
-        >
-          ยกเลิก
-        </button>
+      <div className="row" style={{ gap: 8 }}>
+        <Button type="submit" variant="primary" disabled={submitting}>{submitting ? "กำลังบันทึก…" : "บันทึก"}</Button>
+        <Button type="button" variant="secondary" onClick={onCancel} disabled={submitting}>ยกเลิก</Button>
       </div>
     </form>
   );
@@ -158,28 +247,23 @@ export function TempleProfilePage({ api, canEdit }: { api: TempleApi; canEdit: b
   };
 
   return (
-    <section className="mx-auto flex w-full max-w-4xl flex-col gap-6 p-6">
-      <header className="flex items-center justify-between">
+    <div className="content-wrap">
+      <div className="page-head">
         <div>
-          <h1 className="text-2xl font-bold text-stone-900">ข้อมูลวัด</h1>
-          <p className="mt-1 text-sm text-stone-600">ข้อมูลหลักของวัดที่ใช้บนเอกสาร ใบอนุโมทนา และรายงาน</p>
+          <div className="eyebrow">เพิ่มเติม</div>
+          <h1>ข้อมูลวัด</h1>
+          <p className="desc">ข้อมูลหลักของวัดที่ใช้บนเอกสาร ใบอนุโมทนา และรายงาน</p>
         </div>
         {canEdit && profile && !editing ? (
-          <button
-            type="button"
-            onClick={startEdit}
-            className="rounded-lg border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700"
-          >
-            แก้ไข
-          </button>
+          <div className="head-actions"><Button variant="secondary" onClick={startEdit}>แก้ไข</Button></div>
         ) : null}
-      </header>
+      </div>
 
-      {error ? <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p> : null}
-      {saved ? <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">บันทึกข้อมูลวัดแล้ว</p> : null}
+      {error ? <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: "var(--r)", background: "var(--danger-tint)", color: "var(--danger)", fontSize: 13 }}>{error}</div> : null}
+      {saved ? <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: "var(--r)", background: "var(--credit-tint)", color: "var(--credit)", fontSize: 13 }}>บันทึกข้อมูลวัดแล้ว</div> : null}
 
       {!profile ? (
-        <p className="text-sm text-stone-500">กำลังโหลด…</p>
+        <p className="muted">กำลังโหลด…</p>
       ) : editing ? (
         <TempleProfileForm
           draft={draft}
@@ -191,6 +275,6 @@ export function TempleProfilePage({ api, canEdit }: { api: TempleApi; canEdit: b
       ) : (
         <TempleProfileView profile={profile} />
       )}
-    </section>
+    </div>
   );
 }

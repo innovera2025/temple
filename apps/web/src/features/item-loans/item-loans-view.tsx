@@ -1,5 +1,5 @@
 import { type ReactElement, type ReactNode, useEffect, useState } from "react";
-import { bahtToSatang, INVENTORY_CATEGORY_LABELS_TH, type InventoryCategory } from "@wat/shared";
+import { bahtToSatang, INVENTORY_CATEGORY_LABELS_TH, type InventoryCategory, MAX_LOAN_PHOTOS } from "@wat/shared";
 import { Badge, Button, Card, Modal } from "../../design-system";
 import { Icon } from "../../layout/icons";
 import { type AttachmentsApi, fileToBase64 } from "../attachments/attachments";
@@ -22,10 +22,14 @@ export interface ItemLoansPageProps {
   api: ItemLoansApi;
   attachmentsApi: AttachmentsApi;
   today: string;
+  /** Can borrow/return loans (admin/finance/staff). */
   canWrite: boolean;
+  /** Can add/edit the physical borrowable items (temple owner / admin only).
+   *  Defaults to `canWrite` for backward compatibility. */
+  canManageItems?: boolean;
 }
 
-export function ItemLoansPage({ api, attachmentsApi, today, canWrite }: ItemLoansPageProps): ReactElement {
+export function ItemLoansPage({ api, attachmentsApi, today, canWrite, canManageItems = canWrite }: ItemLoansPageProps): ReactElement {
   const [items, setItems] = useState<BorrowableItemView[] | null>(null);
   const [loans, setLoans] = useState<ItemLoanView[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -56,10 +60,14 @@ export function ItemLoansPage({ api, attachmentsApi, today, canWrite }: ItemLoan
           <h1>การยืม-คืนสิ่งของวัด</h1>
           <p className="desc">ทะเบียนสิ่งของที่ให้ยืม จำนวนคงเหลือ และประวัติการยืม-คืน (คืนไม่ครบให้ระบุการชดใช้)</p>
         </div>
-        {canWrite ? (
+        {canManageItems || canWrite ? (
           <div className="head-actions">
-            <Button variant="secondary" icon={<Icon name="plus" size={15} />} onClick={() => setAddingItem(true)}>เพิ่มสิ่งของ</Button>
-            <Button variant="primary" icon={<Icon name="arrowR" size={15} />} onClick={() => setBorrowing(true)} disabled={!items?.length}>ยืมของ</Button>
+            {canManageItems ? (
+              <Button variant="secondary" icon={<Icon name="plus" size={15} />} onClick={() => setAddingItem(true)}>เพิ่มสิ่งของ</Button>
+            ) : null}
+            {canWrite ? (
+              <Button variant="primary" icon={<Icon name="arrowR" size={15} />} onClick={() => setBorrowing(true)} disabled={!items?.length}>ยืมของ</Button>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -166,25 +174,50 @@ function BorrowModal({ api, attachmentsApi, today, items, onClose, onSaved }: { 
   const [borrowerPhone, setBorrowerPhone] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [borrowedAt, setBorrowedAt] = useState(today);
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<string[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const selected = items.find((i) => i.id === itemId);
 
+  // Object-URL thumbnails for the chosen photos; revoked when the set changes / on close.
+  useEffect(() => {
+    const urls = files.map((f) => URL.createObjectURL(f));
+    setPreviews(urls);
+    return () => urls.forEach((u) => URL.revokeObjectURL(u));
+  }, [files]);
+
+  function addFiles(list: FileList | null): void {
+    if (!list) return;
+    const incoming = Array.from(list).filter((f) => f.type.startsWith("image/"));
+    setFiles((prev) => {
+      const merged = [...prev];
+      for (const f of incoming) {
+        if (!merged.some((m) => m.name === f.name && m.size === f.size)) merged.push(f);
+      }
+      return merged.slice(0, MAX_LOAN_PHOTOS);
+    });
+  }
+  const removeFile = (index: number): void => setFiles((prev) => prev.filter((_, i) => i !== index));
+
   async function save(): Promise<void> {
     if (!itemId) { setErr("กรุณาเลือกสิ่งของ"); return; }
     if (!borrowerName.trim()) { setErr("กรุณากรอกชื่อผู้ยืม"); return; }
-    if (!file) { setErr("ต้องแนบรูปถ่ายตอนยืมก่อนบันทึก"); return; }
+    if (files.length === 0) { setErr("ต้องแนบรูปถ่ายตอนยืมก่อนบันทึก"); return; }
     setBusy(true); setErr(null);
     try {
-      const photo = await attachmentsApi.upload({ ownerType: "item_loan", ownerId: itemId, fileName: file.name, mimeType: file.type || "image/jpeg", contentBase64: await fileToBase64(file) });
+      const ids: string[] = [];
+      for (const f of files) {
+        const photo = await attachmentsApi.upload({ ownerType: "item_loan", ownerId: itemId, fileName: f.name, mimeType: f.type || "image/jpeg", contentBase64: await fileToBase64(f) });
+        ids.push(photo.id);
+      }
       await api.createLoan({
         itemId,
         borrowerName: borrowerName.trim(),
         borrowerPhone: borrowerPhone.trim() || undefined,
         quantity: Math.max(1, Math.floor(Number(quantity) || 0)),
         borrowedAt,
-        borrowPhotoId: photo.id,
+        borrowPhotoIds: ids,
       });
       onSaved();
     } catch (e) { setErr(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ"); } finally { setBusy(false); }
@@ -204,7 +237,21 @@ function BorrowModal({ api, attachmentsApi, today, items, onClose, onSaved }: { 
         <div className="field"><label>จำนวน</label><input className="control tnum" value={quantity} onChange={(e) => setQuantity(e.target.value.replace(/[^0-9]/g, ""))} /></div>
         <div className="field"><label>วันที่ยืม</label><input className="control tnum" value={borrowedAt} onChange={(e) => setBorrowedAt(e.target.value)} /></div>
       </div>
-      <div className="field"><label>รูปถ่ายการยืม (บังคับ)</label><input className="control" type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />{file ? <span className="hint">{file.name}</span> : null}</div>
+      <div className="field">
+        <label>รูปถ่ายการยืม (บังคับ) — แนบได้หลายรูป</label>
+        {previews.length > 0 ? (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+            {previews.map((url, i) => (
+              <div key={url} style={{ position: "relative", width: 64, height: 64 }}>
+                <img src={url} alt={`รูปการยืม ${i + 1}`} style={{ width: 64, height: 64, objectFit: "cover", borderRadius: "var(--r)", border: "1px solid var(--border)" }} />
+                <button type="button" aria-label="ลบรูป" onClick={() => removeFile(i)} style={{ position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface)", color: "var(--ink-2)", cursor: "pointer", lineHeight: 1, fontSize: 13, padding: 0 }}>×</button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        <input className="control" type="file" accept="image/*" multiple disabled={files.length >= MAX_LOAN_PHOTOS} onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+        <span className="hint">{files.length}/{MAX_LOAN_PHOTOS} รูป · ถ่ายสดจากกล้องหรือเลือกจากเครื่องก็ได้</span>
+      </div>
       {err ? <p className="error-text">{err}</p> : null}
     </Modal>
   );

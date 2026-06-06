@@ -47,6 +47,7 @@ export interface LoanRow {
   borrowedAt: Date;
   dueAt: Date | null;
   borrowPhotoId: string | null;
+  borrowPhotoIds: string[];
   status: string;
   returnedAt: Date | null;
   returnedQty: number | null;
@@ -61,6 +62,12 @@ type LoanWithRelations = Prisma.ItemLoanGetPayload<{
   include: { item: { select: { name: true } }; settlements: true };
 }>;
 
+/** Borrow photos: the JSON array column if present, else the legacy single id, else []. */
+function loanPhotoIds(raw: Prisma.JsonValue | null | undefined, primary: string | null): string[] {
+  if (Array.isArray(raw)) return raw.filter((id): id is string => typeof id === "string");
+  return primary ? [primary] : [];
+}
+
 function toLoanRow(loan: LoanWithRelations): LoanRow {
   const settlement = loan.settlements[0] ?? null;
   return {
@@ -74,6 +81,7 @@ function toLoanRow(loan: LoanWithRelations): LoanRow {
     borrowedAt: loan.borrowedAt,
     dueAt: loan.dueAt,
     borrowPhotoId: loan.borrowPhotoId,
+    borrowPhotoIds: loanPhotoIds(loan.borrowPhotoIds, loan.borrowPhotoId),
     status: loan.status,
     returnedAt: loan.returnedAt,
     returnedQty: loan.returnedQty,
@@ -165,7 +173,10 @@ export class ItemLoansService {
   /** Borrow: validates the photo + available qty under a row lock, allocates LOAN-NNNNNN. */
   async createLoan(tenantId: string, actorUserId: string, input: CreateLoanInput, ip?: string): Promise<LoanRow> {
     if (!isUuid(input.itemId)) throw notFound("ไม่พบสิ่งของ");
-    if (!isUuid(input.borrowPhotoId)) throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ต้องแนบรูปถ่ายตอนยืมก่อนบันทึก");
+    const photoIds = [...new Set(input.borrowPhotoIds ?? (input.borrowPhotoId ? [input.borrowPhotoId] : []))];
+    if (photoIds.length === 0 || !photoIds.every(isUuid)) {
+      throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ต้องแนบรูปถ่ายตอนยืมก่อนบันทึก");
+    }
     return this.prisma.withTenant(tenantId, async (tx) => {
       // Lock the item row so concurrent borrows of the same item serialize.
       const locked = await tx.$queryRaw<Array<{ total_qty: number; status: string }>>`
@@ -175,10 +186,11 @@ export class ItemLoansService {
       if (!item) throw notFound("ไม่พบสิ่งของ");
       if (item.status !== "active") throw conflict("สิ่งของนี้ถูกปิดใช้งานแล้ว ยืมไม่ได้");
 
-      // Photo must already be uploaded (ถ่ายรูปก่อนยืม).
-      const photo = await tx.$queryRaw<Array<{ id: string }>>`
-        SELECT id FROM attachments WHERE id = ${input.borrowPhotoId}::uuid AND tenant_id = current_tenant_id()`;
-      if (!photo[0]) throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ไม่พบรูปที่แนบ กรุณาอัปโหลดรูปก่อนยืม");
+      // All photos must already be uploaded for this tenant (ถ่ายรูปก่อนยืม).
+      const found = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT id FROM attachments
+        WHERE id IN (${Prisma.join(photoIds.map((id) => Prisma.sql`${id}::uuid`))}) AND tenant_id = current_tenant_id()`);
+      if (found.length !== photoIds.length) throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ไม่พบรูปที่แนบ กรุณาอัปโหลดรูปก่อนยืม");
 
       const outstanding = await this.outstandingFor(tx, input.itemId);
       const available = item.total_qty - outstanding;
@@ -197,7 +209,8 @@ export class ItemLoansService {
           quantity: input.quantity,
           borrowedAt: new Date(`${input.borrowedAt}T00:00:00.000Z`),
           dueAt: input.dueAt ? new Date(`${input.dueAt}T00:00:00.000Z`) : null,
-          borrowPhotoId: input.borrowPhotoId,
+          borrowPhotoId: photoIds[0],
+          borrowPhotoIds: photoIds as unknown as Prisma.InputJsonValue,
           status: "borrowed",
           note: input.note ?? null,
         },
@@ -210,7 +223,7 @@ export class ItemLoansService {
           action: "item_loan:create",
           entityType: "item_loan",
           entityId: created.id,
-          after: { loanNo, itemId: input.itemId, borrowerName: input.borrowerName, quantity: input.quantity, borrowPhotoId: input.borrowPhotoId } as Prisma.InputJsonObject,
+          after: { loanNo, itemId: input.itemId, borrowerName: input.borrowerName, quantity: input.quantity, borrowPhotoIds: photoIds } as Prisma.InputJsonObject,
           metadata: {},
           ip,
         },

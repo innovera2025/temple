@@ -33,7 +33,11 @@ function registerErrorMessage(error: unknown): string {
   return "สมัครสมาชิกไม่สำเร็จ กรุณาลองใหม่";
 }
 
-/** Self-service signup creates a pending temple application only — never an admin user. */
+/**
+ * Self-service signup creates a pending temple application only — never an admin user.
+ * (Donor/ญาติโยม self-service accounts are a separate platform-identity feature, not
+ * part of this temple-admin signup; "ผู้บริจาค" lives only as a CRM record.)
+ */
 export function RegisterForm({ api }: RegisterFormProps): ReactElement {
   const [values, setValues] = useState<RegisterInput>(initialValues);
   const [errors, setErrors] = useState<RegisterFormErrors>({});
@@ -161,3 +165,4 @@ export function RegisterForm({ api }: RegisterFormProps): ReactElement {
     </div>
   );
 }
+

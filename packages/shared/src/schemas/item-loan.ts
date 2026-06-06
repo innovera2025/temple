@@ -40,6 +40,7 @@ export const LOAN_LIMITS = {
 
 export const MAX_LOAN_QUANTITY = 1_000_000;
 export const MAX_CASH_SATANG = 100_000_000_000; // ฿1,000,000,000 ceiling
+export const MAX_LOAN_PHOTOS = 10; // how many photos may be attached at borrow time
 
 export function isLoanStatus(value: unknown): value is LoanStatus {
   return typeof value === "string" && (LOAN_STATUSES as readonly string[]).includes(value);
@@ -73,8 +74,10 @@ export interface CreateLoanInput {
   quantity: number;
   borrowedAt: string;
   dueAt?: string | null;
-  /** Required: an uploaded attachment id (photo taken at borrow time). */
-  borrowPhotoId: string;
+  /** First/primary photo id (legacy single-photo callers); derived from borrowPhotoIds[0]. */
+  borrowPhotoId?: string;
+  /** All uploaded attachment ids (photos taken at borrow time); length >= 1. */
+  borrowPhotoIds: string[];
   note?: string | null;
 }
 
@@ -137,6 +140,7 @@ export interface ItemLoanView {
   borrowedAt: string;
   dueAt: string | null;
   borrowPhotoId: string | null;
+  borrowPhotoIds: string[];
   status: LoanStatus;
   returnedAt: string | null;
   returnedQty: number | null;
@@ -263,9 +267,19 @@ export function validateCreateLoan(input: unknown): ValidationResult<CreateLoanI
     else data.dueAt = input.dueAt.trim();
   }
 
-  // Photo required at borrow time.
-  if (typeof input.borrowPhotoId !== "string" || input.borrowPhotoId.trim() === "") errors.push({ field: "borrowPhotoId", message: "ต้องแนบรูปถ่ายตอนยืมก่อนบันทึก" });
-  else data.borrowPhotoId = input.borrowPhotoId.trim();
+  // Photo(s) required at borrow time — accept a legacy single borrowPhotoId or a borrowPhotoIds[].
+  const rawPhotoIds = Array.isArray(input.borrowPhotoIds)
+    ? input.borrowPhotoIds
+    : typeof input.borrowPhotoId === "string"
+      ? [input.borrowPhotoId]
+      : [];
+  const photoIds = rawPhotoIds.filter((id): id is string => typeof id === "string" && id.trim() !== "").map((id) => id.trim());
+  if (photoIds.length === 0) errors.push({ field: "borrowPhotoIds", message: "ต้องแนบรูปถ่ายตอนยืมก่อนบันทึก" });
+  else if (photoIds.length > MAX_LOAN_PHOTOS) errors.push({ field: "borrowPhotoIds", message: `แนบรูปได้ไม่เกิน ${MAX_LOAN_PHOTOS} รูป` });
+  else {
+    data.borrowPhotoIds = photoIds;
+    data.borrowPhotoId = photoIds[0];
+  }
 
   const phone = optString(input.borrowerPhone, "borrowerPhone", LOAN_LIMITS.borrowerPhone, errors);
   if (phone !== undefined) data.borrowerPhone = phone;

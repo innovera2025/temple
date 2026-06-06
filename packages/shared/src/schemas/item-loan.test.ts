@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   loanShortage,
+  MAX_LOAN_PHOTOS,
   validateCreateBorrowableItem,
   validateCreateLoan,
   validateReturnLoan,
@@ -26,10 +27,23 @@ describe("create loan validation", () => {
     expect(r.success).toBe(true);
     if (r.success) expect(r.data).toMatchObject({ itemId: "i1", quantity: 2, borrowPhotoId: "p1" });
   });
-  it("requires a borrow photo (ถ่ายรูปก่อนยืม)", () => {
+  it("requires at least one borrow photo (ถ่ายรูปก่อนยืม)", () => {
     const r = validateCreateLoan({ ...base, borrowPhotoId: "" });
     expect(r.success).toBe(false);
-    if (!r.success) expect(r.errors.some((e) => e.field === "borrowPhotoId")).toBe(true);
+    if (!r.success) expect(r.errors.some((e) => e.field === "borrowPhotoIds")).toBe(true);
+    expect(validateCreateLoan({ ...base, borrowPhotoId: undefined, borrowPhotoIds: [] }).success).toBe(false);
+  });
+  it("accepts multiple borrow photos and derives the primary from the first", () => {
+    const r = validateCreateLoan({ itemId: "i1", borrowerName: "ก", quantity: 1, borrowedAt: "2026-06-02", borrowPhotoIds: ["a", "b", "c"] });
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.borrowPhotoIds).toEqual(["a", "b", "c"]);
+      expect(r.data.borrowPhotoId).toBe("a");
+    }
+  });
+  it("rejects more than the max number of borrow photos", () => {
+    const many = Array.from({ length: MAX_LOAN_PHOTOS + 1 }, (_, i) => `p${i}`);
+    expect(validateCreateLoan({ itemId: "i1", borrowerName: "ก", quantity: 1, borrowedAt: "2026-06-02", borrowPhotoIds: many }).success).toBe(false);
   });
   it("requires item, borrower, positive quantity and valid date", () => {
     expect(validateCreateLoan({ ...base, itemId: "" }).success).toBe(false);

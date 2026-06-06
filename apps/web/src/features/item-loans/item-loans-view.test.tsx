@@ -41,7 +41,7 @@ afterEach(() => {
 });
 
 const ITEM: BorrowableItemView = { id: "i1", name: "เต็นท์", category: "equipment", unit: "หลัง", totalQty: 5, availableQty: 3, status: "active", note: null, createdAt: "", updatedAt: "" };
-const LOAN: ItemLoanView = { id: "l1", loanNo: "LOAN-000001", itemId: "i1", itemName: "เต็นท์", borrowerName: "คุณสมชาย", borrowerPhone: null, quantity: 2, borrowedAt: "2026-06-02", dueAt: null, borrowPhotoId: "p1", status: "borrowed", returnedAt: null, returnedQty: null, returnNote: null, shortageQty: 0, settlement: null, createdAt: "", updatedAt: "" };
+const LOAN: ItemLoanView = { id: "l1", loanNo: "LOAN-000001", itemId: "i1", itemName: "เต็นท์", borrowerName: "คุณสมชาย", borrowerPhone: null, quantity: 2, borrowedAt: "2026-06-02", dueAt: null, borrowPhotoId: "p1", borrowPhotoIds: ["p1"], status: "borrowed", returnedAt: null, returnedQty: null, returnNote: null, shortageQty: 0, settlement: null, createdAt: "", updatedAt: "" };
 
 function makeApi(over: Partial<ItemLoansApi> = {}): ItemLoansApi {
   return {
@@ -101,5 +101,37 @@ describe("ItemLoansPage — wired to /item-loans", () => {
     const c = await mount(<ItemLoansPage api={makeApi()} attachmentsApi={attachmentsApi} today="2026-06-02" canWrite={false} />);
     expect(byText(c, "button", "เพิ่มสิ่งของ")).toBeUndefined();
     expect(byText(c, "button", "ยืมของ")).toBeUndefined();
+  });
+
+  it("lets a borrower-only role (e.g. finance) borrow but not add items", async () => {
+    const c = await mount(
+      <ItemLoansPage api={makeApi()} attachmentsApi={attachmentsApi} today="2026-06-02" canWrite canManageItems={false} />,
+    );
+    expect(byText(c, "button", "เพิ่มสิ่งของ")).toBeUndefined(); // add restricted to the temple owner (admin)
+    expect(byText(c, "button", "ยืมของ")).not.toBeUndefined(); // borrowing still allowed
+  });
+
+  it("attaches multiple borrow photos and submits them all", async () => {
+    globalThis.URL.createObjectURL = vi.fn(() => "blob:preview");
+    globalThis.URL.revokeObjectURL = vi.fn();
+    const api = makeApi();
+    (attachmentsApi.upload as ReturnType<typeof vi.fn>).mockClear();
+    const c = await mount(<ItemLoansPage api={api} attachmentsApi={attachmentsApi} today="2026-06-02" canWrite />);
+    await click(byText(c, "button", "ยืมของ") ?? null);
+    await setValue(c.querySelector(".modal .form-grid .control"), "คุณบี"); // borrower name
+    const fileInput = c.querySelector('.modal input[type="file"]') as HTMLInputElement;
+    const f1 = new File(["a"], "1.jpg", { type: "image/jpeg" });
+    const f2 = new File(["b"], "2.jpg", { type: "image/jpeg" });
+    await act(async () => {
+      Object.defineProperty(fileInput, "files", { value: [f1, f2], configurable: true });
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(c.textContent).toContain("2/10"); // both photos registered
+    await click(byText(c, ".modal button", "บันทึกการยืม") ?? null);
+    // save() is fire-and-forget and awaits FileReader + uploads — let those resolve.
+    await act(async () => { await new Promise((r) => setTimeout(r, 30)); });
+    expect(attachmentsApi.upload).toHaveBeenCalledTimes(2);
+    const arg = ((api.createLoan as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] ?? {}) as { borrowPhotoIds?: string[] };
+    expect(arg.borrowPhotoIds).toHaveLength(2);
   });
 });

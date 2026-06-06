@@ -76,13 +76,13 @@ export function PageContent({ page, baseUrl, getToken, role, today, onNavigate }
       content = <DesignReceipt api={createReceiptsApiClient(opts)} donationsApi={createDonationsApiClient(opts)} donorsApi={createDonorsApiClient(opts)} />;
       break;
     case "ledger":
-      content = <DesignLedger api={createLedgerApiClient(opts)} today={today} />;
+      content = <DesignLedger api={createLedgerApiClient(opts)} reportsApi={createReportsApiClient(opts)} today={today} canWrite={writable("ledger")} />;
       break;
     case "events":
-      content = <DesignEvents api={createCeremoniesApiClient(opts)} />;
+      content = <DesignEvents api={createCeremoniesApiClient(opts)} canWrite={writable("events")} />;
       break;
     case "people":
-      content = <DesignPeople api={createPersonnelApiClient(opts)} />;
+      content = <DesignPeople api={createPersonnelApiClient(opts)} canWrite={writable("people")} />;
       break;
     case "reports":
       content = <DesignReports api={createReportsApiClient(opts)} today={today} />;
@@ -97,7 +97,7 @@ export function PageContent({ page, baseUrl, getToken, role, today, onNavigate }
       content = <InventoryPage api={createInventoryApiClient(opts)} canWrite={role === "admin" || role === "staff"} />;
       break;
     case "item-loans":
-      content = <ItemLoansPage api={createItemLoansApiClient(opts)} attachmentsApi={createAttachmentsApiClient(opts)} today={today} canWrite={writable("item-loans")} />;
+      content = <ItemLoansPage api={createItemLoansApiClient(opts)} attachmentsApi={createAttachmentsApiClient(opts)} today={today} canWrite={writable("item-loans")} canManageItems={role === "admin"} />;
       break;
     case "audit":
       content = <DesignAudit />;

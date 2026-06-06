@@ -18,6 +18,19 @@ async function mount(ui: ReactElement): Promise<HTMLElement> {
   mounted.push({ root, container });
   return container;
 }
+async function click(el: Element | null): Promise<void> {
+  await act(async () => { (el as HTMLElement).click(); });
+}
+function byText(root: HTMLElement, sel: string, text: string): HTMLElement | null {
+  return Array.from(root.querySelectorAll<HTMLElement>(sel)).find((e) => e.textContent?.includes(text)) ?? null;
+}
+async function setValue(el: Element | null, value: string): Promise<void> {
+  await act(async () => {
+    const proto = el instanceof HTMLSelectElement ? window.HTMLSelectElement.prototype : window.HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, "value")?.set?.call(el, value);
+    el?.dispatchEvent(new Event(el instanceof HTMLSelectElement ? "change" : "input", { bubbles: true }));
+  });
+}
 
 afterEach(() => {
   while (mounted.length) {
@@ -65,6 +78,29 @@ describe("DesignRoles — users tab wired to /users", () => {
     const api = { list: vi.fn(async () => { throw new Error("x"); }) } as unknown as UsersApi;
     const container = await mount(<DesignRoles role="admin" api={api} />);
     expect(container.textContent).toContain("โหลดข้อมูลผู้ใช้ไม่สำเร็จ");
+  });
+
+  it("creates a user via the modal (admin)", async () => {
+    const created = user({ id: "new", email: "new@wat-arun.example", displayName: "ผู้ใช้ใหม่", role: "staff" });
+    const api = { list: vi.fn(async () => [] as TenantUser[]), create: vi.fn(async () => created), update: vi.fn() } as unknown as UsersApi;
+    const container = await mount(<DesignRoles role="admin" api={api} />);
+    await click(byText(container, "button", "เพิ่มบัญชีผู้ใช้"));
+    expect(container.querySelector(".modal")).not.toBeNull();
+    await setValue(container.querySelector('.modal input[type="email"]'), "new@wat-arun.example");
+    await setValue(container.querySelector('.modal input:not([type="email"]):not([type="password"])'), "ผู้ใช้ใหม่");
+    await setValue(container.querySelector('.modal input[type="password"]'), "Secret123!");
+    await click(byText(container, ".modal button", "บันทึก"));
+    expect(api.create).toHaveBeenCalled();
+    const arg = ((api.create as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] ?? {}) as { email: string; role: string };
+    expect(arg.email).toBe("new@wat-arun.example");
+    expect(arg.role).toBe("staff");
+  });
+
+  it("hides user-management actions for non-admin roles", async () => {
+    const api = { list: vi.fn(async () => [user({})]) } as unknown as UsersApi;
+    const container = await mount(<DesignRoles role="finance" api={api} />);
+    expect(byText(container, "button", "เพิ่มบัญชีผู้ใช้")).toBeNull();
+    expect(byText(container, "button", "แก้ไข")).toBeNull();
   });
 
   it("renders the static permission matrix (the real product model) without an API", () => {

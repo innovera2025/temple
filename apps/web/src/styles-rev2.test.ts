@@ -29,6 +29,16 @@ describe("rev2 design layout tokens (ds.css 2026-06-02-rev2)", () => {
     expect(css).toContain(".content-wrap { max-width: var(--maxw, 1240px); margin: 0 auto; width: 100%; }");
   });
 
+  it("pins the sidebar as a self-contained 100vh column so the footer/logout stays put", () => {
+    // Regression guard: the design ds.css rev2 .sidebar is `position: sticky; top: 0;
+    // height: 100vh; ... overflow: hidden;`. Dropping these lets the sidebar grow with
+    // the page, the nav stop scrolling internally, and the .sb-foot logout fall below
+    // the fold. Keep all three on the base (non-media-query) .sidebar rule.
+    expect(css).toMatch(/\.sidebar\s*\{[^}]*position:\s*sticky/);
+    expect(css).toMatch(/\.sidebar\s*\{[^}]*height:\s*100vh/);
+    expect(css).toMatch(/\.sidebar\s*\{[^}]*overflow:\s*hidden/);
+  });
+
   it("adds the responsive content gutters that fill wide viewports", () => {
     expect(css).toContain("@media (min-width: 1280px)");
     expect(css).toContain("padding: 30px 36px");

@@ -18,6 +18,9 @@ import { ItemLoansService, ItemWithAvailable, LoanRow } from "./item-loans.servi
 
 const WRITE_ROLES = ["admin", "finance", "staff"] as const;
 const READ_ROLES = ["admin", "finance", "staff"] as const;
+// Managing the physical borrowable items (add/edit) is restricted to the temple owner
+// (admin) only. Borrowing/returning loans stays on WRITE_ROLES (admin/finance/staff).
+const ITEM_WRITE_ROLES = ["admin"] as const;
 
 const date = (d: Date | null): string | null => (d ? d.toISOString().slice(0, 10) : null);
 
@@ -55,6 +58,7 @@ interface SerializedLoan {
   borrowedAt: string | null;
   dueAt: string | null;
   borrowPhotoId: string | null;
+  borrowPhotoIds: string[];
   status: string;
   returnedAt: string | null;
   returnedQty: number | null;
@@ -92,6 +96,7 @@ function serializeLoan(loan: LoanRow): SerializedLoan {
     borrowedAt: date(loan.borrowedAt),
     dueAt: date(loan.dueAt),
     borrowPhotoId: loan.borrowPhotoId,
+    borrowPhotoIds: loan.borrowPhotoIds,
     status: loan.status,
     returnedAt: date(loan.returnedAt),
     returnedQty: loan.returnedQty,
@@ -124,7 +129,7 @@ export class ItemLoansController {
 
   // ---- items ----
   @Post("items")
-  @Roles(...WRITE_ROLES)
+  @Roles(...ITEM_WRITE_ROLES)
   async createItem(@CurrentUser() user: AuthenticatedUser, @CurrentTenant() tenantId: string, @Ip() ip: string, @Body() body: unknown) {
     const result = validateCreateBorrowableItem(body);
     if (!result.success) throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ข้อมูลไม่ถูกต้อง", result.errors);
@@ -147,7 +152,7 @@ export class ItemLoansController {
   }
 
   @Patch("items/:id")
-  @Roles(...WRITE_ROLES)
+  @Roles(...ITEM_WRITE_ROLES)
   async updateItem(@CurrentUser() user: AuthenticatedUser, @CurrentTenant() tenantId: string, @Ip() ip: string, @Param("id") id: string, @Body() body: unknown) {
     assertUuid(id);
     const result = validateUpdateBorrowableItem(body);

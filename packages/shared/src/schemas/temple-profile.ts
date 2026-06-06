@@ -25,7 +25,9 @@ export const TEMPLE_PROFILE_LIMITS = {
   registrationNo: 100,
   taxId: 30,
   denomination: 120,
-  logoUrl: 500,
+  // Large enough to hold a client-resized logo embedded as a base64 data URL,
+  // as well as an ordinary http(s) link.
+  logoUrl: 600000,
   receiptHeaderTh: 500,
   receiptFooterTh: 500,
 } as const;
@@ -81,6 +83,8 @@ export type TempleProfileUpdate = Partial<Omit<TempleProfile, "id" | "slug" | "s
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const POSTAL_RE = /^\d{5}$/;
 const URL_RE = /^https?:\/\/\S+$/i;
+// The logo accepts an http(s) link OR an uploaded image embedded as a base64 data URL.
+const LOGO_URL_RE = /^(https?:\/\/\S+|data:image\/(png|jpe?g|gif|webp|svg\+xml);base64,[A-Za-z0-9+/=]+)$/i;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -156,7 +160,7 @@ export function validateTempleProfileUpdate(input: unknown): ValidationResult<Te
     ["registrationNo", L.registrationNo, {}],
     ["taxId", L.taxId, {}],
     ["denomination", L.denomination, {}],
-    ["logoUrl", L.logoUrl, { pattern: URL_RE, patternMessage: "ลิงก์โลโก้ต้องขึ้นต้นด้วย http:// หรือ https://" }],
+    ["logoUrl", L.logoUrl, { pattern: LOGO_URL_RE, patternMessage: "โลโก้ต้องเป็นลิงก์ http:// หรือ https:// หรือไฟล์รูปที่อัปโหลด" }],
     ["receiptHeaderTh", L.receiptHeaderTh, {}],
     ["receiptFooterTh", L.receiptFooterTh, {}],
   ];

@@ -134,6 +134,16 @@ describe("LoginScreen — register/social flows", () => {
     expect(container.textContent).toContain("รับคำขอสมัครของ วัดทดสอบ แล้ว");
     expect(login).not.toHaveBeenCalled();
   });
+
+  it("signup is temple-only (no donor self-service account type)", async () => {
+    const container = await mount(<LoginScreen api={testApi()} onAuthenticated={noop} />);
+    await click(
+      Array.from(container.querySelectorAll("button")).find((b) => b.textContent?.includes("สมัครสมาชิก")) ?? null,
+    );
+    expect(container.querySelector('[data-flow="register"]')).not.toBeNull(); // temple application form
+    expect(container.querySelector('[data-flow="register-donor"]')).toBeNull(); // donor account type removed
+    expect(container.querySelector("#register-temple")).not.toBeNull();
+  });
 });
 
 describe("LoginScreen — real login flow", () => {

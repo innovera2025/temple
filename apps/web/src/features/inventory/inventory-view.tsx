@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type ReactElement } from "react";
+import { Badge, Button, Card, Modal, SearchBox, Toolbar } from "../../design-system";
+import { Icon } from "../../layout/icons";
 import {
   CATEGORY_OPTIONS,
   categoryLabel,
@@ -22,6 +24,9 @@ import {
 
 export { createInventoryApiClient };
 
+const ERROR_STYLE = { marginBottom: 16, padding: "10px 14px", borderRadius: "var(--r)", background: "var(--danger-tint)", color: "var(--danger)", fontSize: 13 } as const;
+const NOTICE_STYLE = { marginBottom: 16, padding: "10px 14px", borderRadius: "var(--r)", background: "var(--credit-tint)", color: "var(--credit)", fontSize: 13 } as const;
+
 export function ItemsTable({
   rows,
   rooms = [],
@@ -32,46 +37,34 @@ export function ItemsTable({
   onSelect?: (item: InventoryItem) => void;
 }): ReactElement {
   if (rows.length === 0) {
-    return (
-      <div className="rounded-xl border border-dashed border-stone-300 bg-stone-50 p-6 text-center text-sm text-stone-500">
-        ยังไม่มีรายการพัสดุ/ของบริจาค
-      </div>
-    );
+    return <div className="card-pad muted" style={{ textAlign: "center" }}>ยังไม่มีรายการพัสดุ/ของบริจาค</div>;
   }
   const roomName = new Map(rooms.map((r) => [r.id, r.name]));
   return (
-    <table className="w-full border-collapse text-sm">
-      <thead>
-        <tr className="border-b border-stone-200 text-left text-xs text-stone-500">
-          <th className="py-2 pr-3">รายการ</th>
-          <th className="py-2 pr-3">ประเภท</th>
-          <th className="py-2 pr-3">ห้อง/โรงเก็บ</th>
-          <th className="py-2 pr-3 text-right">คงเหลือ</th>
-          <th className="py-2 pr-3">สถานะ</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((item) => (
-          <tr
-            key={item.id}
-            className="cursor-pointer border-b border-stone-100 text-stone-800 hover:bg-stone-50"
-            onClick={() => onSelect?.(item)}
-          >
-            <td className="py-2 pr-3">{item.name}</td>
-            <td className="py-2 pr-3">{categoryLabel(item.category)}</td>
-            <td className="py-2 pr-3 text-stone-600">{item.roomId ? roomName.get(item.roomId) ?? "—" : "—"}</td>
-            <td className="py-2 pr-3 text-right font-medium">
-              {item.quantity} {item.unit ?? ""}
-            </td>
-            <td className="py-2 pr-3">
-              <span className={item.status === "active" ? "text-stone-800" : "text-stone-400"}>
-                {statusLabel(item.status)}
-              </span>
-            </td>
+    <div className="t-scroll">
+      <table className="tbl">
+        <thead>
+          <tr>
+            <th>รายการ</th>
+            <th>ประเภท</th>
+            <th>ห้อง/โรงเก็บ</th>
+            <th className="num">คงเหลือ</th>
+            <th>สถานะ</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map((item) => (
+            <tr key={item.id} className="clickable" onClick={() => onSelect?.(item)}>
+              <td style={{ fontWeight: 500 }}>{item.name}</td>
+              <td><Badge kind="neutral">{categoryLabel(item.category)}</Badge></td>
+              <td className="muted">{item.roomId ? roomName.get(item.roomId) ?? "—" : "—"}</td>
+              <td className="num tnum" style={{ fontWeight: 600 }}>{item.quantity} {item.unit ?? ""}</td>
+              <td><Badge kind={item.status === "active" ? "credit" : "void"} dot>{statusLabel(item.status)}</Badge></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -101,105 +94,40 @@ export function ItemForm({
   onCancel: () => void;
 }): ReactElement {
   return (
-    <form
-      className="flex flex-col gap-4"
-      onSubmit={(event) => {
-        event.preventDefault();
-        onSubmit();
-      }}
-    >
-      <label className="flex flex-col gap-1 text-sm">
-        <span className="font-medium text-stone-700">ชื่อรายการ</span>
-        <input
-          className="rounded-lg border border-stone-300 px-3 py-2"
-          value={draft.name ?? ""}
-          onChange={(event) => onChange("name", event.target.value)}
-        />
-      </label>
-      <div className="grid gap-4 sm:grid-cols-3">
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium text-stone-700">ประเภท</span>
-          <select
-            className="rounded-lg border border-stone-300 px-3 py-2"
-            value={category}
-            onChange={(event) => onCategoryChange(event.target.value as InventoryCategory)}
-          >
-            {CATEGORY_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium text-stone-700">หน่วยนับ</span>
-          <input
-            className="rounded-lg border border-stone-300 px-3 py-2"
-            placeholder="ชิ้น / กล่อง / ชุด"
-            value={draft.unit ?? ""}
-            onChange={(event) => onChange("unit", event.target.value)}
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium text-stone-700">สถานะ</span>
-          <select
-            className="rounded-lg border border-stone-300 px-3 py-2"
-            value={status}
-            onChange={(event) => onStatusChange(event.target.value as InventoryStatus)}
-          >
-            {STATUS_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
+    <form onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
+      <div className="field"><label>ชื่อรายการ</label>
+        <input className="control" value={draft.name ?? ""} onChange={(event) => onChange("name", event.target.value)} />
       </div>
-      <label className="flex flex-col gap-1 text-sm">
-        <span className="font-medium text-stone-700">ห้อง/โรงเก็บ</span>
-        <div className="flex gap-2">
-          <select
-            className="flex-1 rounded-lg border border-stone-300 px-3 py-2"
-            value={draft.roomId ?? ""}
-            onChange={(event) => onChange("roomId", event.target.value)}
-          >
-            <option value="">— ไม่ระบุ —</option>
-            {rooms.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name}
-              </option>
-            ))}
+      <div className="form-grid">
+        <div className="field"><label>ประเภท</label>
+          <select className="control" value={category} onChange={(event) => onCategoryChange(event.target.value as InventoryCategory)}>
+            {CATEGORY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
-          <button type="button" onClick={onAddRoom} className="rounded-lg border border-stone-300 px-3 py-2 text-sm font-semibold text-stone-700">
-            ＋ ห้องใหม่
-          </button>
         </div>
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
-        <span className="font-medium text-stone-700">หมายเหตุ</span>
-        <textarea
-          className="rounded-lg border border-stone-300 px-3 py-2"
-          rows={2}
-          value={draft.note ?? ""}
-          onChange={(event) => onChange("note", event.target.value)}
-        />
-      </label>
-      <div className="flex gap-3">
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded-lg bg-stone-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-        >
-          {submitting ? "กำลังบันทึก…" : "บันทึก"}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={submitting}
-          className="rounded-lg border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700 disabled:opacity-50"
-        >
-          ยกเลิก
-        </button>
+        <div className="field"><label>หน่วยนับ</label>
+          <input className="control" placeholder="ชิ้น / กล่อง / ชุด" value={draft.unit ?? ""} onChange={(event) => onChange("unit", event.target.value)} />
+        </div>
+        <div className="field"><label>สถานะ</label>
+          <select className="control" value={status} onChange={(event) => onStatusChange(event.target.value as InventoryStatus)}>
+            {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="field"><label>ห้อง/โรงเก็บ</label>
+        <div className="row" style={{ gap: 8 }}>
+          <select className="control" style={{ flex: 1 }} value={draft.roomId ?? ""} onChange={(event) => onChange("roomId", event.target.value)}>
+            <option value="">— ไม่ระบุ —</option>
+            {rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </select>
+          <Button type="button" variant="secondary" icon={<span aria-hidden="true">＋</span>} onClick={onAddRoom}>ห้องใหม่</Button>
+        </div>
+      </div>
+      <div className="field"><label>หมายเหตุ</label>
+        <textarea className="control" style={{ minHeight: 56 }} value={draft.note ?? ""} onChange={(event) => onChange("note", event.target.value)} />
+      </div>
+      <div className="row" style={{ gap: 8, justifyContent: "flex-end" }}>
+        <Button type="button" variant="secondary" onClick={onCancel} disabled={submitting}>ยกเลิก</Button>
+        <Button type="submit" variant="primary" disabled={submitting}>{submitting ? "กำลังบันทึก…" : "บันทึก"}</Button>
       </div>
     </form>
   );
@@ -207,38 +135,33 @@ export function ItemForm({
 
 export function MovementsTable({ rows }: { rows: InventoryMovement[] }): ReactElement {
   if (rows.length === 0) {
-    return <p className="text-sm text-stone-500">ยังไม่มีประวัติการเคลื่อนไหว</p>;
+    return <div className="card-pad muted">ยังไม่มีประวัติการเคลื่อนไหว</div>;
   }
   return (
-    <table className="w-full border-collapse text-sm">
-      <thead>
-        <tr className="border-b border-stone-200 text-left text-xs text-stone-500">
-          <th className="py-2 pr-3">วันที่</th>
-          <th className="py-2 pr-3">ประเภท</th>
-          <th className="py-2 pr-3 text-right">จำนวน</th>
-          <th className="py-2 pr-3 text-right">คงเหลือ</th>
-          <th className="py-2 pr-3">เหตุผล</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((m) => (
-          <tr key={m.id} className="border-b border-stone-100 text-stone-800">
-            <td className="py-2 pr-3 whitespace-nowrap">{m.movementDate}</td>
-            <td className="py-2 pr-3">
-              <span className={m.movementType === "receive" ? "text-emerald-700" : "text-amber-700"}>
-                {movementTypeLabel(m.movementType)}
-              </span>
-            </td>
-            <td className="py-2 pr-3 text-right">
-              {m.movementType === "receive" ? "+" : "-"}
-              {m.quantity}
-            </td>
-            <td className="py-2 pr-3 text-right font-medium">{m.balanceAfter}</td>
-            <td className="py-2 pr-3">{m.reason ?? "—"}</td>
+    <div className="t-scroll">
+      <table className="tbl">
+        <thead>
+          <tr>
+            <th>วันที่</th>
+            <th>ประเภท</th>
+            <th className="num">จำนวน</th>
+            <th className="num">คงเหลือ</th>
+            <th>เหตุผล</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map((m) => (
+            <tr key={m.id}>
+              <td style={{ whiteSpace: "nowrap" }}>{m.movementDate}</td>
+              <td><Badge kind={m.movementType === "receive" ? "credit" : "pending"} dot>{movementTypeLabel(m.movementType)}</Badge></td>
+              <td className="num tnum">{m.movementType === "receive" ? "+" : "-"}{m.quantity}</td>
+              <td className="num tnum" style={{ fontWeight: 600 }}>{m.balanceAfter}</td>
+              <td>{m.reason ?? "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -258,64 +181,25 @@ export function MovementForm({
   onSubmit: () => void;
 }): ReactElement {
   return (
-    <form
-      className="grid gap-3 sm:grid-cols-2"
-      aria-label="บันทึกการเคลื่อนไหว"
-      onSubmit={(event) => {
-        event.preventDefault();
-        onSubmit();
-      }}
-    >
-      <label className="flex flex-col gap-1 text-sm">
-        <span className="font-medium text-stone-700">ประเภท</span>
-        <select
-          className="rounded-lg border border-stone-300 px-3 py-2"
-          value={movementType}
-          onChange={(event) => onTypeChange(event.target.value as InventoryMovementType)}
-        >
-          {MOVEMENT_TYPE_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
-        <span className="font-medium text-stone-700">จำนวน</span>
-        <input
-          className="rounded-lg border border-stone-300 px-3 py-2"
-          type="number"
-          min={1}
-          value={draft.quantity ?? ""}
-          onChange={(event) => onChange("quantity", event.target.value)}
-        />
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
-        <span className="font-medium text-stone-700">วันที่</span>
-        <input
-          className="rounded-lg border border-stone-300 px-3 py-2"
-          type="date"
-          value={draft.movementDate ?? ""}
-          onChange={(event) => onChange("movementDate", event.target.value)}
-        />
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
-        <span className="font-medium text-stone-700">เหตุผล</span>
-        <input
-          className="rounded-lg border border-stone-300 px-3 py-2"
-          placeholder="รับบริจาค / เบิกใช้ / ปรับยอด"
-          value={draft.reason ?? ""}
-          onChange={(event) => onChange("reason", event.target.value)}
-        />
-      </label>
-      <div className="sm:col-span-2">
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded-lg bg-stone-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-        >
-          {submitting ? "กำลังบันทึก…" : "บันทึกการเคลื่อนไหว"}
-        </button>
+    <form aria-label="บันทึกการเคลื่อนไหว" onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
+      <div className="form-grid">
+        <div className="field"><label>ประเภท</label>
+          <select className="control" value={movementType} onChange={(event) => onTypeChange(event.target.value as InventoryMovementType)}>
+            {MOVEMENT_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
+        <div className="field"><label>จำนวน</label>
+          <input className="control tnum" type="number" min={1} value={draft.quantity ?? ""} onChange={(event) => onChange("quantity", event.target.value)} />
+        </div>
+        <div className="field"><label>วันที่</label>
+          <input className="control tnum" type="date" value={draft.movementDate ?? ""} onChange={(event) => onChange("movementDate", event.target.value)} />
+        </div>
+        <div className="field"><label>เหตุผล</label>
+          <input className="control" placeholder="รับบริจาค / เบิกใช้ / ปรับยอด" value={draft.reason ?? ""} onChange={(event) => onChange("reason", event.target.value)} />
+        </div>
+      </div>
+      <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
+        <Button type="submit" variant="primary" disabled={submitting}>{submitting ? "กำลังบันทึก…" : "บันทึกการเคลื่อนไหว"}</Button>
       </div>
     </form>
   );
@@ -452,154 +336,92 @@ export function InventoryPage({ api, canWrite }: { api: InventoryApi; canWrite: 
   };
 
   return (
-    <section className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-6">
-      <header className="flex items-center justify-between">
+    <div className="content-wrap">
+      <div className="page-head">
         <div>
-          <h1 className="text-2xl font-bold text-stone-900">คลังของบริจาค / พัสดุ</h1>
-          <p className="mt-1 text-sm text-stone-600">ทะเบียนสังฆทาน พัสดุ และอุปกรณ์ พร้อมประวัติรับเข้า-เบิกออก</p>
+          <div className="eyebrow">เพิ่มเติม</div>
+          <h1>คลังของบริจาค / พัสดุ</h1>
+          <p className="desc">ทะเบียนสังฆทาน พัสดุ และอุปกรณ์ พร้อมประวัติรับเข้า-เบิกออก</p>
         </div>
         {canWrite && mode.kind === "list" ? (
-          <div className="flex gap-3">
+          <div className="head-actions">
             <input
               ref={fileInputRef}
               type="file"
               accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               className="hidden"
               aria-label="ไฟล์ Excel นำเข้า"
-              onChange={(event) => {
-                void onImportFile(event.target.files?.[0] ?? null);
-              }}
+              onChange={(event) => { void onImportFile(event.target.files?.[0] ?? null); }}
             />
-            <button
-              type="button"
-              disabled={submitting}
-              onClick={() => fileInputRef.current?.click()}
-              className="rounded-lg border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700 disabled:opacity-50"
-            >
-              นำเข้า Excel
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setItemDraft({});
-                setItemCategory("sangha_offering");
-                setItemStatus("active");
-                setError(null);
-                setNotice(null);
-                setMode({ kind: "createItem" });
-              }}
-              className="rounded-lg bg-stone-800 px-4 py-2 text-sm font-semibold text-white"
-            >
-              เพิ่มรายการ
-            </button>
+            <Button variant="secondary" icon={<Icon name="download" size={15} />} disabled={submitting} onClick={() => fileInputRef.current?.click()}>นำเข้า Excel</Button>
+            <Button variant="primary" icon={<Icon name="plus" size={15} />} onClick={() => {
+              setItemDraft({});
+              setItemCategory("sangha_offering");
+              setItemStatus("active");
+              setError(null);
+              setNotice(null);
+              setMode({ kind: "createItem" });
+            }}>เพิ่มรายการ</Button>
           </div>
         ) : null}
-      </header>
+      </div>
 
-      {error ? <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p> : null}
-      {notice ? <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</p> : null}
+      {error ? <div style={ERROR_STYLE}>{error}</div> : null}
+      {notice ? <div style={NOTICE_STYLE}>{notice}</div> : null}
 
       {mode.kind === "list" ? (
-        <>
-          <div className="grid gap-3 sm:grid-cols-3" aria-label="ตัวกรอง">
-            <select
-              className="rounded-lg border border-stone-300 px-3 py-2 text-sm"
-              value={filters.category ?? ""}
-              onChange={(event) => {
-                const next = { ...filters, category: (event.target.value || undefined) as InventoryCategory | undefined };
-                setFilters(next);
-                reload(next);
-              }}
-            >
+        <Card>
+          <Toolbar>
+            <SearchBox value={filters.q ?? ""} onChange={(v) => { const next = { ...filters, q: v || undefined }; setFilters(next); reload(next); }} placeholder="ค้นหาชื่อรายการ" />
+            <select className="control" style={{ width: "auto" }} value={filters.category ?? ""} onChange={(event) => { const next = { ...filters, category: (event.target.value || undefined) as InventoryCategory | undefined }; setFilters(next); reload(next); }}>
               <option value="">ทุกประเภท</option>
-              {CATEGORY_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
+              {CATEGORY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
-            <select
-              className="rounded-lg border border-stone-300 px-3 py-2 text-sm"
-              value={filters.status ?? ""}
-              onChange={(event) => {
-                const next = { ...filters, status: (event.target.value || undefined) as InventoryStatus | undefined };
-                setFilters(next);
-                reload(next);
-              }}
-            >
+            <select className="control" style={{ width: "auto" }} value={filters.status ?? ""} onChange={(event) => { const next = { ...filters, status: (event.target.value || undefined) as InventoryStatus | undefined }; setFilters(next); reload(next); }}>
               <option value="">ทุกสถานะ</option>
-              {STATUS_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
+              {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
-            <input
-              className="rounded-lg border border-stone-300 px-3 py-2 text-sm"
-              placeholder="ค้นหาชื่อรายการ"
-              value={filters.q ?? ""}
-              onChange={(event) => {
-                const next = { ...filters, q: event.target.value || undefined };
-                setFilters(next);
-                reload(next);
-              }}
-            />
-          </div>
-          <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-            <ItemsTable rows={rows} rooms={rooms} onSelect={openDetail} />
-          </div>
-        </>
+            <span className="muted" style={{ marginLeft: "auto" }}>{rows.length} รายการ</span>
+          </Toolbar>
+          <ItemsTable rows={rows} rooms={rooms} onSelect={openDetail} />
+        </Card>
       ) : mode.kind === "detail" ? (
-        <div className="flex flex-col gap-5">
-          <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-stone-800">{mode.item.name}</h2>
-                <p className="text-sm text-stone-500">{categoryLabel(mode.item.category)}</p>
+        <div className="split-wide">
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <Card pad>
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 18 }}>{mode.item.name}</h3>
+                  <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>{categoryLabel(mode.item.category)}</div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div className="muted" style={{ fontSize: 12 }}>คงเหลือ</div>
+                  <div className="tnum" style={{ fontSize: 26, fontWeight: 700 }}>{mode.item.quantity} <span style={{ fontSize: 14, color: "var(--ink-3)", fontWeight: 400 }}>{mode.item.unit ?? ""}</span></div>
+                </div>
               </div>
-              <div className="text-right">
-                <p className="text-xs text-stone-500">คงเหลือ</p>
-                <p className="text-2xl font-bold text-stone-900">
-                  {mode.item.quantity} <span className="text-base font-normal text-stone-500">{mode.item.unit ?? ""}</span>
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setMode({ kind: "list" });
-                reload(filters);
-              }}
-              className="mt-3 text-sm font-semibold text-stone-600"
-            >
-              ← กลับ
-            </button>
+              <Button variant="tertiary" size="sm" icon={<Icon name="chevR" size={14} style={{ transform: "rotate(180deg)" }} />} onClick={() => { setMode({ kind: "list" }); reload(filters); }}>กลับ</Button>
+            </Card>
+            {canWrite && mode.item.status === "active" ? (
+              <Card pad>
+                <h3 style={{ margin: "0 0 10px", fontSize: 15 }}>บันทึกรับเข้า / เบิกออก</h3>
+                <MovementForm
+                  movementType={movementType}
+                  draft={movementDraft}
+                  submitting={submitting}
+                  onTypeChange={setMovementType}
+                  onChange={(key, value) => setMovementDraft((prev) => ({ ...prev, [key]: value }))}
+                  onSubmit={submitMovement}
+                />
+              </Card>
+            ) : null}
           </div>
-
-          {canWrite && mode.item.status === "active" ? (
-            <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-              <h3 className="mb-3 text-sm font-semibold text-stone-700">บันทึกรับเข้า / เบิกออก</h3>
-              <MovementForm
-                movementType={movementType}
-                draft={movementDraft}
-                submitting={submitting}
-                onTypeChange={setMovementType}
-                onChange={(key, value) => setMovementDraft((prev) => ({ ...prev, [key]: value }))}
-                onSubmit={submitMovement}
-              />
-            </div>
-          ) : null}
-
-          <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-            <h3 className="mb-3 text-sm font-semibold text-stone-700">ประวัติการเคลื่อนไหว</h3>
+          <Card>
+            <div className="card-head"><h3>ประวัติการเคลื่อนไหว</h3></div>
             <MovementsTable rows={movements} />
-          </div>
+          </Card>
         </div>
       ) : (
-        <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-          <h2 className="mb-4 text-lg font-semibold text-stone-800">
-            {mode.kind === "createItem" ? "เพิ่มรายการ" : "แก้ไขรายการ"}
-          </h2>
+        <Modal title={mode.kind === "createItem" ? "เพิ่มรายการ" : "แก้ไขรายการ"} sub="พัสดุ / ของบริจาคของวัด" onClose={() => setMode({ kind: "list" })}>
           <ItemForm
             draft={itemDraft}
             category={itemCategory}
@@ -613,8 +435,8 @@ export function InventoryPage({ api, canWrite }: { api: InventoryApi; canWrite: 
             onSubmit={submitItem}
             onCancel={() => setMode({ kind: "list" })}
           />
-        </div>
+        </Modal>
       )}
-    </section>
+    </div>
   );
 }

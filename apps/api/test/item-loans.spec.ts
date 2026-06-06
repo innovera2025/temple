@@ -115,6 +115,23 @@ describe("item-loans (การยืม-คืนสิ่งของวัด
     expect(list.some((l) => l.id === loan.id && l.borrowerName === "คุณสมชาย")).toBe(true);
   });
 
+  it("records multiple borrow photos (borrowPhotoIds) and keeps the first as the primary", async () => {
+    const item = await makeItem(5);
+    const p1 = await createPhoto(templeA);
+    const p2 = await createPhoto(templeA);
+    const { loan } = await loans.createLoan(actorA, templeA, ip, { itemId: item.id, borrowerName: "คุณมานี", quantity: 1, borrowedAt: "2031-08-02", borrowPhotoIds: [p1, p2] });
+    expect(loan.borrowPhotoIds).toEqual([p1, p2]);
+    expect(loan.borrowPhotoId).toBe(p1);
+    const { loans: list } = await loans.listLoans(templeA, { itemId: item.id });
+    expect(list.find((l) => l.id === loan.id)?.borrowPhotoIds).toEqual([p1, p2]);
+  });
+
+  it("rejects a borrow photo id that does not belong to the tenant", async () => {
+    const item = await makeItem(5);
+    const valid = await createPhoto(templeA);
+    await expectErr(loans.createLoan(actorA, templeA, ip, { itemId: item.id, borrowerName: "ก", quantity: 1, borrowedAt: "2031-08-01", borrowPhotoIds: [valid, randomUUID()] }), 422, "UNPROCESSABLE_ENTITY");
+  });
+
   it("rejects borrowing more than available with 409", async () => {
     const item = await makeItem(3);
     const photo = await createPhoto(templeA);
@@ -179,9 +196,16 @@ describe("item-loans (การยืม-คืนสิ่งของวัด
     expect(numbers.size).toBe(3);
   });
 
-  it("guards roles: write + read = admin/finance/staff", () => {
+  it("guards roles: loan write + read = admin/finance/staff", () => {
     expect(reflector.get<string[]>(ROLES_KEY, ItemLoansController.prototype.createLoan)).toEqual(["admin", "finance", "staff"]);
     expect(reflector.get<string[]>(ROLES_KEY, ItemLoansController.prototype.returnLoan)).toEqual(["admin", "finance", "staff"]);
     expect(reflector.get<string[]>(ROLES_KEY, ItemLoansController.prototype.listLoans)).toEqual(["admin", "finance", "staff"]);
+  });
+
+  it("restricts adding/editing borrowable items to the temple owner (admin) only", () => {
+    expect(reflector.get<string[]>(ROLES_KEY, ItemLoansController.prototype.createItem)).toEqual(["admin"]);
+    expect(reflector.get<string[]>(ROLES_KEY, ItemLoansController.prototype.updateItem)).toEqual(["admin"]);
+    // reading the item register stays open to all temple roles
+    expect(reflector.get<string[]>(ROLES_KEY, ItemLoansController.prototype.listItems)).toEqual(["admin", "finance", "staff"]);
   });
 });
