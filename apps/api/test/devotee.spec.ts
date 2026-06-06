@@ -8,6 +8,7 @@ import { AppModule } from "../src/app.module";
 import { AuthService } from "../src/auth/auth.service";
 import { AuthGuard } from "../src/common/guards/auth.guard";
 import { DevoteeAuthService } from "../src/devotee/devotee-auth.service";
+import { DevoteeCeremoniesController } from "../src/devotee/devotee-ceremonies.controller";
 import { DevoteeDonationsController } from "../src/devotee/devotee-donations.controller";
 import { DevoteeRecordsController } from "../src/devotee/devotee-records.controller";
 import { DevoteeTemplesController } from "../src/devotee/devotee-temples.controller";
@@ -90,6 +91,7 @@ describe("devotee self-service plane", () => {
   let tenantAuth: AuthService;
   let temples: DevoteeTemplesController;
   let donations: DevoteeDonationsController;
+  let ceremonies: DevoteeCeremoniesController;
   let records: DevoteeRecordsController;
   let devoteeGuard: DevoteeGuard;
   let tenantAuthGuard: AuthGuard;
@@ -108,6 +110,7 @@ describe("devotee self-service plane", () => {
     tenantAuth = app.get(AuthService);
     temples = app.get(DevoteeTemplesController);
     donations = app.get(DevoteeDonationsController);
+    ceremonies = app.get(DevoteeCeremoniesController);
     records = app.get(DevoteeRecordsController);
     devoteeGuard = app.get(DevoteeGuard);
     tenantAuthGuard = app.get(AuthGuard);
@@ -311,5 +314,98 @@ describe("devotee self-service plane", () => {
       }),
     );
     expect(theirsDonorOk.every(Boolean)).toBe(true);
+  });
+
+  // --- Phase 2: ceremony booking ------------------------------------------------
+
+  it("books a ceremony as status=requested, stamps the devotee, and audits as actor_type=devotee", async () => {
+    const result = await ceremonies.create(devotee1, templeA, ip, {
+      ceremonyType: "merit",
+      title: "ทำบุญขึ้นบ้านใหม่",
+      ceremonyDate: "2026-08-01",
+      // Forged server-controlled fields must be ignored by the validator/server.
+      status: "completed",
+      assignedMonks: "หลวงพี่ปลอม",
+      devoteeAccountId: randomUUID(),
+    } as never);
+
+    expect(result.booking.status).toBe("requested");
+    expect(result.booking.title).toBe("ทำบุญขึ้นบ้านใหม่");
+
+    // Row is bound to temple A, tagged to THIS devotee, requester = devotee name,
+    // and the forged staff-only assignedMonks was NOT honored.
+    const row = await psql(
+      `SELECT tenant_id || '|' || coalesce(devotee_account_id::text,'NULL') || '|' || status || '|' || coalesce(requester_name,'NULL') || '|' || coalesce(assigned_monks,'NULL') FROM ceremonies WHERE id = ${lit(result.booking.id)}`,
+    );
+    expect(row).toBe(`${templeA}|${devotee1.sub}|requested|ญาติโยมหนึ่ง|NULL`);
+
+    const auditRow = await psql(
+      `SELECT actor_type || '|' || coalesce(actor_user_id::text,'NULL') || '|' || coalesce(actor_devotee_account_id::text,'NULL') FROM audit_logs WHERE action = 'ceremony:create' AND entity_id = ${lit(result.booking.id)}`,
+    );
+    expect(auditRow).toBe(`devotee|NULL|${devotee1.sub}`);
+  });
+
+  it("rejects a booking with an invalid type/date (422) and an inactive temple (404)", async () => {
+    await expectHttpError(
+      ceremonies.create(devotee1, templeA, ip, {
+        ceremonyType: "party",
+        title: "x",
+        ceremonyDate: "2026-08-01",
+      } as never),
+      422,
+    );
+    await expectHttpError(
+      ceremonies.create(devotee1, templeA, ip, {
+        ceremonyType: "merit",
+        title: "x",
+        ceremonyDate: "2026-02-31",
+      } as never),
+      422,
+    );
+    const inactiveId = await insertTemple(`wat-inactive-${randomUUID()}`, "วัดปิดรับ", "suspended");
+    await expectHttpError(
+      ceremonies.create(devotee1, inactiveId, ip, {
+        ceremonyType: "merit",
+        title: "x",
+        ceremonyDate: "2026-08-01",
+      } as never),
+      404,
+    );
+  });
+
+  it("returns ONLY the requesting devotee's own ceremony bookings across temples", async () => {
+    await ceremonies.create(devotee1, templeB, ip, {
+      ceremonyType: "ordination",
+      title: "งานบวช",
+      ceremonyDate: "2026-09-01",
+    } as never);
+    await ceremonies.create(devotee2, templeA, ip, {
+      ceremonyType: "funeral",
+      title: "งานของอีกคน",
+      ceremonyDate: "2026-09-02",
+    } as never);
+
+    const { ceremonies: mine } = await records.myCeremonies(devotee1);
+    const { ceremonies: theirs } = await records.myCeremonies(devotee2);
+
+    expect(mine.some((c) => c.templeId === templeA)).toBe(true);
+    expect(mine.some((c) => c.templeId === templeB)).toBe(true);
+    const mineOk = await Promise.all(
+      mine.map(async (c) => {
+        const owner = await psql(`SELECT devotee_account_id FROM ceremonies WHERE id = ${lit(c.id)}`);
+        return owner === devotee1.sub;
+      }),
+    );
+    expect(mineOk.every(Boolean)).toBe(true);
+
+    expect(theirs.length).toBeGreaterThanOrEqual(1);
+    expect(theirs.every((c) => c.title !== "ทำบุญขึ้นบ้านใหม่")).toBe(true);
+    const theirsOk = await Promise.all(
+      theirs.map(async (c) => {
+        const owner = await psql(`SELECT devotee_account_id FROM ceremonies WHERE id = ${lit(c.id)}`);
+        return owner === devotee2.sub;
+      }),
+    );
+    expect(theirsOk.every(Boolean)).toBe(true);
   });
 });

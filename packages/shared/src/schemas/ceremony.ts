@@ -12,7 +12,9 @@ import { type FieldError, type ValidationResult } from "./donor";
 export const CEREMONY_TYPES = ["merit", "funeral", "ordination", "housewarming", "robe_offering", "other"] as const;
 export type CeremonyType = (typeof CEREMONY_TYPES)[number];
 
-export const CEREMONY_STATUSES = ["planned", "completed", "cancelled"] as const;
+// `requested` = a devotee-submitted booking awaiting temple-staff confirmation
+// (created via the devotee plane). Staff move it to planned/completed/cancelled.
+export const CEREMONY_STATUSES = ["requested", "planned", "completed", "cancelled"] as const;
 export type CeremonyStatus = (typeof CEREMONY_STATUSES)[number];
 
 export const CEREMONY_TYPE_LABELS_TH: Record<CeremonyType, string> = {
@@ -25,6 +27,7 @@ export const CEREMONY_TYPE_LABELS_TH: Record<CeremonyType, string> = {
 };
 
 export const CEREMONY_STATUS_LABELS_TH: Record<CeremonyStatus, string> = {
+  requested: "รอยืนยัน",
   planned: "กำหนดการ",
   completed: "เสร็จสิ้น",
   cancelled: "ยกเลิก",

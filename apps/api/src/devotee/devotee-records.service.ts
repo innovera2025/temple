@@ -26,6 +26,19 @@ export interface DevoteeReceiptView {
   donationDate: string;
 }
 
+export interface DevoteeCeremonyView {
+  id: string;
+  templeId: string;
+  templeNameTh: string;
+  ceremonyType: string;
+  title: string;
+  ceremonyDate: string;
+  status: string;
+  timeNote: string | null;
+  location: string | null;
+  createdAt: string;
+}
+
 const MAX_TAKE = 200;
 
 /**
@@ -105,6 +118,41 @@ export class DevoteeRecordsService {
       donationId: row.donationId,
       amountSatang: row.donation.amountSatang.toString(),
       donationDate: row.donation.donationDate.toISOString().slice(0, 10),
+    }));
+  }
+
+  async listMyCeremonies(devoteeAccountId: string): Promise<DevoteeCeremonyView[]> {
+    const rows = await this.prisma.withSystemAccess((tx) =>
+      tx.ceremony.findMany({
+        where: { devoteeAccountId },
+        select: {
+          id: true,
+          tenantId: true,
+          ceremonyType: true,
+          title: true,
+          ceremonyDate: true,
+          status: true,
+          timeNote: true,
+          location: true,
+          createdAt: true,
+          tenant: { select: { nameTh: true } },
+        },
+        orderBy: [{ ceremonyDate: "desc" }, { createdAt: "desc" }],
+        take: MAX_TAKE,
+      }),
+    );
+
+    return rows.map((row) => ({
+      id: row.id,
+      templeId: row.tenantId,
+      templeNameTh: row.tenant.nameTh,
+      ceremonyType: row.ceremonyType,
+      title: row.title,
+      ceremonyDate: row.ceremonyDate.toISOString().slice(0, 10),
+      status: row.status,
+      timeNote: row.timeNote,
+      location: row.location,
+      createdAt: row.createdAt.toISOString(),
     }));
   }
 }

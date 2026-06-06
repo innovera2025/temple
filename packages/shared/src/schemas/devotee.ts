@@ -5,6 +5,7 @@
  */
 import { type FieldError, type ValidationResult } from "./donor";
 import { DONATION_METHODS, type DonationMethod, isValidIsoDate } from "./donation";
+import { CEREMONY_LIMITS, type CeremonyType, isCeremonyType } from "./ceremony";
 
 export const DEVOTEE_LIMITS = {
   email: 200,
@@ -108,6 +109,48 @@ export function validateDevoteeDonation(input: unknown): ValidationResult<Devote
   const note = optString(input.note, "note", "หมายเหตุ", DEVOTEE_LIMITS.note, errors);
   if (errors.length > 0) return { success: false, errors };
   return { success: true, data: { amountSatang: amountSatang as number, method: method as DonationMethod, donationDate, ...(note ? { note } : {}) } };
+}
+
+export interface DevoteeCeremonyInput {
+  ceremonyType: CeremonyType;
+  title: string;
+  ceremonyDate: string;
+  timeNote?: string;
+  location?: string;
+  requesterPhone?: string;
+  note?: string;
+}
+
+/**
+ * A devotee booking a ceremony at a selected temple. The devotee supplies only
+ * what a requester knows; the server controls status (-> requested), the requester
+ * name (the devotee's own name), the devotee link, and any staff-only fields
+ * (assignedMonks/monkCount). Unknown/forged keys are ignored, not honored.
+ */
+export function validateDevoteeCeremony(input: unknown): ValidationResult<DevoteeCeremonyInput> {
+  if (!isPlainObject(input)) return { success: false, errors: [{ field: "_root", message: "รูปแบบข้อมูลไม่ถูกต้อง" }] };
+  const errors: FieldError[] = [];
+  if (!isCeremonyType(input.ceremonyType)) errors.push({ field: "ceremonyType", message: "ต้องเลือกประเภทพิธี/งาน" });
+  const title = reqString(input.title, "title", "ชื่อพิธี/งาน", CEREMONY_LIMITS.title, errors);
+  const ceremonyDate = typeof input.ceremonyDate === "string" ? input.ceremonyDate.trim() : "";
+  if (!isValidIsoDate(ceremonyDate)) errors.push({ field: "ceremonyDate", message: "วันที่จัดงานไม่ถูกต้อง (YYYY-MM-DD)" });
+  const timeNote = optString(input.timeNote, "timeNote", "เวลา", CEREMONY_LIMITS.timeNote, errors);
+  const location = optString(input.location, "location", "สถานที่/ศาลา", CEREMONY_LIMITS.location, errors);
+  const requesterPhone = optString(input.requesterPhone, "requesterPhone", "เบอร์โทร", CEREMONY_LIMITS.requesterPhone, errors);
+  const note = optString(input.note, "note", "หมายเหตุ", CEREMONY_LIMITS.note, errors);
+  if (errors.length > 0) return { success: false, errors };
+  return {
+    success: true,
+    data: {
+      ceremonyType: input.ceremonyType as CeremonyType,
+      title,
+      ceremonyDate,
+      ...(timeNote ? { timeNote } : {}),
+      ...(location ? { location } : {}),
+      ...(requesterPhone ? { requesterPhone } : {}),
+      ...(note ? { note } : {}),
+    },
+  };
 }
 
 /** Public, devotee-safe temple shapes (no registrationNo/taxId/receipt internals/slug). */

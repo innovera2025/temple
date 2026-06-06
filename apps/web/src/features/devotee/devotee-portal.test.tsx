@@ -9,6 +9,7 @@ import { TemplePage } from "./temple-page";
 import { TemplePicker } from "./temple-picker";
 import {
   DevoteeApi,
+  DevoteeCeremonyRecord,
   DevoteeDonationRecord,
   DevoteeReceiptRecord,
   bahtStringToSatang,
@@ -69,6 +70,19 @@ const receiptRecord: DevoteeReceiptRecord = {
   donationDate: "2026-06-01",
 };
 
+const ceremonyRecord: DevoteeCeremonyRecord = {
+  id: "33333333-3333-4333-8333-333333333333",
+  templeId,
+  templeNameTh: "วัดอรุณเดโม",
+  ceremonyType: "merit",
+  title: "ทำบุญขึ้นบ้านใหม่",
+  ceremonyDate: "2026-07-01",
+  status: "requested",
+  timeNote: null,
+  location: null,
+  createdAt: "2026-06-05T00:00:00.000Z",
+};
+
 function makeApi(overrides: Partial<DevoteeApi> = {}): DevoteeApi {
   return {
     register: async () => ({ accessToken: "a", refreshToken: "r" }),
@@ -79,8 +93,12 @@ function makeApi(overrides: Partial<DevoteeApi> = {}): DevoteeApi {
       donation: { id: "d1", amountSatang: "50000", method: "cash", donationDate: "2026-06-01", status: "confirmed" },
       ledgerEntry: { id: "l1", entryNo: "LG-2026-0001" },
     }),
+    bookCeremony: async () => ({
+      booking: { id: "c1", status: "requested", title: "ทำบุญขึ้นบ้านใหม่", ceremonyDate: "2026-07-01" },
+    }),
     myDonations: async () => [donationRecord],
     myReceipts: async () => [receiptRecord],
+    myCeremonies: async () => [ceremonyRecord],
     ...overrides,
   };
 }
@@ -259,7 +277,7 @@ describe("devotee views (mounted)", () => {
     expect(donateCalled).toBe(false);
   });
 
-  it("my records renders the donation + receipt rows", async () => {
+  it("my records renders the donation + receipt + ceremony rows", async () => {
     await act(async () => {
       root.render(<MyRecords api={makeApi()} token="t" onUnauthorized={() => undefined} />);
     });
@@ -268,6 +286,46 @@ describe("devotee views (mounted)", () => {
     expect(container.textContent).toContain("ใบอนุโมทนา");
     expect(container.textContent).toContain("RC-2026-0001");
     expect(container.textContent).toContain("วัดอรุณเดโม");
+    // Phase 2: ceremony bookings section + the requested-status booking.
+    expect(container.textContent).toContain("การจองพิธี / นิมนต์พระ");
+    expect(container.textContent).toContain("ทำบุญขึ้นบ้านใหม่");
+    expect(container.textContent).toContain("รอยืนยัน");
+  });
+
+  it("temple page ceremony booking posts the request and shows the pending message", async () => {
+    await act(async () => {
+      root.render(
+        <TemplePage
+          api={makeApi()}
+          token="t"
+          templeId={templeId}
+          today="2026-06-04"
+          onBack={() => undefined}
+          onUnauthorized={() => undefined}
+        />,
+      );
+    });
+    await flush();
+    expect(container.textContent).toContain("จองพิธี / นิมนต์พระ");
+
+    const title = container.querySelector<HTMLInputElement>("#ceremony-title");
+    expect(title).toBeTruthy();
+    await act(async () => {
+      if (title) {
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+        setter?.call(title, "ทำบุญขึ้นบ้านใหม่");
+        title.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    });
+    // Submit the ceremony form (the 2nd form on the page; donate is the 1st).
+    const forms = container.querySelectorAll("form");
+    const ceremonyForm = forms[forms.length - 1];
+    await act(async () => {
+      ceremonyForm?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    await flush();
+    expect(container.textContent).toContain("ส่งคำขอจอง");
+    expect(container.textContent).toContain("รอวัดยืนยัน");
   });
 
   it("redirects to login (onUnauthorized) when the API returns 401", async () => {

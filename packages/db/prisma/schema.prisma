@@ -57,6 +57,7 @@ enum CeremonyType {
 }
 
 enum CeremonyStatus {
+  requested
   planned
   completed
   cancelled
@@ -265,6 +266,7 @@ model DevoteeAccount {
   updatedAt    DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
   donors        Donor[]
   refreshTokens DevoteeRefreshToken[]
+  ceremonies    Ceremony[]
 
   @@map("devotee_accounts")
 }
@@ -420,12 +422,15 @@ model Ceremony {
   assignedMonks  String?        @map("assigned_monks")
   monkCount      Int?           @map("monk_count")
   note           String?
+  devoteeAccountId String?        @map("devotee_account_id") @db.Uuid
+  devoteeAccount   DevoteeAccount? @relation(fields: [devoteeAccountId], references: [id])
   createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime       @default(now()) @map("updated_at") @db.Timestamptz(6)
 
   @@unique([tenantId, id])
   @@index([tenantId])
   @@index([tenantId, ceremonyDate])
+  @@index([devoteeAccountId])
   @@map("ceremonies")
 }
 

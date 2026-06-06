@@ -1,5 +1,8 @@
 import { FormEvent, ReactElement, useEffect, useState } from "react";
 import {
+  CEREMONY_TYPES,
+  CEREMONY_TYPE_LABELS_TH,
+  type CeremonyType,
   DONATION_METHODS,
   DONATION_METHOD_LABELS_TH,
   type DonationMethod,
@@ -11,10 +14,13 @@ import { Button } from "../../design-system";
 import { Icon } from "../../layout/icons";
 import {
   DevoteeApi,
+  DevoteeCeremonyValues,
   DevoteeDonationValues,
   DonationResult,
   bahtStringToSatang,
   devoteeErrorMessage,
+  hasCeremonyErrors,
+  validateDevoteeCeremonyForm,
 } from "./devotee-auth";
 
 export interface TemplePageProps {
@@ -102,6 +108,7 @@ export function TemplePage({
           </div>
 
           <DonateForm api={api} token={token} templeId={templeId} today={today} onUnauthorized={onUnauthorized} />
+          <BookCeremonyForm api={api} token={token} templeId={templeId} today={today} onUnauthorized={onUnauthorized} />
         </div>
       ) : null}
     </div>
@@ -231,6 +238,154 @@ function DonateForm({ api, token, templeId, today, onUnauthorized }: DonateFormP
         {error ? <p className="auth-error" role="alert">{error}</p> : null}
         <Button type="submit" variant="primary" className="btn-block" disabled={busy}>
           {busy ? "กำลังบันทึก…" : "ยืนยันการบริจาค"}
+        </Button>
+      </form>
+    </div>
+  );
+}
+
+interface BookCeremonyFormProps {
+  api: DevoteeApi;
+  token: string;
+  templeId: string;
+  today: string;
+  onUnauthorized: () => void;
+}
+
+function BookCeremonyForm({ api, token, templeId, today, onUnauthorized }: BookCeremonyFormProps): ReactElement {
+  const [values, setValues] = useState<DevoteeCeremonyValues>({
+    ceremonyType: "merit",
+    title: "",
+    ceremonyDate: today,
+    timeNote: "",
+    location: "",
+    requesterPhone: "",
+    note: "",
+  });
+  const [errors, setErrors] = useState<{ title?: string; ceremonyDate?: string }>({});
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [doneMsg, setDoneMsg] = useState("");
+
+  function update<K extends keyof DevoteeCeremonyValues>(key: K, value: DevoteeCeremonyValues[K]): void {
+    setValues((current) => ({ ...current, [key]: value }));
+  }
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    setError("");
+    setDoneMsg("");
+    const next = validateDevoteeCeremonyForm(values);
+    setErrors(next);
+    if (hasCeremonyErrors(next)) return;
+    setBusy(true);
+    try {
+      const result = await api.bookCeremony(token, templeId, values);
+      setDoneMsg(`ส่งคำขอจอง "${result.booking.title}" แล้ว สถานะ: รอวัดยืนยัน`);
+      setValues((current) => ({ ...current, title: "", location: "", requesterPhone: "", note: "" }));
+    } catch (err) {
+      if (err && typeof err === "object" && "status" in err && err.status === 401) {
+        onUnauthorized();
+        return;
+      }
+      setError(devoteeErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card devotee-donate">
+      <h2 className="devotee-donate-title">จองพิธี / นิมนต์พระ</h2>
+
+      {doneMsg ? (
+        <div className="auth-success" role="status">
+          <p>{doneMsg}</p>
+          <p className="muted">ดูสถานะได้ที่เมนู “ประวัติของฉัน”</p>
+        </div>
+      ) : null}
+
+      <form className="auth-form" onSubmit={(event) => void onSubmit(event)} noValidate>
+        <div className="field">
+          <label htmlFor="ceremony-type">ประเภทพิธี/งาน</label>
+          <select
+            id="ceremony-type"
+            className="control"
+            value={values.ceremonyType}
+            onChange={(event) => update("ceremonyType", event.target.value as CeremonyType)}
+          >
+            {CEREMONY_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {CEREMONY_TYPE_LABELS_TH[type]}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="ceremony-title">ชื่อพิธี/งาน</label>
+          <input
+            id="ceremony-title"
+            className="control"
+            value={values.title}
+            onChange={(event) => update("title", event.target.value)}
+            placeholder="เช่น ทำบุญขึ้นบ้านใหม่"
+            aria-invalid={errors.title ? true : undefined}
+          />
+          {errors.title ? <p className="error-text">{errors.title}</p> : null}
+        </div>
+        <div className="field">
+          <label htmlFor="ceremony-date">วันที่จัดงาน</label>
+          <input
+            id="ceremony-date"
+            className="control"
+            type="date"
+            value={values.ceremonyDate}
+            onChange={(event) => update("ceremonyDate", event.target.value)}
+            aria-invalid={errors.ceremonyDate ? true : undefined}
+          />
+          {errors.ceremonyDate ? <p className="error-text">{errors.ceremonyDate}</p> : null}
+        </div>
+        <div className="field">
+          <label htmlFor="ceremony-time">เวลา (ไม่บังคับ)</label>
+          <input
+            id="ceremony-time"
+            className="control"
+            value={values.timeNote}
+            onChange={(event) => update("timeNote", event.target.value)}
+            placeholder="เช่น 09:00 น."
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="ceremony-location">สถานที่/ศาลา (ไม่บังคับ)</label>
+          <input
+            id="ceremony-location"
+            className="control"
+            value={values.location}
+            onChange={(event) => update("location", event.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="ceremony-phone">เบอร์ติดต่อ (ไม่บังคับ)</label>
+          <input
+            id="ceremony-phone"
+            className="control"
+            value={values.requesterPhone}
+            onChange={(event) => update("requesterPhone", event.target.value)}
+            placeholder="08x-xxx-xxxx"
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="ceremony-note">รายละเอียดเพิ่มเติม (ไม่บังคับ)</label>
+          <input
+            id="ceremony-note"
+            className="control"
+            value={values.note}
+            onChange={(event) => update("note", event.target.value)}
+          />
+        </div>
+        {error ? <p className="auth-error" role="alert">{error}</p> : null}
+        <Button type="submit" variant="primary" className="btn-block" disabled={busy}>
+          {busy ? "กำลังส่งคำขอ…" : "ส่งคำขอจองพิธี"}
         </Button>
       </form>
     </div>

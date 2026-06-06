@@ -5,6 +5,7 @@ import { unauthorized } from "../common/errors/project-error";
 import { CurrentDevotee } from "./decorators/current-devotee.decorator";
 import { DevoteeGuard } from "./guards/devotee.guard";
 import {
+  DevoteeCeremonyView,
   DevoteeDonationView,
   DevoteeReceiptView,
   DevoteeRecordsService,
@@ -40,5 +41,15 @@ export class DevoteeRecordsController {
       throw unauthorized("Missing access token");
     }
     return { receipts: await this.records.listMyReceipts(devotee.sub) };
+  }
+
+  @Get("ceremonies")
+  async myCeremonies(
+    @CurrentDevotee() devotee: DevoteePrincipal | undefined,
+  ): Promise<{ ceremonies: DevoteeCeremonyView[] }> {
+    if (!devotee) {
+      throw unauthorized("Missing access token");
+    }
+    return { ceremonies: await this.records.listMyCeremonies(devotee.sub) };
   }
 }

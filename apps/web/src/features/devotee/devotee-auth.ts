@@ -8,6 +8,7 @@
  * carries `typ:"devotee_access"` and is rejected by every staff/platform guard.
  */
 import type {
+  CeremonyType,
   DonationMethod,
   PublicTempleProfile,
   PublicTempleSummary,
@@ -99,6 +100,38 @@ export interface DevoteeReceiptRecord {
   donationDate: string;
 }
 
+export interface DevoteeCeremonyValues {
+  ceremonyType: CeremonyType;
+  title: string;
+  ceremonyDate: string;
+  timeNote: string;
+  location: string;
+  requesterPhone: string;
+  note: string;
+}
+
+export interface DevoteeCeremonyErrors {
+  title?: string;
+  ceremonyDate?: string;
+}
+
+export interface CeremonyBookingResult {
+  booking: { id: string; status: string; title: string; ceremonyDate: string };
+}
+
+export interface DevoteeCeremonyRecord {
+  id: string;
+  templeId: string;
+  templeNameTh: string;
+  ceremonyType: string;
+  title: string;
+  ceremonyDate: string;
+  status: string;
+  timeNote: string | null;
+  location: string | null;
+  createdAt: string;
+}
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD = 8;
 const SESSION_STORAGE_KEY = "wat-devotee-session";
@@ -145,6 +178,17 @@ export function validateDevoteeLoginForm(values: DevoteeLoginValues): DevoteeLog
 
 export function hasLoginErrors(errors: DevoteeLoginErrors): boolean {
   return Boolean(errors.email || errors.password);
+}
+
+export function validateDevoteeCeremonyForm(values: DevoteeCeremonyValues): DevoteeCeremonyErrors {
+  const errors: DevoteeCeremonyErrors = {};
+  if (!values.title.trim()) errors.title = "กรุณากรอกชื่อพิธี/งาน";
+  if (!values.ceremonyDate) errors.ceremonyDate = "กรุณาเลือกวันที่จัดงาน";
+  return errors;
+}
+
+export function hasCeremonyErrors(errors: DevoteeCeremonyErrors): boolean {
+  return Boolean(errors.title || errors.ceremonyDate);
 }
 
 /** Map an API failure to a friendly Thai message. */
@@ -221,8 +265,14 @@ export interface DevoteeApi {
   listTemples(token: string): Promise<PublicTempleSummary[]>;
   getTemple(token: string, templeId: string): Promise<PublicTempleProfile>;
   donate(token: string, templeId: string, values: DevoteeDonationValues): Promise<DonationResult>;
+  bookCeremony(
+    token: string,
+    templeId: string,
+    values: DevoteeCeremonyValues,
+  ): Promise<CeremonyBookingResult>;
   myDonations(token: string): Promise<DevoteeDonationRecord[]>;
   myReceipts(token: string): Promise<DevoteeReceiptRecord[]>;
+  myCeremonies(token: string): Promise<DevoteeCeremonyRecord[]>;
 }
 
 export interface DevoteeApiClientOptions {
@@ -306,6 +356,22 @@ export function createDevoteeApiClient(options: DevoteeApiClientOptions): Devote
       });
       return readJson<DonationResult>(response, "บันทึกการบริจาคไม่สำเร็จ");
     },
+    async bookCeremony(token, templeId, values) {
+      const response = await doFetch(`${options.baseUrl}/devotee/temples/${templeId}/ceremonies`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders(token) },
+        body: JSON.stringify({
+          ceremonyType: values.ceremonyType,
+          title: values.title.trim(),
+          ceremonyDate: values.ceremonyDate,
+          ...(values.timeNote.trim() ? { timeNote: values.timeNote.trim() } : {}),
+          ...(values.location.trim() ? { location: values.location.trim() } : {}),
+          ...(values.requesterPhone.trim() ? { requesterPhone: values.requesterPhone.trim() } : {}),
+          ...(values.note.trim() ? { note: values.note.trim() } : {}),
+        }),
+      });
+      return readJson<CeremonyBookingResult>(response, "จองพิธีไม่สำเร็จ");
+    },
     async myDonations(token) {
       const response = await doFetch(`${options.baseUrl}/devotee/me/donations`, {
         headers: authHeaders(token),
@@ -319,6 +385,13 @@ export function createDevoteeApiClient(options: DevoteeApiClientOptions): Devote
       });
       const body = await readJson<{ receipts: DevoteeReceiptRecord[] }>(response, "โหลดใบอนุโมทนาไม่สำเร็จ");
       return body.receipts;
+    },
+    async myCeremonies(token) {
+      const response = await doFetch(`${options.baseUrl}/devotee/me/ceremonies`, {
+        headers: authHeaders(token),
+      });
+      const body = await readJson<{ ceremonies: DevoteeCeremonyRecord[] }>(response, "โหลดการจองไม่สำเร็จ");
+      return body.ceremonies;
     },
   };
 }

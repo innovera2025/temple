@@ -1,10 +1,14 @@
 import { Module } from "@nestjs/common";
 import { AuthModule } from "../auth/auth.module";
+import { CeremoniesModule } from "../ceremonies/ceremonies.module";
 import { PrismaModule } from "../common/prisma/prisma.module";
 import { RateLimitGuard } from "../common/guards/rate-limit.guard";
 import { DonationsModule } from "../donations/donations.module";
+import { DevoteeAccountsService } from "./devotee-accounts.service";
 import { DevoteeAuthController } from "./devotee-auth.controller";
 import { DevoteeAuthService } from "./devotee-auth.service";
+import { DevoteeCeremoniesController } from "./devotee-ceremonies.controller";
+import { DevoteeCeremoniesService } from "./devotee-ceremonies.service";
 import { DevoteeDonationsController } from "./devotee-donations.controller";
 import { DevoteeDonationsService } from "./devotee-donations.service";
 import { DevoteeRecordsController } from "./devotee-records.controller";
@@ -20,18 +24,21 @@ import { DevoteeGuard } from "./guards/devotee.guard";
  * DonationsModule's DonationsService; every controller mounts ONLY DevoteeGuard.
  */
 @Module({
-  imports: [PrismaModule, AuthModule, DonationsModule],
+  imports: [PrismaModule, AuthModule, DonationsModule, CeremoniesModule],
   controllers: [
     DevoteeAuthController,
     DevoteeTemplesController,
     DevoteeDonationsController,
+    DevoteeCeremoniesController,
     DevoteeRecordsController,
   ],
   providers: [
     DevoteeTokenService,
     DevoteeAuthService,
+    DevoteeAccountsService,
     DevoteeTemplesService,
     DevoteeDonationsService,
+    DevoteeCeremoniesService,
     DevoteeRecordsService,
     DevoteeGuard,
     RateLimitGuard,

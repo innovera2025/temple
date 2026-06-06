@@ -10,5 +10,6 @@ import { CeremoniesService } from "./ceremonies.service";
   imports: [PrismaModule, AuthModule],
   controllers: [CeremoniesController],
   providers: [CeremoniesService, RolesGuard, TenantGuard],
+  exports: [CeremoniesService],
 })
 export class CeremoniesModule {}

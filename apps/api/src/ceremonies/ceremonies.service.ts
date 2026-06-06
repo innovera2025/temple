@@ -3,8 +3,10 @@ import { Prisma } from "@prisma/client";
 import {
   type CeremonySearchQuery,
   type CreateCeremonyInput,
+  type DevoteeCeremonyInput,
   type UpdateCeremonyInput,
 } from "@wat/shared";
+import { auditActorData } from "../common/audit/audit-actor";
 import { notFound } from "../common/errors/project-error";
 import { PrismaService } from "../common/prisma/prisma.service";
 
@@ -81,6 +83,53 @@ export class CeremoniesService {
           entityId: created.id,
           after: snapshot(created),
           metadata: {},
+          ip,
+        },
+      });
+
+      return created;
+    });
+  }
+
+  /**
+   * A devotee (ญาติโยม) booking a ceremony at a temple they selected. Runs under
+   * the caller's tenant tx so RLS binds the row to that temple. The server — not
+   * the client — sets `status = requested`, the requester name (the devotee's own
+   * name), the devotee link, and leaves the staff-only monk fields empty. The audit
+   * row records the devotee actor (actor_type='devotee', actor_user_id NULL).
+   */
+  async createDevoteeBooking(
+    tenantId: string,
+    devotee: { id: string; email: string; displayName: string },
+    input: DevoteeCeremonyInput,
+    ip?: string,
+  ): Promise<CeremonyRecord> {
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const created = (await tx.ceremony.create({
+        data: {
+          tenantId,
+          devoteeAccountId: devotee.id,
+          status: "requested",
+          ceremonyType: input.ceremonyType,
+          title: input.title,
+          ceremonyDate: new Date(`${input.ceremonyDate}T00:00:00.000Z`),
+          timeNote: input.timeNote ?? null,
+          location: input.location ?? null,
+          requesterName: devotee.displayName,
+          requesterPhone: input.requesterPhone ?? null,
+          note: input.note ?? null,
+        } as Prisma.CeremonyUncheckedCreateInput,
+      })) as CeremonyRecord;
+
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          ...auditActorData({ kind: "devotee", devoteeAccountId: devotee.id, email: devotee.email }),
+          action: "ceremony:create",
+          entityType: "ceremony",
+          entityId: created.id,
+          after: snapshot(created),
+          metadata: { source: "devotee_booking" },
           ip,
         },
       });

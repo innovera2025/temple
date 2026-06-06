@@ -1,8 +1,17 @@
 import { ReactElement, useEffect, useState } from "react";
-import { DONATION_METHOD_LABELS_TH, type DonationMethod, formatSatang } from "@wat/shared";
+import {
+  CEREMONY_STATUS_LABELS_TH,
+  CEREMONY_TYPE_LABELS_TH,
+  type CeremonyStatus,
+  type CeremonyType,
+  DONATION_METHOD_LABELS_TH,
+  type DonationMethod,
+  formatSatang,
+} from "@wat/shared";
 import { Badge } from "../../design-system";
 import {
   DevoteeApi,
+  DevoteeCeremonyRecord,
   DevoteeDonationRecord,
   DevoteeReceiptRecord,
   devoteeErrorMessage,
@@ -25,9 +34,23 @@ function statusBadge(status: string): ReactElement {
   return <Badge kind="neutral">{status}</Badge>;
 }
 
+function ceremonyTypeLabel(type: string): string {
+  return CEREMONY_TYPE_LABELS_TH[type as CeremonyType] ?? type;
+}
+
+function ceremonyStatusBadge(status: string): ReactElement {
+  const label = CEREMONY_STATUS_LABELS_TH[status as CeremonyStatus] ?? status;
+  if (status === "requested") return <Badge kind="pending">{label}</Badge>;
+  if (status === "planned") return <Badge kind="accent">{label}</Badge>;
+  if (status === "completed") return <Badge kind="reconciled">{label}</Badge>;
+  if (status === "cancelled") return <Badge kind="void">{label}</Badge>;
+  return <Badge kind="neutral">{label}</Badge>;
+}
+
 export function MyRecords({ api, token, onUnauthorized }: MyRecordsProps): ReactElement {
   const [donations, setDonations] = useState<DevoteeDonationRecord[] | null>(null);
   const [receipts, setReceipts] = useState<DevoteeReceiptRecord[] | null>(null);
+  const [ceremonies, setCeremonies] = useState<DevoteeCeremonyRecord[] | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -42,6 +65,7 @@ export function MyRecords({ api, token, onUnauthorized }: MyRecordsProps): React
     }
     api.myDonations(token).then((rows) => !cancelled && setDonations(rows)).catch(handle);
     api.myReceipts(token).then((rows) => !cancelled && setReceipts(rows)).catch(handle);
+    api.myCeremonies(token).then((rows) => !cancelled && setCeremonies(rows)).catch(handle);
     return () => {
       cancelled = true;
     };
@@ -52,7 +76,7 @@ export function MyRecords({ api, token, onUnauthorized }: MyRecordsProps): React
       <div className="page-head">
         <div>
           <h1>ประวัติการทำบุญของฉัน</h1>
-          <p className="page-sub">รายการบริจาคและใบอนุโมทนาของคุณจากทุกวัดในระบบ</p>
+          <p className="page-sub">รายการบริจาค ใบอนุโมทนา และการจองพิธีของคุณจากทุกวัดในระบบ</p>
         </div>
       </div>
 
@@ -118,6 +142,40 @@ export function MyRecords({ api, token, onUnauthorized }: MyRecordsProps): React
                     <td>{row.donationDate}</td>
                     <td className="num tnum">{formatSatang(row.amountSatang)}</td>
                     <td>{statusBadge(row.status)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="devotee-records-section">
+        <h2>การจองพิธี / นิมนต์พระ</h2>
+        {ceremonies === null && !error ? <p className="muted">กำลังโหลด…</p> : null}
+        {ceremonies !== null && ceremonies.length === 0 ? (
+          <div className="empty-state card"><p>ยังไม่มีการจองพิธี</p></div>
+        ) : null}
+        {ceremonies !== null && ceremonies.length > 0 ? (
+          <div className="t-scroll">
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>วันที่</th>
+                  <th>วัด</th>
+                  <th>ประเภท</th>
+                  <th>ชื่องาน</th>
+                  <th>สถานะ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ceremonies.map((row) => (
+                  <tr key={row.id}>
+                    <td>{row.ceremonyDate}</td>
+                    <td>{row.templeNameTh}</td>
+                    <td>{ceremonyTypeLabel(row.ceremonyType)}</td>
+                    <td>{row.title}</td>
+                    <td>{ceremonyStatusBadge(row.status)}</td>
                   </tr>
                 ))}
               </tbody>

@@ -4,6 +4,7 @@ import { type DevoteeDonationInput } from "@wat/shared";
 import { notFound } from "../common/errors/project-error";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { CreatedDonation, DonationsService } from "../donations/donations.service";
+import { DevoteeAccountsService } from "./devotee-accounts.service";
 import { DevoteePrincipal } from "./types/devotee-request";
 import { DevoteeTemplesService } from "./devotee-temples.service";
 
@@ -19,6 +20,7 @@ export class DevoteeDonationsService {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(DonationsService) private readonly donations: DonationsService,
     @Inject(DevoteeTemplesService) private readonly temples: DevoteeTemplesService,
+    @Inject(DevoteeAccountsService) private readonly accounts: DevoteeAccountsService,
   ) {}
 
   async donate(
@@ -28,7 +30,7 @@ export class DevoteeDonationsService {
     ip?: string,
   ): Promise<CreatedDonation> {
     const tenantId = await this.temples.assertActiveTemple(templeId);
-    const displayName = await this.resolveDisplayName(devotee.sub);
+    const { displayName } = await this.accounts.requireProfile(devotee.sub);
 
     // Reuse the staff donation path (auto-posts the income ledger entry to the
     // revenue account). The actor is the devotee, so its audit rows carry
@@ -48,20 +50,6 @@ export class DevoteeDonationsService {
       },
       ip,
     );
-  }
-
-  /** The devotee's own display name, for the donor card the temple staff will see. */
-  private async resolveDisplayName(devoteeAccountId: string): Promise<string> {
-    const account = await this.prisma.withSystemAccess((tx) =>
-      tx.devoteeAccount.findFirst({
-        where: { id: devoteeAccountId },
-        select: { displayName: true },
-      }),
-    );
-    if (!account) {
-      throw notFound("ไม่พบบัญชีผู้ใช้");
-    }
-    return account.displayName;
   }
 
   /**
