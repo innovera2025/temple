@@ -4,6 +4,7 @@
  */
 
 import {
+  CEREMONY_STAFF_SETTABLE_STATUSES,
   CEREMONY_STATUS_LABELS_TH,
   CEREMONY_STATUSES,
   CEREMONY_TYPE_LABELS_TH,
@@ -51,6 +52,12 @@ export function ceremonyStatusLabel(status: CeremonyStatus): string {
 
 export const CEREMONY_TYPE_OPTIONS = CEREMONY_TYPES.map((value) => ({ value, label: CEREMONY_TYPE_LABELS_TH[value] }));
 export const CEREMONY_STATUS_OPTIONS = CEREMONY_STATUSES.map((value) => ({
+  value,
+  label: CEREMONY_STATUS_LABELS_TH[value],
+}));
+
+// Statuses staff may set from the UI (excludes the server-only "requested").
+export const CEREMONY_STAFF_STATUS_OPTIONS = CEREMONY_STAFF_SETTABLE_STATUSES.map((value) => ({
   value,
   label: CEREMONY_STATUS_LABELS_TH[value],
 }));

@@ -23,6 +23,9 @@ async function click(el: Element | null): Promise<void> {
 function byText(root: HTMLElement, sel: string, text: string): HTMLElement | null {
   return Array.from(root.querySelectorAll<HTMLElement>(sel)).find((e) => e.textContent?.includes(text)) ?? null;
 }
+function byExactText(root: HTMLElement, sel: string, text: string): HTMLElement | null {
+  return Array.from(root.querySelectorAll<HTMLElement>(sel)).find((e) => e.textContent?.trim() === text) ?? null;
+}
 async function setValue(el: Element | null, value: string): Promise<void> {
   await act(async () => {
     const proto = el instanceof HTMLSelectElement ? window.HTMLSelectElement.prototype : window.HTMLInputElement.prototype;
@@ -42,10 +45,14 @@ afterEach(() => {
 });
 
 const CEREMONY = {
-  id: "c1", ceremonyType: "merit", status: "confirmed", title: "ทอดผ้าป่าสามัคคี",
+  id: "c1", ceremonyType: "merit", status: "planned", title: "ทอดผ้าป่าสามัคคี",
   ceremonyDate: "2569-06-12", timeNote: "09:00–14:00", location: "ศาลาการเปรียญ",
   requesterName: "ครอบครัวสุขใจ", requesterPhone: null, assignedMonks: null, monkCount: 9,
   note: null, createdAt: "", updatedAt: "",
+} as unknown as Ceremony;
+
+const REQUESTED_BOOKING = {
+  ...CEREMONY, id: "c2", status: "requested", title: "ขอจองทำบุญขึ้นบ้านใหม่", requesterName: "คุณญาติโยม",
 } as unknown as Ceremony;
 
 describe("DesignEvents — wired to /ceremonies", () => {
@@ -78,6 +85,40 @@ describe("DesignEvents — wired to /ceremonies", () => {
     const api = { list: vi.fn(async () => [] as Ceremony[]) } as unknown as CeremoniesApi;
     const container = await mount(<DesignEvents api={api} />);
     expect(byText(container, "button", "จองกิจกรรม")).toBeNull();
+  });
+
+  it("surfaces the devotee 'requested' queue and confirms a booking via the audited update", async () => {
+    const api = {
+      list: vi.fn(async () => [REQUESTED_BOOKING]),
+      update: vi.fn(async () => ({ ...REQUESTED_BOOKING, status: "planned" })),
+    } as unknown as CeremoniesApi;
+    const container = await mount(<DesignEvents api={api} canWrite />);
+    // Queue banner + the row's pending status.
+    expect(container.textContent).toContain("มีคำขอจองจากญาติโยมรอยืนยัน");
+    expect(container.textContent).toContain("รอยืนยัน");
+    // Confirm (-> planned) via the exact row-action button (not the banner link).
+    await click(byExactText(container, "button", "ยืนยัน"));
+    expect(api.update).toHaveBeenCalled();
+    const call = (api.update as ReturnType<typeof vi.fn>).mock.calls[0] ?? [];
+    expect(call[0]).toBe("c2");
+    expect((call[1] as { status: string }).status).toBe("planned");
+  });
+
+  it("rejects a requested booking (-> cancelled)", async () => {
+    const api = {
+      list: vi.fn(async () => [REQUESTED_BOOKING]),
+      update: vi.fn(async () => ({ ...REQUESTED_BOOKING, status: "cancelled" })),
+    } as unknown as CeremoniesApi;
+    const container = await mount(<DesignEvents api={api} canWrite />);
+    await click(byExactText(container, "button", "ปฏิเสธ"));
+    const call = (api.update as ReturnType<typeof vi.fn>).mock.calls[0] ?? [];
+    expect((call[1] as { status: string }).status).toBe("cancelled");
+  });
+
+  it("shows no status actions for read-only staff", async () => {
+    const api = { list: vi.fn(async () => [REQUESTED_BOOKING]) } as unknown as CeremoniesApi;
+    const container = await mount(<DesignEvents api={api} />);
+    expect(byExactText(container, "button", "ยืนยัน")).toBeNull();
   });
 
   it("books a ceremony via the modal when canWrite", async () => {

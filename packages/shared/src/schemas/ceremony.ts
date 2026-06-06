@@ -17,6 +17,13 @@ export type CeremonyType = (typeof CEREMONY_TYPES)[number];
 export const CEREMONY_STATUSES = ["requested", "planned", "completed", "cancelled"] as const;
 export type CeremonyStatus = (typeof CEREMONY_STATUSES)[number];
 
+// Statuses temple staff may SET (via create/update). `requested` is server-only:
+// it is assigned solely by the devotee-booking path, never chosen by staff, so
+// staff can confirm (-> planned), complete, or cancel a request but never re-flag
+// something as "awaiting confirmation".
+export const CEREMONY_STAFF_SETTABLE_STATUSES = ["planned", "completed", "cancelled"] as const;
+export type CeremonyStaffStatus = (typeof CEREMONY_STAFF_SETTABLE_STATUSES)[number];
+
 export const CEREMONY_TYPE_LABELS_TH: Record<CeremonyType, string> = {
   merit: "ทำบุญ",
   funeral: "งานศพ/ฌาปนกิจ",
@@ -158,8 +165,14 @@ function applyOptionalFields(input: Record<string, unknown>, data: Record<string
     if (v !== undefined) data.monkCount = v;
   }
   if ("status" in input) {
-    if (isCeremonyStatus(input.status)) data.status = input.status;
-    else errors.push({ field: "status", message: "สถานะไม่ถูกต้อง" });
+    if (input.status === "requested") {
+      // Staff cannot set/keep "requested" — it is assigned only by devotee booking.
+      errors.push({ field: "status", message: "ไม่สามารถตั้งสถานะเป็นรอยืนยันได้" });
+    } else if (isCeremonyStatus(input.status)) {
+      data.status = input.status;
+    } else {
+      errors.push({ field: "status", message: "สถานะไม่ถูกต้อง" });
+    }
   }
 }
 

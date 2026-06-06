@@ -19,9 +19,11 @@ import {
 import {
   type CeremoniesApi,
   type Ceremony,
+  type CeremonyStatus,
   type CeremonyType,
   type CreateCeremonyInput,
   CEREMONY_FORM_SECTIONS,
+  CEREMONY_STATUS_OPTIONS,
   CEREMONY_TYPE_OPTIONS,
   ceremonyStatusLabel,
   ceremonyTypeLabel,
@@ -826,7 +828,35 @@ export function DesignLedger({ api, reportsApi, today, canWrite }: { api?: Ledge
 const DEMO_EVENT_DAYS = new Set([7, 8, 12, 19]);
 
 function ceremonyStatusKind(status: string): "credit" | "pending" | "void" {
-  return status === "confirmed" ? "credit" : status === "cancelled" ? "void" : "pending";
+  if (status === "completed") return "credit";
+  if (status === "cancelled") return "void";
+  return "pending"; // requested + planned
+}
+
+/** Staff status-transition buttons for a ceremony row (confirm / reject / complete). */
+function ceremonyRowActions(
+  e: Ceremony,
+  busy: boolean,
+  onChange: (id: string, next: CeremonyStatus) => void,
+): ReactElement {
+  const btns: { label: string; next: CeremonyStatus; variant: "primary" | "secondary" | "danger" }[] = [];
+  if (e.status === "requested") {
+    btns.push({ label: "ยืนยัน", next: "planned", variant: "primary" });
+    btns.push({ label: "ปฏิเสธ", next: "cancelled", variant: "danger" });
+  } else if (e.status === "planned") {
+    btns.push({ label: "เสร็จสิ้น", next: "completed", variant: "secondary" });
+    btns.push({ label: "ยกเลิก", next: "cancelled", variant: "danger" });
+  }
+  if (btns.length === 0) return <span className="muted">—</span>;
+  return (
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      {btns.map((b) => (
+        <Button key={b.next} variant={b.variant} disabled={busy} onClick={() => onChange(e.id, b.next)}>
+          {b.label}
+        </Button>
+      ))}
+    </div>
+  );
 }
 
 export function DesignEvents({ api, canWrite }: { api?: CeremoniesApi; canWrite?: boolean }): ReactElement {
@@ -834,11 +864,14 @@ export function DesignEvents({ api, canWrite }: { api?: CeremoniesApi; canWrite?
   const [error, setError] = useState<string | null>(null);
   const [type, setType] = useState("all");
   const [reloadKey, setReloadKey] = useState(0);
+  const [status, setStatus] = useState<"all" | CeremonyStatus>("all");
   const [creating, setCreating] = useState(false);
   const [cType, setCType] = useState<CeremonyType>("merit");
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [actionErr, setActionErr] = useState<string | null>(null);
   useEffect(() => {
     if (!api) return;
     let active = true;
@@ -848,8 +881,29 @@ export function DesignEvents({ api, canWrite }: { api?: CeremoniesApi; canWrite?
     );
     return () => { active = false; };
   }, [api, reloadKey]);
-  const filtered = (items ?? []).filter((e) => type === "all" || e.ceremonyType === type);
+  const all = items ?? [];
+  const filtered = all.filter(
+    (e) => (type === "all" || e.ceremonyType === type) && (status === "all" || e.status === status),
+  );
+  // Devotee-submitted bookings awaiting staff confirmation (the queue).
+  const requestedCount = all.filter((e) => e.status === "requested").length;
   const eventDays = DEMO_EVENT_DAYS;
+
+  // Confirm (-> planned), reject/cancel (-> cancelled), or complete a booking by
+  // reusing the audited PATCH /ceremonies/:id (the server blocks setting "requested").
+  async function changeStatus(id: string, next: CeremonyStatus): Promise<void> {
+    if (!api?.update) return;
+    setBusyId(id);
+    setActionErr(null);
+    try {
+      await api.update(id, { status: next });
+      setReloadKey((k) => k + 1);
+    } catch (e) {
+      setActionErr(e instanceof Error ? e.message : "อัปเดตสถานะไม่สำเร็จ");
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   function openCreate(): void {
     setCType("merit");
@@ -878,20 +932,34 @@ export function DesignEvents({ api, canWrite }: { api?: CeremoniesApi; canWrite?
       {error ? <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: "var(--r)", background: "var(--danger-tint)", color: "var(--danger)", fontSize: 13 }}>โหลดข้อมูลกิจกรรมไม่สำเร็จ: {error}</div> : null}
       <div className="split">
         <Card>
+          {requestedCount > 0 ? (
+            <div style={{ marginBottom: 12, padding: "9px 13px", borderRadius: "var(--r)", background: "var(--accent-tint-2)", border: "1px solid var(--accent-line)", color: "var(--accent)", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
+              <Icon name="lotus" size={15} />
+              มีคำขอจองจากญาติโยมรอยืนยัน {requestedCount} รายการ
+              {status !== "requested" ? (
+                <button type="button" className="link-btn" style={{ marginLeft: "auto" }} onClick={() => setStatus("requested")}>ดูคิวรอยืนยัน</button>
+              ) : null}
+            </div>
+          ) : null}
+          {actionErr ? <div className="error-text" style={{ marginBottom: 10 }} role="alert">{actionErr}</div> : null}
           <Toolbar>
             <div className="seg">
               <button type="button" className={type === "all" ? "active" : ""} onClick={() => setType("all")}>ทั้งหมด</button>
               {CEREMONY_TYPE_OPTIONS.map((t) => <button key={t.value} type="button" className={type === t.value ? "active" : ""} onClick={() => setType(t.value)}>{t.label}</button>)}
             </div>
+            <div className="seg" style={{ marginLeft: 8 }} aria-label="กรองตามสถานะ">
+              <button type="button" className={status === "all" ? "active" : ""} onClick={() => setStatus("all")}>ทุกสถานะ</button>
+              {CEREMONY_STATUS_OPTIONS.map((s) => <button key={s.value} type="button" className={status === s.value ? "active" : ""} onClick={() => setStatus(s.value)}>{s.label}</button>)}
+            </div>
             <span className="muted" style={{ marginLeft: "auto" }}>{filtered.length} กิจกรรม</span>
           </Toolbar>
           <Table>
-            <thead><tr><th>กิจกรรม</th><th>ประเภท</th><th>วันที่ / เวลา</th><th>สถานที่</th><th className="num">นิมนต์พระ</th><th>สถานะ</th></tr></thead>
+            <thead><tr><th>กิจกรรม</th><th>ประเภท</th><th>วันที่ / เวลา</th><th>สถานที่</th><th className="num">นิมนต์พระ</th><th>สถานะ</th>{canWrite ? <th>การจัดการ</th> : null}</tr></thead>
             <tbody>
               {!items ? (
-                <tr><td colSpan={6} className="muted" style={{ textAlign: "center", padding: "20px" }}>{error ? "โหลดข้อมูลไม่สำเร็จ" : "กำลังโหลด…"}</td></tr>
+                <tr><td colSpan={canWrite ? 7 : 6} className="muted" style={{ textAlign: "center", padding: "20px" }}>{error ? "โหลดข้อมูลไม่สำเร็จ" : "กำลังโหลด…"}</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={6} className="muted" style={{ textAlign: "center", padding: "20px" }}>ยังไม่มีกิจกรรม</td></tr>
+                <tr><td colSpan={canWrite ? 7 : 6} className="muted" style={{ textAlign: "center", padding: "20px" }}>ยังไม่มีกิจกรรม</td></tr>
               ) : (
                 filtered.map((e) => (
                   <tr key={e.id}>
@@ -900,6 +968,7 @@ export function DesignEvents({ api, canWrite }: { api?: CeremoniesApi; canWrite?
                     <td style={{ whiteSpace: "nowrap" }}>{e.ceremonyDate}<div className="muted" style={{ fontSize: 12 }}>{e.timeNote ?? ""}</div></td>
                     <td>{e.location ?? "—"}</td><td className="num tnum">{e.monkCount ?? "—"}</td>
                     <td><Badge kind={ceremonyStatusKind(e.status)} dot>{ceremonyStatusLabel(e.status)}</Badge></td>
+                    {canWrite ? <td>{ceremonyRowActions(e, busyId === e.id, changeStatus)}</td> : null}
                   </tr>
                 ))
               )}

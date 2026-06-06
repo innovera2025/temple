@@ -177,6 +177,30 @@ describe("ceremonies (งานบุญ/พิธี)", () => {
     expect(snap.afterHasUpdatedAt).toBe("false"); // snapshot omits createdAt/updatedAt
   });
 
+  it("rejects staff setting status to 'requested' (server-only via devotee booking) with 422", async () => {
+    const { ceremony: created } = await ceremonies.create(actorA, templeA, ip, {
+      ceremonyType: "merit",
+      title: `งานบุญ-${randomUUID().slice(0, 8)}`,
+      ceremonyDate: "2031-08-15",
+    });
+    await expectProjectHttpError(
+      ceremonies.update(actorA, templeA, ip, created.id, { status: "requested" }),
+      422,
+      "UNPROCESSABLE_ENTITY",
+    );
+    // also blocked at create time
+    await expectProjectHttpError(
+      ceremonies.create(actorA, templeA, ip, {
+        ceremonyType: "merit",
+        title: "x",
+        ceremonyDate: "2031-08-15",
+        status: "requested",
+      }),
+      422,
+      "UNPROCESSABLE_ENTITY",
+    );
+  });
+
   it("rejects invalid input with 422 (missing/bad fields, mass-assignment, non-number monkCount)", async () => {
     await expectProjectHttpError(ceremonies.create(actorA, templeA, ip, {}), 422, "UNPROCESSABLE_ENTITY");
     await expectProjectHttpError(
