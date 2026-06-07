@@ -867,6 +867,7 @@ export function DesignEvents({ api, canWrite }: { api?: CeremoniesApi; canWrite?
   const [status, setStatus] = useState<"all" | CeremonyStatus>("all");
   const [creating, setCreating] = useState(false);
   const [cType, setCType] = useState<CeremonyType>("merit");
+  const [cPublic, setCPublic] = useState(false);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
@@ -907,6 +908,7 @@ export function DesignEvents({ api, canWrite }: { api?: CeremoniesApi; canWrite?
 
   function openCreate(): void {
     setCType("merit");
+    setCPublic(false);
     setDraft({});
     setSaveErr(null);
     setCreating(true);
@@ -916,7 +918,7 @@ export function DesignEvents({ api, canWrite }: { api?: CeremoniesApi; canWrite?
     setSaving(true);
     setSaveErr(null);
     try {
-      await api.create({ ceremonyType: cType, status: "planned", ...draft } as unknown as CreateCeremonyInput);
+      await api.create({ ceremonyType: cType, status: "planned", isPublic: cPublic, ...draft } as unknown as CreateCeremonyInput);
       setCreating(false);
       setReloadKey((k) => k + 1);
     } catch (e) {
@@ -1015,6 +1017,10 @@ export function DesignEvents({ api, canWrite }: { api?: CeremoniesApi; canWrite?
               )}
             </div>
           ))}
+          <label className="field" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <input type="checkbox" checked={cPublic} onChange={(e) => setCPublic(e.target.checked)} />
+            <span>เผยแพร่กิจกรรมนี้สู่หน้าสาธารณะ (ให้ญาติโยมทั่วไปเห็น)</span>
+          </label>
           {saveErr ? <p className="error-text">{saveErr}</p> : null}
         </Modal>
       ) : null}

@@ -422,6 +422,7 @@ model Ceremony {
   assignedMonks  String?        @map("assigned_monks")
   monkCount      Int?           @map("monk_count")
   note           String?
+  isPublic       Boolean        @default(false) @map("is_public")
   devoteeAccountId String?        @map("devotee_account_id") @db.Uuid
   devoteeAccount   DevoteeAccount? @relation(fields: [devoteeAccountId], references: [id])
   createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)

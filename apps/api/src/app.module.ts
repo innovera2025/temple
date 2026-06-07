@@ -17,6 +17,7 @@ import { ItemLoansModule } from "./item-loans/item-loans.module";
 import { LedgerModule } from "./ledger/ledger.module";
 import { PersonnelModule } from "./personnel/personnel.module";
 import { PlatformModule } from "./platform/platform.module";
+import { PublicModule } from "./public/public.module";
 import { ReceiptsModule } from "./receipts/receipts.module";
 import { ReportsModule } from "./reports/reports.module";
 import { TempleModule } from "./temple/temple.module";
@@ -53,7 +54,8 @@ import { UsersModule } from "./users/users.module";
     UsersModule,
     AttachmentsModule,
     PlatformModule,
-    DevoteeModule
+    DevoteeModule,
+    PublicModule
   ],
   providers: [
     {

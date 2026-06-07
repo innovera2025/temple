@@ -173,3 +173,19 @@ export interface PublicTempleProfile extends PublicTempleSummary {
   abbotName: string | null;
   denomination: string | null;
 }
+
+/**
+ * Public, unauthenticated upcoming-event shape. Deliberately carries NO requester
+ * PII (name/phone), no monk/note/devotee internals — only what is safe to show on a
+ * public events feed.
+ */
+export interface PublicEventSummary {
+  id: string;
+  templeId: string;
+  templeNameTh: string;
+  ceremonyType: string;
+  title: string;
+  ceremonyDate: string;
+  timeNote: string | null;
+  location: string | null;
+}

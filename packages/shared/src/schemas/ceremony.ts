@@ -76,6 +76,8 @@ export interface CeremonyInput {
   assignedMonks?: string | null;
   monkCount?: number | null;
   note?: string | null;
+  /** Publish on the public (unauthenticated) upcoming-events feed. Default false. */
+  isPublic?: boolean;
 }
 
 export type CreateCeremonyInput = CeremonyInput;
@@ -99,7 +101,7 @@ const STRING_FIELDS = [
   "assignedMonks",
   "note",
 ] as const;
-const ALL_KEYS = ["ceremonyType", "status", "title", "ceremonyDate", ...STRING_FIELDS, "monkCount"] as const;
+const ALL_KEYS = ["ceremonyType", "status", "title", "ceremonyDate", ...STRING_FIELDS, "monkCount", "isPublic"] as const;
 const DEFAULT_TAKE = 100;
 const MAX_TAKE = 500;
 const MAX_MONK_COUNT = 999;
@@ -163,6 +165,10 @@ function applyOptionalFields(input: Record<string, unknown>, data: Record<string
   if ("monkCount" in input) {
     const v = optMonkCount(input.monkCount, errors);
     if (v !== undefined) data.monkCount = v;
+  }
+  if ("isPublic" in input) {
+    if (typeof input.isPublic === "boolean") data.isPublic = input.isPublic;
+    else errors.push({ field: "isPublic", message: "ค่าการเผยแพร่ไม่ถูกต้อง" });
   }
   if ("status" in input) {
     if (input.status === "requested") {
