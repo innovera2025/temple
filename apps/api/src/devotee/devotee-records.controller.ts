@@ -9,6 +9,7 @@ import { DevoteeGuard } from "./guards/devotee.guard";
 import {
   DevoteeCeremonyView,
   DevoteeDonationView,
+  DevoteeItemLoanView,
   DevoteeReceiptView,
   DevoteeRecordsService,
 } from "./devotee-records.service";
@@ -53,6 +54,16 @@ export class DevoteeRecordsController {
       throw unauthorized("Missing access token");
     }
     return { ceremonies: await this.records.listMyCeremonies(devotee.sub) };
+  }
+
+  @Get("item-loans")
+  async myItemLoans(
+    @CurrentDevotee() devotee: DevoteePrincipal | undefined,
+  ): Promise<{ itemLoans: DevoteeItemLoanView[] }> {
+    if (!devotee) {
+      throw unauthorized("Missing access token");
+    }
+    return { itemLoans: await this.records.listMyItemLoans(devotee.sub) };
   }
 
   @Get("receipts/:id")

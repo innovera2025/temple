@@ -10,6 +10,7 @@ import { AuthGuard } from "../src/common/guards/auth.guard";
 import { DevoteeAuthService } from "../src/devotee/devotee-auth.service";
 import { DevoteeCeremoniesController } from "../src/devotee/devotee-ceremonies.controller";
 import { DevoteeDonationsController } from "../src/devotee/devotee-donations.controller";
+import { DevoteeItemLoansController } from "../src/devotee/devotee-item-loans.controller";
 import { DevoteeProfileController } from "../src/devotee/devotee-profile.controller";
 import { DevoteeRecordsController } from "../src/devotee/devotee-records.controller";
 import { DevoteeTemplesController } from "../src/devotee/devotee-temples.controller";
@@ -58,6 +59,12 @@ async function insertTemple(slug: string, nameTh: string, status: string): Promi
   );
 }
 
+async function insertBorrowableItem(tenantId: string, name: string, totalQty: number): Promise<string> {
+  return returningId(
+    `INSERT INTO borrowable_items (tenant_id, name, category, unit, total_qty, status) VALUES (${lit(tenantId)}, ${lit(name)}, 'equipment', 'หลัง', ${totalQty}, 'active') RETURNING id`,
+  );
+}
+
 interface DevoteeJwtClaims {
   typ: string;
   sub: string;
@@ -93,6 +100,7 @@ describe("devotee self-service plane", () => {
   let temples: DevoteeTemplesController;
   let donations: DevoteeDonationsController;
   let ceremonies: DevoteeCeremoniesController;
+  let itemLoansCtrl: DevoteeItemLoansController;
   let records: DevoteeRecordsController;
   let profileCtrl: DevoteeProfileController;
   let devoteeGuard: DevoteeGuard;
@@ -113,6 +121,7 @@ describe("devotee self-service plane", () => {
     temples = app.get(DevoteeTemplesController);
     donations = app.get(DevoteeDonationsController);
     ceremonies = app.get(DevoteeCeremoniesController);
+    itemLoansCtrl = app.get(DevoteeItemLoansController);
     records = app.get(DevoteeRecordsController);
     profileCtrl = app.get(DevoteeProfileController);
     devoteeGuard = app.get(DevoteeGuard);
@@ -410,6 +419,107 @@ describe("devotee self-service plane", () => {
       }),
     );
     expect(theirsOk.every(Boolean)).toBe(true);
+  });
+
+  // --- item loans: browse + borrow request + own history -----------------------
+
+  it("lists a temple's ACTIVE borrowable items with availableQty and safe columns only", async () => {
+    const itemId = await insertBorrowableItem(templeA, `เต็นท์-${randomUUID().slice(0, 8)}`, 5);
+    const { items } = await itemLoansCtrl.items(templeA);
+    const mine = items.find((i) => i.id === itemId);
+    expect(mine).toBeDefined();
+    expect(mine?.availableQty).toBe(5);
+    // public-safe shape only — no tenant internals or borrower PII columns leak.
+    expect(mine).not.toHaveProperty("tenantId");
+    expect(mine).not.toHaveProperty("note");
+    expect(mine).not.toHaveProperty("totalQty");
+  });
+
+  it("submits a borrow REQUEST: status=requested, stamps the devotee, NO stock decrement, NO photo, audits actor=devotee", async () => {
+    const itemId = await insertBorrowableItem(templeA, `โต๊ะ-${randomUUID().slice(0, 8)}`, 4);
+    const myName = (await profileCtrl.profile(devotee1)).profile.displayName;
+    const { request } = await itemLoansCtrl.request(devotee1, templeA, ip, {
+      itemId,
+      quantity: 2,
+      borrowedAt: "2031-10-01",
+      // Forged server-controlled fields must be ignored by the validator/server.
+      status: "borrowed",
+      devoteeAccountId: randomUUID(),
+      borrowPhotoIds: [randomUUID()],
+    } as never);
+
+    expect(request.status).toBe("requested");
+    expect(request.quantity).toBe(2);
+
+    // Row bound to temple A, tagged to THIS devotee, requester = the devotee's own
+    // name, NO photo committed, and the forged status/account were NOT honored.
+    const row = await psql(
+      `SELECT tenant_id || '|' || coalesce(devotee_account_id::text,'NULL') || '|' || status || '|' || coalesce(borrower_name,'NULL') || '|' || coalesce(borrow_photo_ids::text,'NULL') FROM item_loans WHERE id = ${lit(request.id)}`,
+    );
+    expect(row).toBe(`${templeA}|${devotee1.sub}|requested|${myName}|NULL`);
+
+    // A request commits NO stock — availableQty is still the full total.
+    const { items } = await itemLoansCtrl.items(templeA);
+    expect(items.find((i) => i.id === itemId)?.availableQty).toBe(4);
+
+    const auditRow = await psql(
+      `SELECT actor_type || '|' || coalesce(actor_user_id::text,'NULL') || '|' || coalesce(actor_devotee_account_id::text,'NULL') FROM audit_logs WHERE action = 'item_loan:request' AND entity_id = ${lit(request.id)}`,
+    );
+    expect(auditRow).toBe(`devotee|NULL|${devotee1.sub}`);
+  });
+
+  it("rejects a borrow request to an inactive temple (404), an unknown item (404), and an invalid quantity (422)", async () => {
+    const inactiveId = await insertTemple(`wat-inactive-${randomUUID()}`, "วัดปิดรับ", "suspended");
+    await expectHttpError(
+      itemLoansCtrl.request(devotee1, inactiveId, ip, { itemId: randomUUID(), quantity: 1, borrowedAt: "2031-10-01" } as never),
+      404,
+    );
+    await expectHttpError(
+      itemLoansCtrl.request(devotee1, templeA, ip, { itemId: randomUUID(), quantity: 1, borrowedAt: "2031-10-01" } as never),
+      404,
+    );
+    const itemId = await insertBorrowableItem(templeA, `ม้านั่ง-${randomUUID().slice(0, 8)}`, 3);
+    await expectHttpError(
+      itemLoansCtrl.request(devotee1, templeA, ip, { itemId, quantity: 0, borrowedAt: "2031-10-01" } as never),
+      422,
+    );
+  });
+
+  it("returns ONLY the requesting devotee's own item loans across temples (cross-read isolation)", async () => {
+    const itemAId = await insertBorrowableItem(templeA, `กลอง-${randomUUID().slice(0, 8)}`, 5);
+    const itemBId = await insertBorrowableItem(templeB, `ฉิ่ง-${randomUUID().slice(0, 8)}`, 5);
+    await itemLoansCtrl.request(devotee1, templeA, ip, { itemId: itemAId, quantity: 1, borrowedAt: "2031-10-02" } as never);
+    await itemLoansCtrl.request(devotee1, templeB, ip, { itemId: itemBId, quantity: 1, borrowedAt: "2031-10-03" } as never);
+    await itemLoansCtrl.request(devotee2, templeA, ip, { itemId: itemAId, quantity: 1, borrowedAt: "2031-10-04" } as never);
+
+    const { itemLoans: mine } = await records.myItemLoans(devotee1);
+    const { itemLoans: theirs } = await records.myItemLoans(devotee2);
+
+    expect(mine.some((l) => l.templeId === templeA)).toBe(true);
+    expect(mine.some((l) => l.templeId === templeB)).toBe(true);
+    const mineOk = await Promise.all(
+      mine.map(async (l) => (await psql(`SELECT devotee_account_id FROM item_loans WHERE id = ${lit(l.id)}`)) === devotee1.sub),
+    );
+    expect(mineOk.every(Boolean)).toBe(true);
+
+    expect(theirs.length).toBeGreaterThanOrEqual(1);
+    const theirsOk = await Promise.all(
+      theirs.map(async (l) => (await psql(`SELECT devotee_account_id FROM item_loans WHERE id = ${lit(l.id)}`)) === devotee2.sub),
+    );
+    expect(theirsOk.every(Boolean)).toBe(true);
+  });
+
+  it("lists upcoming PUBLIC events for a temple with safe columns only (no requester PII)", async () => {
+    await psql(
+      `INSERT INTO ceremonies (tenant_id, ceremony_type, title, ceremony_date, status, is_public, requester_name, requester_phone) VALUES (${lit(templeA)}, 'kathin', 'งานกฐินสาธารณะ', '2031-11-05', 'planned', true, 'ห้ามเปิดเผย', '0800000000')`,
+    );
+    const { events } = await itemLoansCtrl.events(templeA);
+    const ev = events.find((e) => e.title === "งานกฐินสาธารณะ");
+    expect(ev).toBeDefined();
+    expect(ev?.templeId).toBe(templeA);
+    expect(ev).not.toHaveProperty("requesterName");
+    expect(ev).not.toHaveProperty("requesterPhone");
+    expect(ev).not.toHaveProperty("assignedMonks");
   });
 
   // --- Phase 4: account settings + own-receipt document -------------------------

@@ -69,6 +69,11 @@ export class AttachmentsService {
         return Boolean(await tx.ledgerEntry.findFirst({ where, select }));
       case "donor":
         return Boolean(await tx.donor.findFirst({ where, select }));
+      case "item_loan":
+        // Loan hand-over photos are attached to the borrowable item: the staff borrow
+        // flow (and the devotee-request approval) uploads the photo with the item id as
+        // ownerId, since the loan row may not exist yet at upload time.
+        return Boolean(await tx.borrowableItem.findFirst({ where, select }));
       default:
         return false;
     }

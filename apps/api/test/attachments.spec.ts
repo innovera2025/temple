@@ -11,6 +11,7 @@ import { AttachmentsService } from "../src/attachments/attachments.service";
 import { AuthService } from "../src/auth/auth.service";
 import { ROLES_KEY } from "../src/common/decorators/roles.decorator";
 import { DonorsController } from "../src/donors/donors.controller";
+import { ItemLoansController } from "../src/item-loans/item-loans.controller";
 
 const execFileAsync = promisify(execFile);
 const templeA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -73,12 +74,14 @@ describe("attachments (แนบหลักฐาน)", () => {
   let app: INestApplication;
   let authService: AuthService;
   let donors: DonorsController;
+  let loans: ItemLoansController;
   let attachments: AttachmentsController;
   let attachmentsService: AttachmentsService;
   let reflector: Reflector;
   let actorA: TokenPayload;
   let actorB: TokenPayload;
   let donorAId: string;
+  let itemAId: string;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -87,6 +90,7 @@ describe("attachments (แนบหลักฐาน)", () => {
 
     authService = app.get(AuthService);
     donors = app.get(DonorsController);
+    loans = app.get(ItemLoansController);
     attachments = app.get(AttachmentsController);
     attachmentsService = app.get(AttachmentsService);
     reflector = app.get(Reflector);
@@ -96,6 +100,8 @@ describe("attachments (แนบหลักฐาน)", () => {
 
     const { donor } = await donors.create(actorA, templeA, ip, { displayName: `ผู้บริจาคแนบ-${randomUUID().slice(0, 8)}` });
     donorAId = donor.id;
+    const { item } = await loans.createItem(actorA, templeA, ip, { name: `เต็นท์แนบ-${randomUUID().slice(0, 8)}`, category: "equipment", unit: "หลัง", totalQty: 5 });
+    itemAId = item.id;
   });
 
   afterAll(async () => {
@@ -207,6 +213,30 @@ describe("attachments (แนบหลักฐาน)", () => {
       }),
       422,
       "UNPROCESSABLE_ENTITY",
+    );
+  });
+
+  it("uploads an item_loan hand-over photo against a borrowable item (regression: ownerExists item_loan)", async () => {
+    const { attachment } = await attachments.upload(actorA, templeA, ip, {
+      ownerType: "item_loan",
+      ownerId: itemAId,
+      fileName: "handover.png",
+      mimeType: "image/png",
+      contentBase64,
+    });
+    expect(attachment.ownerType).toBe("item_loan");
+    expect(attachment.ownerId).toBe(itemAId);
+    // a bogus item id is still rejected (404), proving the owner is really validated.
+    await expectProjectHttpError(
+      attachments.upload(actorA, templeA, ip, {
+        ownerType: "item_loan",
+        ownerId: randomUUID(),
+        fileName: "x.png",
+        mimeType: "image/png",
+        contentBase64,
+      }),
+      404,
+      "NOT_FOUND",
     );
   });
 

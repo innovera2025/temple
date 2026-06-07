@@ -4,6 +4,8 @@ import { CeremoniesModule } from "../ceremonies/ceremonies.module";
 import { PrismaModule } from "../common/prisma/prisma.module";
 import { RateLimitGuard } from "../common/guards/rate-limit.guard";
 import { DonationsModule } from "../donations/donations.module";
+import { ItemLoansModule } from "../item-loans/item-loans.module";
+import { PublicModule } from "../public/public.module";
 import { ReceiptsModule } from "../receipts/receipts.module";
 import { DevoteeAccountsService } from "./devotee-accounts.service";
 import { DevoteeAuthController } from "./devotee-auth.controller";
@@ -12,6 +14,8 @@ import { DevoteeCeremoniesController } from "./devotee-ceremonies.controller";
 import { DevoteeCeremoniesService } from "./devotee-ceremonies.service";
 import { DevoteeDonationsController } from "./devotee-donations.controller";
 import { DevoteeDonationsService } from "./devotee-donations.service";
+import { DevoteeItemLoansController } from "./devotee-item-loans.controller";
+import { DevoteeItemLoansService } from "./devotee-item-loans.service";
 import { DevoteeProfileController } from "./devotee-profile.controller";
 import { DevoteeRecordsController } from "./devotee-records.controller";
 import { DevoteeRecordsService } from "./devotee-records.service";
@@ -26,12 +30,13 @@ import { DevoteeGuard } from "./guards/devotee.guard";
  * DonationsModule's DonationsService; every controller mounts ONLY DevoteeGuard.
  */
 @Module({
-  imports: [PrismaModule, AuthModule, DonationsModule, CeremoniesModule, ReceiptsModule],
+  imports: [PrismaModule, AuthModule, DonationsModule, CeremoniesModule, ReceiptsModule, ItemLoansModule, PublicModule],
   controllers: [
     DevoteeAuthController,
     DevoteeTemplesController,
     DevoteeDonationsController,
     DevoteeCeremoniesController,
+    DevoteeItemLoansController,
     DevoteeRecordsController,
     DevoteeProfileController,
   ],
@@ -42,6 +47,7 @@ import { DevoteeGuard } from "./guards/devotee.guard";
     DevoteeTemplesService,
     DevoteeDonationsService,
     DevoteeCeremoniesService,
+    DevoteeItemLoansService,
     DevoteeRecordsService,
     DevoteeGuard,
     RateLimitGuard,

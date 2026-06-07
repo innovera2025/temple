@@ -8,7 +8,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AppModule } from "../src/app.module";
 import { AuthService } from "../src/auth/auth.service";
 import { ROLES_KEY } from "../src/common/decorators/roles.decorator";
+import { DevoteeAuthService } from "../src/devotee/devotee-auth.service";
 import { ItemLoansController } from "../src/item-loans/item-loans.controller";
+import { ItemLoansService } from "../src/item-loans/item-loans.service";
 
 const execFileAsync = promisify(execFile);
 const templeA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -65,6 +67,8 @@ describe("item-loans (การยืม-คืนสิ่งของวัด
   let app: INestApplication;
   let auth: AuthService;
   let loans: ItemLoansController;
+  let loansSvc: ItemLoansService;
+  let devoteeAuth: DevoteeAuthService;
   let reflector: Reflector;
   let actorA: TokenPayload;
   let actorB: TokenPayload;
@@ -75,6 +79,8 @@ describe("item-loans (การยืม-คืนสิ่งของวัด
     await app.init();
     auth = app.get(AuthService);
     loans = app.get(ItemLoansController);
+    loansSvc = app.get(ItemLoansService);
+    devoteeAuth = app.get(DevoteeAuthService);
     reflector = app.get(Reflector);
     actorA = decodeJwtPayload((await auth.login({ email: adminEmail, password: devPassword })).accessToken);
     actorB = decodeJwtPayload((await auth.login({ email: adminEmailB, password: devPassword })).accessToken);
@@ -86,6 +92,15 @@ describe("item-loans (การยืม-คืนสิ่งของวัด
   async function makeItem(totalQty: number) {
     const { item } = await loans.createItem(actorA, templeA, ip, { name: `เต็นท์-${randomUUID().slice(0, 8)}`, category: "equipment", unit: "หลัง", totalQty });
     return item;
+  }
+
+  /** Register a devotee and return the principal-ish fields needed for a borrow request. */
+  async function registerDevotee() {
+    const email = `loan-dev-${randomUUID()}@example.com`;
+    const tokens = await devoteeAuth.register({ email, displayName: "ญาติโยมยืม", password: devPassword }, ip);
+    const segment = tokens.accessToken.split(".")[1] ?? "";
+    const sub = (JSON.parse(Buffer.from(segment, "base64url").toString("utf8")) as { sub: string }).sub;
+    return { id: sub, email, displayName: "ญาติโยมยืม" };
   }
 
   it("creates an item showing availableQty and audits it", async () => {
@@ -196,10 +211,89 @@ describe("item-loans (การยืม-คืนสิ่งของวัด
     expect(numbers.size).toBe(3);
   });
 
+  // --- devotee borrow requests: staff approve / reject -------------------------
+
+  it("approves a devotee request: requested -> borrowed, commits stock + photo, audits actor=user", async () => {
+    const item = await makeItem(5);
+    const dev = await registerDevotee();
+    const requested = await loansSvc.createDevoteeLoanRequest(templeA, dev, { itemId: item.id, quantity: 2, borrowedAt: "2031-09-01" }, ip);
+    expect(requested.status).toBe("requested");
+    // A pending request commits no stock yet.
+    expect((await loans.getItem(templeA, item.id)).item.availableQty).toBe(5);
+
+    const photo = await createPhoto(templeA);
+    const { loan } = await loans.approveLoan(actorA, templeA, ip, requested.id, { borrowPhotoIds: [photo] });
+    expect(loan.status).toBe("borrowed");
+    expect(loan.borrowPhotoId).toBe(photo);
+    expect(loan.borrowPhotoIds).toEqual([photo]);
+    // Stock is committed only on approval.
+    expect((await loans.getItem(templeA, item.id)).item.availableQty).toBe(3);
+    expect(await auditCount(templeA, "item_loan:approve", loan.id)).toBe(1);
+    // The approve audit row is a USER actor (staff), not a devotee.
+    const actorType = await psql(`SELECT actor_type FROM audit_logs WHERE action = 'item_loan:approve' AND entity_id = '${loan.id}'`);
+    expect(actorType).toBe("user");
+
+    // Re-approving an already-approved loan is rejected (409).
+    await expectErr(loans.approveLoan(actorA, templeA, ip, requested.id, { borrowPhotoIds: [photo] }), 409, "CONFLICT");
+  });
+
+  it("approval requires a photo (422) and never commits stock without one", async () => {
+    const item = await makeItem(3);
+    const dev = await registerDevotee();
+    const requested = await loansSvc.createDevoteeLoanRequest(templeA, dev, { itemId: item.id, quantity: 1, borrowedAt: "2031-09-02" }, ip);
+    await expectErr(loans.approveLoan(actorA, templeA, ip, requested.id, { borrowPhotoIds: [] }), 422, "UNPROCESSABLE_ENTITY");
+    await expectErr(loans.approveLoan(actorA, templeA, ip, requested.id, { borrowPhotoIds: [randomUUID()] }), 422, "UNPROCESSABLE_ENTITY");
+    // Still requested, still no stock committed.
+    expect((await loans.getItem(templeA, item.id)).item.availableQty).toBe(3);
+    expect(await psql(`SELECT status FROM item_loans WHERE id = '${requested.id}'`)).toBe("requested");
+  });
+
+  it("blocks an approval that would oversell (409) and leaves the request pending", async () => {
+    const item = await makeItem(2);
+    const dev = await registerDevotee();
+    // Request for the full 2 (soft check passes: available = 2).
+    const requested = await loansSvc.createDevoteeLoanRequest(templeA, dev, { itemId: item.id, quantity: 2, borrowedAt: "2031-09-03" }, ip);
+    // A staff borrow of 1 reduces availability to 1 before approval.
+    const borrowPhoto = await createPhoto(templeA);
+    await loans.createLoan(actorA, templeA, ip, { itemId: item.id, borrowerName: "เจ้าหน้าที่", quantity: 1, borrowedAt: "2031-09-03", borrowPhotoId: borrowPhoto });
+    expect((await loans.getItem(templeA, item.id)).item.availableQty).toBe(1);
+    // Approving the request for 2 now oversells -> 409, request stays pending.
+    const photo = await createPhoto(templeA);
+    await expectErr(loans.approveLoan(actorA, templeA, ip, requested.id, { borrowPhotoIds: [photo] }), 409, "CONFLICT");
+    expect(await psql(`SELECT status FROM item_loans WHERE id = '${requested.id}'`)).toBe("requested");
+    expect((await loans.getItem(templeA, item.id)).item.availableQty).toBe(1);
+  });
+
+  it("rejects a devotee request: requested -> cancelled, no stock change, audits actor=user", async () => {
+    const item = await makeItem(4);
+    const dev = await registerDevotee();
+    const requested = await loansSvc.createDevoteeLoanRequest(templeA, dev, { itemId: item.id, quantity: 2, borrowedAt: "2031-09-04" }, ip);
+    const { loan } = await loans.rejectLoan(actorA, templeA, ip, requested.id, { reason: "สิ่งของไม่ว่างในช่วงนั้น" });
+    expect(loan.status).toBe("cancelled");
+    expect((await loans.getItem(templeA, item.id)).item.availableQty).toBe(4);
+    expect(await auditCount(templeA, "item_loan:reject", loan.id)).toBe(1);
+    const rejectRow = await psql(`SELECT actor_type || '|' || coalesce(reason,'NULL') FROM audit_logs WHERE action = 'item_loan:reject' AND entity_id = '${loan.id}'`);
+    expect(rejectRow).toBe("user|สิ่งของไม่ว่างในช่วงนั้น");
+    // A cancelled request cannot be approved afterwards.
+    const photo = await createPhoto(templeA);
+    await expectErr(loans.approveLoan(actorA, templeA, ip, requested.id, { borrowPhotoIds: [photo] }), 409, "CONFLICT");
+  });
+
+  it("never approves/rejects another tenant's request (RLS 404)", async () => {
+    const item = await makeItem(3);
+    const dev = await registerDevotee();
+    const requested = await loansSvc.createDevoteeLoanRequest(templeA, dev, { itemId: item.id, quantity: 1, borrowedAt: "2031-09-05" }, ip);
+    const photo = await createPhoto(templeA);
+    await expectErr(loans.approveLoan(actorB, templeB, ip, requested.id, { borrowPhotoIds: [photo] }), 404, "NOT_FOUND");
+    await expectErr(loans.rejectLoan(actorB, templeB, ip, requested.id, {}), 404, "NOT_FOUND");
+  });
+
   it("guards roles: loan write + read = admin/finance/staff", () => {
     expect(reflector.get<string[]>(ROLES_KEY, ItemLoansController.prototype.createLoan)).toEqual(["admin", "finance", "staff"]);
     expect(reflector.get<string[]>(ROLES_KEY, ItemLoansController.prototype.returnLoan)).toEqual(["admin", "finance", "staff"]);
     expect(reflector.get<string[]>(ROLES_KEY, ItemLoansController.prototype.listLoans)).toEqual(["admin", "finance", "staff"]);
+    expect(reflector.get<string[]>(ROLES_KEY, ItemLoansController.prototype.approveLoan)).toEqual(["admin", "finance", "staff"]);
+    expect(reflector.get<string[]>(ROLES_KEY, ItemLoansController.prototype.rejectLoan)).toEqual(["admin", "finance", "staff"]);
   });
 
   it("restricts adding/editing borrowable items to the temple owner (admin) only", () => {
