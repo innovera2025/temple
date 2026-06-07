@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { PublicTempleProfile, PublicTempleSummary } from "@wat/shared";
+import { AccountView } from "./account-view";
 import { DevoteeLoginView } from "./login-view";
 import { MyRecords } from "./my-records";
 import { TemplePage } from "./temple-page";
@@ -99,6 +100,21 @@ function makeApi(overrides: Partial<DevoteeApi> = {}): DevoteeApi {
     myDonations: async () => [donationRecord],
     myReceipts: async () => [receiptRecord],
     myCeremonies: async () => [ceremonyRecord],
+    getProfile: async () => ({ id: "dev-1", email: "me@example.com", displayName: "คุณโยม", phone: null }),
+    updateProfile: async (_t, v) => ({ id: "dev-1", email: "me@example.com", displayName: v.displayName, phone: v.phone || null }),
+    changePassword: async () => undefined,
+    getReceiptDocument: async () => ({
+      receiptNo: "RC-2026-0001",
+      status: "issued",
+      issuedAt: "2026-06-01T00:00:00.000Z",
+      templeNameTh: "วัดอรุณเดโม",
+      templeNameEn: null,
+      donorName: "คุณโยม",
+      amountSatang: "50000",
+      amountText: "ห้าร้อยบาทถ้วน",
+      donationDate: "2026-06-01",
+      donationMethod: "cash",
+    }),
     ...overrides,
   };
 }
@@ -326,6 +342,65 @@ describe("devotee views (mounted)", () => {
     await flush();
     expect(container.textContent).toContain("ส่งคำขอจอง");
     expect(container.textContent).toContain("รอวัดยืนยัน");
+  });
+
+  it("account view loads the profile and saves an edit via updateProfile", async () => {
+    let savedName = "";
+    const api = makeApi({
+      updateProfile: async (_t, v) => {
+        savedName = v.displayName;
+        return { id: "dev-1", email: "me@example.com", displayName: v.displayName, phone: v.phone || null };
+      },
+    });
+    await act(async () => {
+      root.render(<AccountView api={api} token="t" onUnauthorized={() => undefined} />);
+    });
+    await flush();
+    expect(container.textContent).toContain("บัญชีของฉัน");
+    expect(container.textContent).toContain("เปลี่ยนรหัสผ่าน");
+    const name = container.querySelector<HTMLInputElement>("#acct-name");
+    await act(async () => {
+      if (name) {
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+        setter?.call(name, "คุณโยมใหม่");
+        name.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    });
+    const form = container.querySelector("form");
+    await act(async () => {
+      form?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    await flush();
+    expect(savedName).toBe("คุณโยมใหม่");
+    expect(container.textContent).toContain("บันทึกโปรไฟล์แล้ว");
+  });
+
+  it("opens a printable receipt document from my-records", async () => {
+    let askedId = "";
+    const api = makeApi({
+      getReceiptDocument: async (_t, id) => {
+        askedId = id;
+        return {
+          receiptNo: "RC-2026-0001", status: "issued", issuedAt: "2026-06-01T00:00:00.000Z",
+          templeNameTh: "วัดอรุณเดโม", templeNameEn: null, donorName: "คุณญาติโยม",
+          amountSatang: "50000", amountText: "ห้าร้อยบาทถ้วน", donationDate: "2026-06-01", donationMethod: "cash",
+        };
+      },
+    });
+    await act(async () => {
+      root.render(<MyRecords api={api} token="t" onUnauthorized={() => undefined} />);
+    });
+    await flush();
+    const btn = Array.from(container.querySelectorAll("button")).find((b) => b.textContent?.includes("ดู / พิมพ์"));
+    expect(btn).toBeTruthy();
+    await act(async () => {
+      btn?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flush();
+    expect(askedId).toBe(receiptRecord.id);
+    expect(container.textContent).toContain("ใบอนุโมทนาบุญ");
+    expect(container.textContent).toContain("คุณญาติโยม");
+    expect(container.textContent).toContain("ห้าร้อยบาทถ้วน");
   });
 
   it("redirects to login (onUnauthorized) when the API returns 401", async () => {

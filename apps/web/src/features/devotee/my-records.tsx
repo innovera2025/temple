@@ -8,12 +8,13 @@ import {
   type DonationMethod,
   formatSatang,
 } from "@wat/shared";
-import { Badge } from "../../design-system";
+import { Badge, Button, Modal } from "../../design-system";
 import {
   DevoteeApi,
   DevoteeCeremonyRecord,
   DevoteeDonationRecord,
   DevoteeReceiptRecord,
+  ReceiptPreview,
   devoteeErrorMessage,
 } from "./devotee-auth";
 
@@ -52,6 +53,23 @@ export function MyRecords({ api, token, onUnauthorized }: MyRecordsProps): React
   const [receipts, setReceipts] = useState<DevoteeReceiptRecord[] | null>(null);
   const [ceremonies, setCeremonies] = useState<DevoteeCeremonyRecord[] | null>(null);
   const [error, setError] = useState("");
+  const [docBusy, setDocBusy] = useState<string | null>(null);
+  const [doc, setDoc] = useState<ReceiptPreview | null>(null);
+
+  async function openReceipt(receiptId: string): Promise<void> {
+    setDocBusy(receiptId);
+    try {
+      setDoc(await api.getReceiptDocument(token, receiptId));
+    } catch (err) {
+      if (err && typeof err === "object" && "status" in err && (err as { status: number }).status === 401) {
+        onUnauthorized();
+        return;
+      }
+      setError(devoteeErrorMessage(err));
+    } finally {
+      setDocBusy(null);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -132,6 +150,7 @@ export function MyRecords({ api, token, onUnauthorized }: MyRecordsProps): React
                   <th>วันที่</th>
                   <th className="num">จำนวน (บาท)</th>
                   <th>สถานะ</th>
+                  <th>เอกสาร</th>
                 </tr>
               </thead>
               <tbody>
@@ -142,6 +161,11 @@ export function MyRecords({ api, token, onUnauthorized }: MyRecordsProps): React
                     <td>{row.donationDate}</td>
                     <td className="num tnum">{formatSatang(row.amountSatang)}</td>
                     <td>{statusBadge(row.status)}</td>
+                    <td>
+                      <Button variant="secondary" disabled={docBusy === row.id} onClick={() => void openReceipt(row.id)}>
+                        {docBusy === row.id ? "กำลังเปิด…" : "ดู / พิมพ์"}
+                      </Button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -183,6 +207,36 @@ export function MyRecords({ api, token, onUnauthorized }: MyRecordsProps): React
           </div>
         ) : null}
       </section>
+
+      {doc ? (
+        <Modal
+          title="ใบอนุโมทนาบุญ"
+          sub={`เลขที่ ${doc.receiptNo}`}
+          onClose={() => setDoc(null)}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setDoc(null)}>ปิด</Button>
+              <Button variant="primary" onClick={() => window.print()}>พิมพ์</Button>
+            </>
+          }
+        >
+          <div className="devotee-receipt-doc">
+            <div className="devotee-receipt-temple">{doc.templeNameTh}</div>
+            {doc.templeNameEn ? <div className="muted">{doc.templeNameEn}</div> : null}
+            {doc.templeAddressTh ? <div className="muted devotee-receipt-addr">{doc.templeAddressTh}</div> : null}
+            {doc.templeReceiptHeaderTh ? <p className="devotee-receipt-header">{doc.templeReceiptHeaderTh}</p> : null}
+            <dl className="devotee-info-list devotee-receipt-rows">
+              <div className="devotee-info-row"><dt>เลขที่</dt><dd>{doc.receiptNo}</dd></div>
+              <div className="devotee-info-row"><dt>วันที่</dt><dd>{doc.donationDate}</dd></div>
+              <div className="devotee-info-row"><dt>ผู้บริจาค</dt><dd>{doc.donorName}</dd></div>
+              <div className="devotee-info-row"><dt>จำนวนเงิน</dt><dd className="tnum">{formatSatang(doc.amountSatang)} บาท</dd></div>
+              <div className="devotee-info-row"><dt>ตัวอักษร</dt><dd>{doc.amountText}</dd></div>
+            </dl>
+            {doc.templeReceiptFooterTh ? <p className="devotee-receipt-footer muted">{doc.templeReceiptFooterTh}</p> : null}
+            {doc.status !== "issued" ? <p className="auth-error">สถานะ: {doc.status === "voided" ? "ยกเลิกแล้ว" : doc.status}</p> : null}
+          </div>
+        </Modal>
+      ) : null}
     </div>
   );
 }

@@ -10,6 +10,7 @@ import { AuthGuard } from "../src/common/guards/auth.guard";
 import { DevoteeAuthService } from "../src/devotee/devotee-auth.service";
 import { DevoteeCeremoniesController } from "../src/devotee/devotee-ceremonies.controller";
 import { DevoteeDonationsController } from "../src/devotee/devotee-donations.controller";
+import { DevoteeProfileController } from "../src/devotee/devotee-profile.controller";
 import { DevoteeRecordsController } from "../src/devotee/devotee-records.controller";
 import { DevoteeTemplesController } from "../src/devotee/devotee-temples.controller";
 import { DevoteeGuard } from "../src/devotee/guards/devotee.guard";
@@ -93,6 +94,7 @@ describe("devotee self-service plane", () => {
   let donations: DevoteeDonationsController;
   let ceremonies: DevoteeCeremoniesController;
   let records: DevoteeRecordsController;
+  let profileCtrl: DevoteeProfileController;
   let devoteeGuard: DevoteeGuard;
   let tenantAuthGuard: AuthGuard;
 
@@ -112,6 +114,7 @@ describe("devotee self-service plane", () => {
     donations = app.get(DevoteeDonationsController);
     ceremonies = app.get(DevoteeCeremoniesController);
     records = app.get(DevoteeRecordsController);
+    profileCtrl = app.get(DevoteeProfileController);
     devoteeGuard = app.get(DevoteeGuard);
     tenantAuthGuard = app.get(AuthGuard);
 
@@ -407,5 +410,66 @@ describe("devotee self-service plane", () => {
       }),
     );
     expect(theirsOk.every(Boolean)).toBe(true);
+  });
+
+  // --- Phase 4: account settings + own-receipt document -------------------------
+
+  it("returns and updates the devotee's own profile", async () => {
+    const { profile } = await profileCtrl.profile(devotee1);
+    expect(profile.email).toBe(devotee1.email);
+    const { profile: updated } = await profileCtrl.update(devotee1, { displayName: "ชื่อใหม่", phone: "0899999999" });
+    expect(updated.displayName).toBe("ชื่อใหม่");
+    expect(updated.phone).toBe("0899999999");
+  });
+
+  it("changes password (wrong current -> 401; correct -> success, revokes refresh tokens)", async () => {
+    const email = `pw-${randomUUID()}@example.com`;
+    const tokens = await devoteeAuth.register({ email, displayName: "เปลี่ยนรหัส", password: devPassword }, ip);
+    const claims = decodeJwt(tokens.accessToken);
+    const principal = { sub: claims.sub, email: claims.email };
+
+    await expectHttpError(
+      profileCtrl.changePassword(principal, { currentPassword: "wrong-pass", newPassword: "NewPassword123!" }),
+      401,
+    );
+    const before = await psql(
+      `SELECT count(*) FROM devotee_refresh_tokens WHERE devotee_account_id = ${lit(principal.sub)} AND revoked_at IS NULL`,
+    );
+    expect(Number(before)).toBeGreaterThanOrEqual(1);
+
+    const res = await profileCtrl.changePassword(principal, {
+      currentPassword: devPassword,
+      newPassword: "NewPassword123!",
+    });
+    expect(res.changed).toBe(true);
+
+    // All refresh tokens revoked; old password rejected; new password works.
+    const after = await psql(
+      `SELECT count(*) FROM devotee_refresh_tokens WHERE devotee_account_id = ${lit(principal.sub)} AND revoked_at IS NULL`,
+    );
+    expect(after).toBe("0");
+    await expectHttpError(devoteeAuth.login({ email, password: devPassword }), 401);
+    const relogin = await devoteeAuth.login({ email, password: "NewPassword123!" });
+    expect(relogin.accessToken).toBeTruthy();
+  });
+
+  it("serves the devotee's OWN receipt document but 404s another devotee's", async () => {
+    const created = await donations.create(devotee1, templeA, ip, {
+      amountSatang: 12300,
+      method: "cash",
+      donationDate: "2026-06-10",
+    } as never);
+    const receiptNo = `RC-${randomUUID().slice(0, 8)}`;
+    const receiptId = await returningId(
+      `INSERT INTO receipts (tenant_id, donation_id, receipt_no, status) VALUES (${lit(templeA)}, ${lit(created.donation.id)}, ${lit(receiptNo)}, 'issued') RETURNING id`,
+    );
+
+    const { receipt } = await records.myReceiptDocument(devotee1, receiptId);
+    expect(receipt.receiptNo).toBe(receiptNo);
+    expect(receipt.donorName).toBeTruthy();
+    expect(receipt.amountText).toBeTruthy();
+
+    // devotee2 cannot read devotee1's receipt (no existence/content disclosure).
+    await expectHttpError(records.myReceiptDocument(devotee2, receiptId), 404);
   });
 });

@@ -1,5 +1,8 @@
 import { Inject, Injectable } from "@nestjs/common";
+import { type ReceiptPreview } from "@wat/shared";
+import { notFound } from "../common/errors/project-error";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { ReceiptsService } from "../receipts/receipts.service";
 
 export interface DevoteeDonationView {
   id: string;
@@ -52,7 +55,29 @@ const MAX_TAKE = 200;
  */
 @Injectable()
 export class DevoteeRecordsService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(ReceiptsService) private readonly receipts: ReceiptsService,
+  ) {}
+
+  /**
+   * The printable document for ONE of the devotee's own receipts. Ownership is
+   * proven by a token-derived predicate (the receipt's donation's donor must be
+   * this devotee) before reusing the staff ReceiptsService.preview — a foreign
+   * receipt id 404s (never reveals existence or content).
+   */
+  async getMyReceiptDocument(devoteeAccountId: string, receiptId: string): Promise<ReceiptPreview> {
+    const owned = await this.prisma.withSystemAccess((tx) =>
+      tx.receipt.findFirst({
+        where: { id: receiptId, donation: { donor: { devoteeAccountId } } },
+        select: { id: true, tenantId: true },
+      }),
+    );
+    if (!owned) {
+      throw notFound("ไม่พบใบอนุโมทนา");
+    }
+    return this.receipts.preview(owned.tenantId, receiptId);
+  }
 
   async listMyDonations(devoteeAccountId: string): Promise<DevoteeDonationView[]> {
     const rows = await this.prisma.withSystemAccess((tx) =>

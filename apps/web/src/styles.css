@@ -1484,3 +1484,16 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .public-event-date { font-family: var(--font-mono); font-size: 12.5px; color: var(--accent); font-weight: 600; }
 .public-event-title { font-family: var(--font-serif); font-size: 16px; font-weight: 600; color: var(--ink); }
 .public-event-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; margin-top: 2px; }
+
+/* Devotee printable receipt (ใบอนุโมทนา) shown in a modal from #/devotee my-records. */
+.devotee-receipt-doc { font-family: var(--font-serif); text-align: center; padding: 6px 0; }
+.devotee-receipt-temple { font-size: 20px; font-weight: 600; color: var(--ink); }
+.devotee-receipt-addr { font-size: 12.5px; }
+.devotee-receipt-header { margin: 12px 0; color: var(--ink-2); line-height: 1.6; }
+.devotee-receipt-rows { text-align: left; max-width: 360px; margin: 16px auto; }
+.devotee-receipt-footer { margin-top: 14px; font-size: 12.5px; line-height: 1.6; }
+@media print {
+  body * { visibility: hidden !important; }
+  .devotee-receipt-doc, .devotee-receipt-doc * { visibility: visible !important; }
+  .devotee-receipt-doc { position: absolute; left: 0; top: 0; width: 100%; padding: 24px; }
+}

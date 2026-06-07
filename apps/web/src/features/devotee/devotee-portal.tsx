@@ -1,5 +1,6 @@
 import { ReactElement, useMemo, useState } from "react";
 import { Icon } from "../../layout/icons";
+import { AccountView } from "./account-view";
 import { DevoteeLoginView } from "./login-view";
 import { MyRecords } from "./my-records";
 import { TemplePage } from "./temple-page";
@@ -17,7 +18,11 @@ export interface DevoteePortalProps {
   today: string;
 }
 
-type View = { name: "picker" } | { name: "temple"; templeId: string } | { name: "records" };
+type View =
+  | { name: "picker" }
+  | { name: "temple"; templeId: string }
+  | { name: "records" }
+  | { name: "account" };
 
 export function DevoteePortal({ baseUrl, today }: DevoteePortalProps): ReactElement {
   const api = useMemo(() => createDevoteeApiClient({ baseUrl }), [baseUrl]);
@@ -66,6 +71,13 @@ export function DevoteePortal({ baseUrl, today }: DevoteePortalProps): ReactElem
           >
             ประวัติของฉัน
           </button>
+          <button
+            type="button"
+            className={view.name === "account" ? "active" : ""}
+            onClick={() => setView({ name: "account" })}
+          >
+            บัญชีของฉัน
+          </button>
         </nav>
         <div className="devotee-account">
           <span className="devotee-account-name">{session.devotee.displayName}</span>
@@ -95,6 +107,7 @@ export function DevoteePortal({ baseUrl, today }: DevoteePortalProps): ReactElem
           />
         ) : null}
         {view.name === "records" ? <MyRecords api={api} token={token} onUnauthorized={logout} /> : null}
+        {view.name === "account" ? <AccountView api={api} token={token} onUnauthorized={logout} /> : null}
       </main>
     </div>
   );

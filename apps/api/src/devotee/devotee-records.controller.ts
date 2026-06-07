@@ -1,7 +1,9 @@
-import { Controller, Get, Inject, UseGuards } from "@nestjs/common";
+import { Controller, Get, Inject, Param, UseGuards } from "@nestjs/common";
+import { type ReceiptPreview } from "@wat/shared";
 import { RateLimit } from "../common/decorators/rate-limit.decorator";
 import { RateLimitGuard } from "../common/guards/rate-limit.guard";
 import { unauthorized } from "../common/errors/project-error";
+import { assertUuidParam } from "../platform/uuid-param";
 import { CurrentDevotee } from "./decorators/current-devotee.decorator";
 import { DevoteeGuard } from "./guards/devotee.guard";
 import {
@@ -51,5 +53,16 @@ export class DevoteeRecordsController {
       throw unauthorized("Missing access token");
     }
     return { ceremonies: await this.records.listMyCeremonies(devotee.sub) };
+  }
+
+  @Get("receipts/:id")
+  async myReceiptDocument(
+    @CurrentDevotee() devotee: DevoteePrincipal | undefined,
+    @Param("id") id: string,
+  ): Promise<{ receipt: ReceiptPreview }> {
+    if (!devotee) {
+      throw unauthorized("Missing access token");
+    }
+    return { receipt: await this.records.getMyReceiptDocument(devotee.sub, assertUuidParam(id)) };
   }
 }

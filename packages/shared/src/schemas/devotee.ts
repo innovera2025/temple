@@ -69,6 +69,37 @@ export function validateDevoteeRegister(input: unknown): ValidationResult<Devote
   return { success: true, data: { email, displayName, password: input.password as string, ...(phone ? { phone } : {}) } };
 }
 
+export interface DevoteeProfileUpdateInput {
+  displayName: string;
+  phone: string | null;
+}
+
+export function validateDevoteeProfileUpdate(input: unknown): ValidationResult<DevoteeProfileUpdateInput> {
+  if (!isPlainObject(input)) return { success: false, errors: [{ field: "_root", message: "รูปแบบข้อมูลไม่ถูกต้อง" }] };
+  const errors: FieldError[] = [];
+  const displayName = reqString(input.displayName, "displayName", "ชื่อ-นามสกุล", DEVOTEE_LIMITS.displayName, errors);
+  const phone = optString(input.phone, "phone", "เบอร์โทร", DEVOTEE_LIMITS.phone, errors);
+  if (errors.length > 0) return { success: false, errors };
+  return { success: true, data: { displayName, phone: phone ?? null } };
+}
+
+export interface DevoteePasswordChangeInput {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export function validateDevoteePasswordChange(input: unknown): ValidationResult<DevoteePasswordChangeInput> {
+  if (!isPlainObject(input)) return { success: false, errors: [{ field: "_root", message: "รูปแบบข้อมูลไม่ถูกต้อง" }] };
+  const errors: FieldError[] = [];
+  const currentPassword = typeof input.currentPassword === "string" && input.currentPassword.length > 0 ? input.currentPassword : "";
+  if (!currentPassword) errors.push({ field: "currentPassword", message: "ต้องระบุรหัสผ่านปัจจุบัน" });
+  if (typeof input.newPassword !== "string" || input.newPassword.length < MIN_DEVOTEE_PASSWORD) {
+    errors.push({ field: "newPassword", message: `รหัสผ่านใหม่ต้องมีอย่างน้อย ${MIN_DEVOTEE_PASSWORD} ตัวอักษร` });
+  }
+  if (errors.length > 0) return { success: false, errors };
+  return { success: true, data: { currentPassword, newPassword: input.newPassword as string } };
+}
+
 export interface DevoteeLoginInput {
   email: string;
   password: string;

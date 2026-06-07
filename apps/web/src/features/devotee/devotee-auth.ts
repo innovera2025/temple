@@ -12,7 +12,10 @@ import type {
   DonationMethod,
   PublicTempleProfile,
   PublicTempleSummary,
+  ReceiptPreview,
 } from "@wat/shared";
+
+export type { ReceiptPreview } from "@wat/shared";
 
 export interface DevoteeIdentity {
   id: string;
@@ -132,6 +135,34 @@ export interface DevoteeCeremonyRecord {
   createdAt: string;
 }
 
+export interface DevoteeProfile {
+  id: string;
+  email: string;
+  displayName: string;
+  phone: string | null;
+}
+
+export interface DevoteeProfileValues {
+  displayName: string;
+  phone: string;
+}
+
+export interface DevoteeProfileErrors {
+  displayName?: string;
+}
+
+export interface DevoteePasswordValues {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
+export interface DevoteePasswordErrors {
+  currentPassword?: string;
+  newPassword?: string;
+  confirmPassword?: string;
+}
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD = 8;
 const SESSION_STORAGE_KEY = "wat-devotee-session";
@@ -189,6 +220,28 @@ export function validateDevoteeCeremonyForm(values: DevoteeCeremonyValues): Devo
 
 export function hasCeremonyErrors(errors: DevoteeCeremonyErrors): boolean {
   return Boolean(errors.title || errors.ceremonyDate);
+}
+
+export function validateProfileForm(values: DevoteeProfileValues): DevoteeProfileErrors {
+  const errors: DevoteeProfileErrors = {};
+  if (!values.displayName.trim()) errors.displayName = "กรุณากรอกชื่อ-นามสกุล";
+  return errors;
+}
+
+export function validatePasswordForm(values: DevoteePasswordValues): DevoteePasswordErrors {
+  const errors: DevoteePasswordErrors = {};
+  if (!values.currentPassword) errors.currentPassword = "กรุณากรอกรหัสผ่านปัจจุบัน";
+  if (!values.newPassword || values.newPassword.length < 8) errors.newPassword = "รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร";
+  if (values.confirmPassword !== values.newPassword) errors.confirmPassword = "รหัสผ่านใหม่ไม่ตรงกัน";
+  return errors;
+}
+
+export function hasProfileErrors(errors: DevoteeProfileErrors): boolean {
+  return Boolean(errors.displayName);
+}
+
+export function hasPasswordErrors(errors: DevoteePasswordErrors): boolean {
+  return Boolean(errors.currentPassword || errors.newPassword || errors.confirmPassword);
 }
 
 /** Map an API failure to a friendly Thai message. */
@@ -273,6 +326,10 @@ export interface DevoteeApi {
   myDonations(token: string): Promise<DevoteeDonationRecord[]>;
   myReceipts(token: string): Promise<DevoteeReceiptRecord[]>;
   myCeremonies(token: string): Promise<DevoteeCeremonyRecord[]>;
+  getProfile(token: string): Promise<DevoteeProfile>;
+  updateProfile(token: string, values: DevoteeProfileValues): Promise<DevoteeProfile>;
+  changePassword(token: string, values: DevoteePasswordValues): Promise<void>;
+  getReceiptDocument(token: string, receiptId: string): Promise<ReceiptPreview>;
 }
 
 export interface DevoteeApiClientOptions {
@@ -392,6 +449,35 @@ export function createDevoteeApiClient(options: DevoteeApiClientOptions): Devote
       });
       const body = await readJson<{ ceremonies: DevoteeCeremonyRecord[] }>(response, "โหลดการจองไม่สำเร็จ");
       return body.ceremonies;
+    },
+    async getProfile(token) {
+      const response = await doFetch(`${options.baseUrl}/devotee/me`, { headers: authHeaders(token) });
+      const body = await readJson<{ profile: DevoteeProfile }>(response, "โหลดโปรไฟล์ไม่สำเร็จ");
+      return body.profile;
+    },
+    async updateProfile(token, values) {
+      const response = await doFetch(`${options.baseUrl}/devotee/me`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", ...authHeaders(token) },
+        body: JSON.stringify({ displayName: values.displayName.trim(), phone: values.phone.trim() || null }),
+      });
+      const body = await readJson<{ profile: DevoteeProfile }>(response, "บันทึกโปรไฟล์ไม่สำเร็จ");
+      return body.profile;
+    },
+    async changePassword(token, values) {
+      const response = await doFetch(`${options.baseUrl}/devotee/me/password`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders(token) },
+        body: JSON.stringify({ currentPassword: values.currentPassword, newPassword: values.newPassword }),
+      });
+      await readJson<{ changed: true }>(response, "เปลี่ยนรหัสผ่านไม่สำเร็จ");
+    },
+    async getReceiptDocument(token, receiptId) {
+      const response = await doFetch(`${options.baseUrl}/devotee/me/receipts/${receiptId}`, {
+        headers: authHeaders(token),
+      });
+      const body = await readJson<{ receipt: ReceiptPreview }>(response, "โหลดใบอนุโมทนาไม่สำเร็จ");
+      return body.receipt;
     },
   };
 }
