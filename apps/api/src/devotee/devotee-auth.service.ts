@@ -71,11 +71,13 @@ export class DevoteeAuthService {
       }),
     );
 
-    if (
-      !account?.isActive ||
-      !account.passwordHash ||
-      !(await this.passwordService.verify(account.passwordHash, dto.password))
-    ) {
+    if (!account?.isActive || !account.passwordHash) {
+      // Equalize timing so a missing/inactive account isn't faster than a wrong
+      // password on a real one (user-enumeration timing oracle).
+      await this.passwordService.verifyDummy(dto.password);
+      throw unauthorized("อีเมลหรือรหัสผ่านไม่ถูกต้อง");
+    }
+    if (!(await this.passwordService.verify(account.passwordHash, dto.password))) {
       throw unauthorized("อีเมลหรือรหัสผ่านไม่ถูกต้อง");
     }
 

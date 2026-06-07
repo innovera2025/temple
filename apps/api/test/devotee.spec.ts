@@ -472,4 +472,26 @@ describe("devotee self-service plane", () => {
     // devotee2 cannot read devotee1's receipt (no existence/content disclosure).
     await expectHttpError(records.myReceiptDocument(devotee2, receiptId), 404);
   });
+
+  // --- Phase 5: hardening (refresh reuse-detection + enumeration) ---------------
+
+  it("rotates refresh tokens, and replaying a consumed token revokes the whole family", async () => {
+    const email = `reuse-${randomUUID()}@example.com`;
+    const t0 = await devoteeAuth.register({ email, displayName: "รีเฟรช", password: devPassword }, ip);
+    const t1 = await devoteeAuth.refresh(t0.refreshToken);
+    expect(t1.refreshToken).not.toBe(t0.refreshToken);
+    expect(t1.accessToken).toBeTruthy();
+
+    // Replaying the already-consumed t0 is rejected AND (reuse-detection) revokes
+    // the whole family — so the freshly rotated t1 is now dead too.
+    await expectHttpError(devoteeAuth.refresh(t0.refreshToken), 401);
+    await expectHttpError(devoteeAuth.refresh(t1.refreshToken), 401);
+  });
+
+  it("login with an unknown email returns a generic 401 (no account disclosure)", async () => {
+    await expectHttpError(
+      devoteeAuth.login({ email: `nobody-${randomUUID()}@example.com`, password: "whatever123" }),
+      401,
+    );
+  });
 });

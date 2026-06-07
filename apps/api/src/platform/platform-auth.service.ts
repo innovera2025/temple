@@ -39,11 +39,12 @@ export class PlatformAuthService {
       }),
     );
 
-    if (
-      !user?.isActive ||
-      !user.passwordHash ||
-      !(await this.passwordService.verify(user.passwordHash, dto.password))
-    ) {
+    if (!user?.isActive || !user.passwordHash) {
+      // Equalize timing on the account-missing/inactive path (enumeration oracle).
+      await this.passwordService.verifyDummy(dto.password);
+      throw unauthorized("อีเมลหรือรหัสผ่านไม่ถูกต้อง");
+    }
+    if (!(await this.passwordService.verify(user.passwordHash, dto.password))) {
       throw unauthorized("อีเมลหรือรหัสผ่านไม่ถูกต้อง");
     }
 

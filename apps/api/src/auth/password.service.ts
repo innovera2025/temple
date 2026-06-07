@@ -75,4 +75,18 @@ export class PasswordService {
 
     return hash.byteLength === parts.hash.byteLength && timingSafeEqual(hash, parts.hash);
   }
+
+  private dummyHashPromise: Promise<string> | null = null;
+
+  /**
+   * Run a full (throwaway) argon2 verify to equalize login timing on the
+   * account-missing / inactive / no-password path. Without this, those paths
+   * skip the expensive hash and return measurably faster than a wrong-password
+   * attempt on a real account — a user-enumeration timing oracle. Always
+   * discards the result; callers still throw their own 401.
+   */
+  async verifyDummy(password: string): Promise<void> {
+    this.dummyHashPromise ??= this.hash("wat:login-timing-equalizer:not-a-real-credential");
+    await this.verify(await this.dummyHashPromise, password);
+  }
 }

@@ -1,4 +1,4 @@
-import { Controller, Get, Inject, Param, Query, UseGuards } from "@nestjs/common";
+import { Controller, Get, Header, Inject, Param, Query, UseGuards } from "@nestjs/common";
 import {
   isUuid,
   type PublicEventSummary,
@@ -17,21 +17,28 @@ import { PublicService } from "./public.service";
  */
 @Controller("public")
 @UseGuards(RateLimitGuard)
-@RateLimit({ limit: 120, windowMs: 60_000 })
+// Anti-scraping: per-IP cap on this unauthenticated surface. Tighter than the
+// authenticated planes; still ample for a human browsing the directory.
+@RateLimit({ limit: 60, windowMs: 60_000 })
 export class PublicController {
   constructor(@Inject(PublicService) private readonly publicSvc: PublicService) {}
 
+  // Short shared cache: cuts repeated-scrape / refresh load and is correct for
+  // public data that changes slowly. (No per-user data here, so a shared cache is safe.)
   @Get("temples")
+  @Header("Cache-Control", "public, max-age=60")
   async temples(): Promise<{ temples: PublicTempleSummary[] }> {
     return { temples: await this.publicSvc.listTemples() };
   }
 
   @Get("temples/:id")
+  @Header("Cache-Control", "public, max-age=60")
   async temple(@Param("id") id: string): Promise<{ temple: PublicTempleProfile }> {
     return { temple: await this.publicSvc.getTemple(assertUuidParam(id)) };
   }
 
   @Get("events")
+  @Header("Cache-Control", "public, max-age=60")
   async events(@Query("templeId") templeId?: string): Promise<{ events: PublicEventSummary[] }> {
     // A malformed templeId is ignored (returns all) rather than 422 — a lenient
     // public read; it can only narrow results, never widen them.
