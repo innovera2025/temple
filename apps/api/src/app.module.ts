@@ -6,6 +6,7 @@ import { AuditModule } from "./audit/audit.module";
 import { AuthModule } from "./auth/auth.module";
 import { CeremoniesModule } from "./ceremonies/ceremonies.module";
 import { ProjectExceptionFilter } from "./common/filters/project-exception.filter";
+import { RateLimitModule } from "./common/rate-limit/rate-limit.module";
 import { validateEnv } from "./config/env.validation";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { DevoteeModule } from "./devotee/devotee.module";
@@ -37,6 +38,7 @@ import { UsersModule } from "./users/users.module";
       ],
       validate: validateEnv
     }),
+    RateLimitModule,
     HealthModule,
     AuthModule,
     AuditModule,

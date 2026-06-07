@@ -3,6 +3,7 @@ import { Reflector } from "@nestjs/core";
 import { describe, expect, it, vi } from "vitest";
 import { RateLimitOptions } from "../src/common/decorators/rate-limit.decorator";
 import { RateLimitGuard } from "../src/common/guards/rate-limit.guard";
+import { InMemoryRateLimitStore } from "../src/common/rate-limit/in-memory-rate-limit.store";
 
 class DemoController {}
 function demoHandler(): void {
@@ -11,6 +12,10 @@ function demoHandler(): void {
 
 function reflectorReturning(options: RateLimitOptions | undefined): Reflector {
   return { getAllAndOverride: () => options } as unknown as Reflector;
+}
+
+function makeGuard(options: RateLimitOptions | undefined): RateLimitGuard {
+  return new RateLimitGuard(reflectorReturning(options), new InMemoryRateLimitStore());
 }
 
 function ctxFor(principal: { sub?: string; ip?: string }): ExecutionContext {
@@ -23,15 +28,15 @@ function ctxFor(principal: { sub?: string; ip?: string }): ExecutionContext {
 }
 
 describe("RateLimitGuard", () => {
-  it("allows up to the limit then rejects with 429 within the window", () => {
-    const guard = new RateLimitGuard(reflectorReturning({ limit: 3, windowMs: 60_000 }));
+  it("allows up to the limit then rejects with 429 within the window", async () => {
+    const guard = makeGuard({ limit: 3, windowMs: 60_000 });
     const ctx = ctxFor({ sub: "user-a" });
 
-    expect(guard.canActivate(ctx)).toBe(true);
-    expect(guard.canActivate(ctx)).toBe(true);
-    expect(guard.canActivate(ctx)).toBe(true);
+    expect(await guard.canActivate(ctx)).toBe(true);
+    expect(await guard.canActivate(ctx)).toBe(true);
+    expect(await guard.canActivate(ctx)).toBe(true);
     try {
-      guard.canActivate(ctx);
+      await guard.canActivate(ctx);
       throw new Error("expected 429");
     } catch (error) {
       expect(error).toBeInstanceOf(HttpException);
@@ -40,36 +45,48 @@ describe("RateLimitGuard", () => {
     }
   });
 
-  it("counts each principal (user / IP) independently", () => {
-    const guard = new RateLimitGuard(reflectorReturning({ limit: 1, windowMs: 60_000 }));
-    expect(guard.canActivate(ctxFor({ sub: "user-a" }))).toBe(true);
+  it("counts each principal (user / IP) independently", async () => {
+    const guard = makeGuard({ limit: 1, windowMs: 60_000 });
+    expect(await guard.canActivate(ctxFor({ sub: "user-a" }))).toBe(true);
     // a different user has its own window
-    expect(guard.canActivate(ctxFor({ sub: "user-b" }))).toBe(true);
+    expect(await guard.canActivate(ctxFor({ sub: "user-b" }))).toBe(true);
     // a pre-auth caller keyed by IP, also independent
-    expect(guard.canActivate(ctxFor({ ip: "10.0.0.1" }))).toBe(true);
+    expect(await guard.canActivate(ctxFor({ ip: "10.0.0.1" }))).toBe(true);
     // user-a is now over its limit
-    expect(() => guard.canActivate(ctxFor({ sub: "user-a" }))).toThrow();
+    await expect(guard.canActivate(ctxFor({ sub: "user-a" }))).rejects.toThrow();
   });
 
-  it("resets the window after windowMs elapses", () => {
+  it("resets the window after windowMs elapses", async () => {
     vi.useFakeTimers();
     try {
-      const guard = new RateLimitGuard(reflectorReturning({ limit: 1, windowMs: 60_000 }));
+      const guard = makeGuard({ limit: 1, windowMs: 60_000 });
       const ctx = ctxFor({ sub: "user-reset" });
-      expect(guard.canActivate(ctx)).toBe(true);
-      expect(() => guard.canActivate(ctx)).toThrow(); // over the limit within the window
+      expect(await guard.canActivate(ctx)).toBe(true);
+      await expect(guard.canActivate(ctx)).rejects.toThrow(); // over the limit within the window
       vi.advanceTimersByTime(60_001);
-      expect(guard.canActivate(ctx)).toBe(true); // window has reset
+      expect(await guard.canActivate(ctx)).toBe(true); // window has reset
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it("is a no-op when no @RateLimit metadata is present", () => {
-    const guard = new RateLimitGuard(reflectorReturning(undefined));
+  it("is a no-op when no @RateLimit metadata is present", async () => {
+    const guard = makeGuard(undefined);
     const ctx = ctxFor({ sub: "user-a" });
     for (let i = 0; i < 50; i++) {
-      expect(guard.canActivate(ctx)).toBe(true);
+      expect(await guard.canActivate(ctx)).toBe(true);
     }
+  });
+
+  it("shares one store across guard instances (the cross-instance fix)", async () => {
+    // Two guards backed by the SAME store = the same counter (as in production,
+    // where every per-module guard injects the one @Global store).
+    const store = new InMemoryRateLimitStore();
+    const g1 = new RateLimitGuard(reflectorReturning({ limit: 2, windowMs: 60_000 }), store);
+    const g2 = new RateLimitGuard(reflectorReturning({ limit: 2, windowMs: 60_000 }), store);
+    const ctx = ctxFor({ sub: "shared" });
+    expect(await g1.canActivate(ctx)).toBe(true); // count 1
+    expect(await g2.canActivate(ctx)).toBe(true); // count 2 (shared)
+    await expect(g1.canActivate(ctx)).rejects.toThrow(); // count 3 > limit
   });
 });

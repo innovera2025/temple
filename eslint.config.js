@@ -17,7 +17,13 @@ module.exports = tseslint.config(
     },
     rules: {
       "no-undef": "off",
-      "@typescript-eslint/no-explicit-any": "error"
+      "@typescript-eslint/no-explicit-any": "error",
+      // Honor the `_`-prefix convention for intentionally-unused args/vars/catch
+      // bindings (e.g. `_data` in param decorators, a reserved `_ip`).
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" }
+      ]
     }
   }
 );
