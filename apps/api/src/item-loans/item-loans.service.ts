@@ -3,11 +3,14 @@ import { Prisma } from "@prisma/client";
 import {
   type CreateBorrowableItemInput,
   type CreateLoanInput,
+  type DevoteeItemLoanInput,
+  isLoanStatus,
   isUuid,
   loanShortage,
   type ReturnLoanInput,
   type UpdateBorrowableItemInput,
 } from "@wat/shared";
+import { auditActorData } from "../common/audit/audit-actor";
 import { conflict, notFound, projectHttpException } from "../common/errors/project-error";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { allocateLoanNo } from "./item-loans-numbering";
@@ -232,6 +235,160 @@ export class ItemLoansService {
     });
   }
 
+  /**
+   * Devotee borrow REQUEST: creates a `requested` loan tagged to the devotee. No
+   * photo and NO stock decrement yet — the temple photographs the item and the
+   * stock is committed only when staff approve (hand-over). Audited as a devotee actor.
+   */
+  async createDevoteeLoanRequest(
+    tenantId: string,
+    devotee: { id: string; email: string; displayName: string },
+    input: DevoteeItemLoanInput,
+    ip?: string,
+  ): Promise<LoanRow> {
+    if (!isUuid(input.itemId)) throw notFound("ไม่พบสิ่งของ");
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const item = (await tx.borrowableItem.findFirst({ where: { id: input.itemId } })) as ItemRow | null;
+      if (!item) throw notFound("ไม่พบสิ่งของ");
+      if (item.status !== "active") throw conflict("สิ่งของนี้ไม่เปิดให้ยืม");
+      // Soft availability hint only — the authoritative check runs at staff approval.
+      const available = item.totalQty - (await this.outstandingFor(tx, input.itemId));
+      if (input.quantity > available) throw conflict(`ขอยืมได้ไม่เกินจำนวนคงเหลือ (คงเหลือ ${available})`);
+
+      const loanNo = await allocateLoanNo(tx, tenantId);
+      const created = await tx.itemLoan.create({
+        data: {
+          tenantId,
+          loanNo,
+          itemId: input.itemId,
+          devoteeAccountId: devotee.id,
+          borrowerName: devotee.displayName,
+          borrowerPhone: input.requesterPhone ?? null,
+          quantity: input.quantity,
+          borrowedAt: new Date(`${input.borrowedAt}T00:00:00.000Z`),
+          dueAt: input.dueAt ? new Date(`${input.dueAt}T00:00:00.000Z`) : null,
+          status: "requested",
+          note: input.note ?? null,
+        },
+        include: { item: { select: { name: true } }, settlements: true },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          ...auditActorData({ kind: "devotee", devoteeAccountId: devotee.id, email: devotee.email }),
+          action: "item_loan:request",
+          entityType: "item_loan",
+          entityId: created.id,
+          after: { loanNo, itemId: input.itemId, quantity: input.quantity } as Prisma.InputJsonObject,
+          metadata: { source: "devotee_request" },
+          ip,
+        },
+      });
+      return toLoanRow(created);
+    });
+  }
+
+  /**
+   * Staff approve a devotee borrow request (`requested` -> `borrowed`): take the
+   * required hand-over photo and commit stock, re-checking availability under a row
+   * lock so concurrent approvals never oversell.
+   */
+  async approveLoanRequest(
+    tenantId: string,
+    actorUserId: string,
+    loanId: string,
+    input: { borrowPhotoIds: string[]; borrowedAt?: string },
+    ip?: string,
+  ): Promise<LoanRow> {
+    if (!isUuid(loanId)) throw notFound("ไม่พบรายการยืม");
+    const photoIds = [...new Set(input.borrowPhotoIds ?? [])];
+    if (photoIds.length === 0 || !photoIds.every(isUuid)) {
+      throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ต้องแนบรูปถ่ายตอนส่งมอบก่อนอนุมัติ");
+    }
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const lockedLoan = await tx.$queryRaw<Array<{ item_id: string; quantity: number; status: string }>>`
+        SELECT item_id, quantity, status FROM item_loans
+        WHERE id = ${loanId}::uuid AND tenant_id = current_tenant_id() FOR UPDATE`;
+      const loan = lockedLoan[0];
+      if (!loan) throw notFound("ไม่พบรายการยืม");
+      if (loan.status !== "requested") throw conflict("คำขอนี้ถูกดำเนินการไปแล้ว");
+
+      const lockedItem = await tx.$queryRaw<Array<{ total_qty: number; status: string }>>`
+        SELECT total_qty, status FROM borrowable_items
+        WHERE id = ${loan.item_id}::uuid AND tenant_id = current_tenant_id() FOR UPDATE`;
+      const item = lockedItem[0];
+      if (!item) throw notFound("ไม่พบสิ่งของ");
+      if (item.status !== "active") throw conflict("สิ่งของนี้ถูกปิดใช้งานแล้ว");
+
+      // FOR UPDATE so a concurrent attachment delete cannot slip between this check
+      // and the stock-committing UPDATE below — keeps approval's locking discipline
+      // consistent with the loan + item row locks above (no photo-less hand-over).
+      const found = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT id FROM attachments
+        WHERE id IN (${Prisma.join(photoIds.map((id) => Prisma.sql`${id}::uuid`))}) AND tenant_id = current_tenant_id() FOR UPDATE`);
+      if (found.length !== photoIds.length) throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ไม่พบรูปที่แนบ กรุณาอัปโหลดรูปก่อน");
+
+      const available = item.total_qty - (await this.outstandingFor(tx, loan.item_id));
+      if (loan.quantity > available) throw conflict(`อนุมัติได้ไม่เกินจำนวนคงเหลือ (คงเหลือ ${available})`);
+
+      const updated = await tx.itemLoan.update({
+        where: { tenantId_id: { tenantId, id: loanId } },
+        data: {
+          status: "borrowed",
+          borrowPhotoId: photoIds[0],
+          borrowPhotoIds: photoIds as unknown as Prisma.InputJsonValue,
+          ...(input.borrowedAt ? { borrowedAt: new Date(`${input.borrowedAt}T00:00:00.000Z`) } : {}),
+          updatedAt: new Date(),
+        },
+        include: { item: { select: { name: true } }, settlements: true },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          actorUserId,
+          action: "item_loan:approve",
+          entityType: "item_loan",
+          entityId: loanId,
+          after: { status: "borrowed", borrowPhotoIds: photoIds } as Prisma.InputJsonObject,
+          metadata: {},
+          ip,
+        },
+      });
+      return toLoanRow(updated);
+    });
+  }
+
+  /** Staff reject a devotee borrow request (`requested` -> `cancelled`). No stock change. */
+  async rejectLoanRequest(tenantId: string, actorUserId: string, loanId: string, reason: string | undefined, ip?: string): Promise<LoanRow> {
+    if (!isUuid(loanId)) throw notFound("ไม่พบรายการยืม");
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const locked = await tx.$queryRaw<Array<{ status: string }>>`
+        SELECT status FROM item_loans WHERE id = ${loanId}::uuid AND tenant_id = current_tenant_id() FOR UPDATE`;
+      const loan = locked[0];
+      if (!loan) throw notFound("ไม่พบรายการยืม");
+      if (loan.status !== "requested") throw conflict("คำขอนี้ถูกดำเนินการไปแล้ว");
+      const updated = await tx.itemLoan.update({
+        where: { tenantId_id: { tenantId, id: loanId } },
+        data: { status: "cancelled", updatedAt: new Date() },
+        include: { item: { select: { name: true } }, settlements: true },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          actorUserId,
+          action: "item_loan:reject",
+          entityType: "item_loan",
+          entityId: loanId,
+          reason: reason ?? null,
+          after: { status: "cancelled" } as Prisma.InputJsonObject,
+          metadata: {},
+          ip,
+        },
+      });
+      return toLoanRow(updated);
+    });
+  }
+
   /** Return: closes the loan; a shortage (returnedQty < quantity) requires a settlement. */
   async returnLoan(tenantId: string, actorUserId: string, loanId: string, input: ReturnLoanInput, ip?: string): Promise<LoanRow> {
     if (!isUuid(loanId)) throw notFound("ไม่พบรายการยืม");
@@ -319,7 +476,7 @@ export class ItemLoansService {
     return this.prisma.withTenant(tenantId, async (tx) => {
       const where: Prisma.ItemLoanWhereInput = {};
       if (query.itemId && isUuid(query.itemId)) where.itemId = query.itemId;
-      if (query.status === "borrowed" || query.status === "returned") where.status = query.status;
+      if (isLoanStatus(query.status)) where.status = query.status;
       if (query.q) where.borrowerName = { contains: query.q, mode: "insensitive" };
       const loans = (await tx.itemLoan.findMany({
         where,

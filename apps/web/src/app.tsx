@@ -5,6 +5,7 @@ import { defaultPageFor, PageId, TempleRole } from "./layout/nav";
 import { PageContent } from "./features/page-content";
 import { LoginScreen } from "./features/auth/login-view";
 import { DevoteePortal } from "./features/devotee/devotee-portal";
+import { PlatformPortal } from "./features/platform/platform-portal";
 import { PublicDirectory } from "./features/public/public-directory";
 import {
   clearSession,
@@ -21,7 +22,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000
 // later slice; for now the default route is the temple product and #/smoke is a
 // dev-only escape hatch to the backend smoke shell. The Agent Control Tower is a
 // separate dev artifact and is never rendered here.
-type Route = "app" | "smoke" | "devotee" | "public";
+type Route = "app" | "smoke" | "devotee" | "public" | "platform";
 
 function readRoute(): Route {
   if (typeof window === "undefined") return "app";
@@ -31,6 +32,7 @@ function readRoute(): Route {
   if (hash === "smoke") return "smoke";
   if (hash === "devotee" || hash.startsWith("devotee/")) return "devotee";
   if (hash === "public" || hash.startsWith("public/")) return "public";
+  if (hash === "platform" || hash.startsWith("platform/")) return "platform";
   return "app";
 }
 
@@ -102,6 +104,9 @@ export function App(): ReactElement {
   }
   if (route === "public") {
     return <PublicDirectory baseUrl={API_BASE_URL} />;
+  }
+  if (route === "platform") {
+    return <PlatformPortal baseUrl={API_BASE_URL} />;
   }
   return <TempleApp />;
 }

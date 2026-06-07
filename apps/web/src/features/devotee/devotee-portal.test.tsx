@@ -2,20 +2,24 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { PublicTempleProfile, PublicTempleSummary } from "@wat/shared";
+import type { PublicEventSummary, PublicTempleProfile, PublicTempleSummary } from "@wat/shared";
 import { AccountView } from "./account-view";
 import { DevoteeLoginView } from "./login-view";
-import { MyRecords } from "./my-records";
+import { DevoteeShell } from "./devotee-shell";
+import { MyCeremonies, MyDonations, MyItemLoans, MyReceipts } from "./my-records";
 import { TemplePage } from "./temple-page";
 import { TemplePicker } from "./temple-picker";
 import {
   DevoteeApi,
+  DevoteeBorrowableItem,
   DevoteeCeremonyRecord,
   DevoteeDonationRecord,
+  DevoteeItemLoanRecord,
   DevoteeReceiptRecord,
   bahtStringToSatang,
   deriveDevoteeSession,
   hasLoginErrors,
+  validateDevoteeItemLoanForm,
   validateDevoteeLoginForm,
   validateDevoteeRegisterForm,
 } from "./devotee-auth";
@@ -84,6 +88,38 @@ const ceremonyRecord: DevoteeCeremonyRecord = {
   createdAt: "2026-06-05T00:00:00.000Z",
 };
 
+const eventSummary: PublicEventSummary = {
+  id: "44444444-4444-4444-8444-444444444444",
+  templeId,
+  templeNameTh: "วัดอรุณเดโม",
+  ceremonyType: "kathin",
+  title: "งานกฐินประจำปี",
+  ceremonyDate: "2026-11-05",
+  timeNote: "09:00 น.",
+  location: "ศาลาการเปรียญ",
+};
+
+const borrowableItem: DevoteeBorrowableItem = {
+  id: "55555555-5555-4555-8555-555555555555",
+  name: "เต็นท์",
+  category: "equipment",
+  unit: "หลัง",
+  availableQty: 5,
+};
+
+const itemLoanRecord: DevoteeItemLoanRecord = {
+  id: "66666666-6666-4666-8666-666666666666",
+  templeId,
+  templeNameTh: "วัดอรุณเดโม",
+  loanNo: "LOAN-000001",
+  itemName: "เต็นท์",
+  quantity: 2,
+  borrowedAt: "2026-06-10",
+  dueAt: "2026-06-12",
+  status: "requested",
+  returnedQty: null,
+};
+
 function makeApi(overrides: Partial<DevoteeApi> = {}): DevoteeApi {
   return {
     register: async () => ({ accessToken: "a", refreshToken: "r" }),
@@ -97,9 +133,23 @@ function makeApi(overrides: Partial<DevoteeApi> = {}): DevoteeApi {
     bookCeremony: async () => ({
       booking: { id: "c1", status: "requested", title: "ทำบุญขึ้นบ้านใหม่", ceremonyDate: "2026-07-01" },
     }),
+    listBorrowableItems: async () => [borrowableItem],
+    templeEvents: async () => [eventSummary],
+    requestItemLoan: async () => ({
+      request: {
+        id: "ln1",
+        loanNo: "LOAN-000002",
+        itemName: "เต็นท์",
+        quantity: 2,
+        status: "requested",
+        borrowedAt: "2026-06-10",
+        dueAt: null,
+      },
+    }),
     myDonations: async () => [donationRecord],
     myReceipts: async () => [receiptRecord],
     myCeremonies: async () => [ceremonyRecord],
+    myItemLoans: async () => [itemLoanRecord],
     getProfile: async () => ({ id: "dev-1", email: "me@example.com", displayName: "คุณโยม", phone: null }),
     updateProfile: async (_t, v) => ({ id: "dev-1", email: "me@example.com", displayName: v.displayName, phone: v.phone || null }),
     changePassword: async () => undefined,
@@ -143,6 +193,17 @@ describe("devotee-auth logic", () => {
   it("accepts a valid login and rejects an empty one", () => {
     expect(hasLoginErrors(validateDevoteeLoginForm({ email: "a@b.com", password: "secret" }))).toBe(false);
     expect(hasLoginErrors(validateDevoteeLoginForm({ email: "", password: "" }))).toBe(true);
+  });
+
+  it("validates the item-loan form (item required, quantity ≥ 1, date required)", () => {
+    const bad = validateDevoteeItemLoanForm({ itemId: "", quantity: "0", borrowedAt: "", dueAt: "", requesterPhone: "", note: "" });
+    expect(bad.itemId).toBeTruthy();
+    expect(bad.quantity).toBeTruthy();
+    expect(bad.borrowedAt).toBeTruthy();
+    const ok = validateDevoteeItemLoanForm({ itemId: "55555555-5555-4555-8555-555555555555", quantity: "2", borrowedAt: "2026-06-10", dueAt: "", requesterPhone: "", note: "" });
+    expect(ok.itemId).toBeUndefined();
+    expect(ok.quantity).toBeUndefined();
+    expect(ok.borrowedAt).toBeUndefined();
   });
 
   it("converts a ฿ string to integer satang and rejects bad input", () => {
@@ -293,19 +354,79 @@ describe("devotee views (mounted)", () => {
     expect(donateCalled).toBe(false);
   });
 
-  it("my records renders the donation + receipt + ceremony rows", async () => {
+  it("my-records pages each render their own rows (donations / receipts / ceremonies / item-loans)", async () => {
+    const api = makeApi();
     await act(async () => {
-      root.render(<MyRecords api={makeApi()} token="t" onUnauthorized={() => undefined} />);
+      root.render(<MyDonations api={api} token="t" onUnauthorized={() => undefined} />);
     });
     await flush();
-    expect(container.textContent).toContain("รายการบริจาค");
+    expect(container.textContent).toContain("การบริจาคของฉัน");
+    expect(container.textContent).toContain("วัดอรุณเดโม");
+
+    await act(async () => {
+      root.render(<MyReceipts api={api} token="t" onUnauthorized={() => undefined} />);
+    });
+    await flush();
     expect(container.textContent).toContain("ใบอนุโมทนา");
     expect(container.textContent).toContain("RC-2026-0001");
-    expect(container.textContent).toContain("วัดอรุณเดโม");
-    // Phase 2: ceremony bookings section + the requested-status booking.
+
+    await act(async () => {
+      root.render(<MyCeremonies api={api} token="t" onUnauthorized={() => undefined} />);
+    });
+    await flush();
     expect(container.textContent).toContain("การจองพิธี / นิมนต์พระ");
     expect(container.textContent).toContain("ทำบุญขึ้นบ้านใหม่");
     expect(container.textContent).toContain("รอยืนยัน");
+
+    await act(async () => {
+      root.render(<MyItemLoans api={api} token="t" onUnauthorized={() => undefined} />);
+    });
+    await flush();
+    expect(container.textContent).toContain("การยืมของวัด");
+    expect(container.textContent).toContain("LOAN-000001");
+    expect(container.textContent).toContain("รอเจ้าหน้าที่ยืนยัน");
+  });
+
+  it("devotee shell renders the grouped sidebar (ทำบุญ / ของฉัน) and routes nav clicks", async () => {
+    let navigatedTo = "";
+    let loggedOut = false;
+    await act(async () => {
+      root.render(
+        <DevoteeShell
+          userName="คุณโยม"
+          page="picker"
+          crumb="เลือกวัด"
+          onNavigate={(id) => {
+            navigatedTo = id;
+          }}
+          onLogout={() => {
+            loggedOut = true;
+          }}
+        >
+          <div>เนื้อหา</div>
+        </DevoteeShell>,
+      );
+    });
+    // Same design shell as the back-office (sidebar + topbar + grouped nav + role badge).
+    expect(container.querySelector(".app .sidebar")).toBeTruthy();
+    expect(container.querySelector(".topbar")).toBeTruthy();
+    expect(container.textContent).toContain("ร่วมบุญออนไลน์");
+    expect(container.textContent).toContain("ทำบุญ");
+    expect(container.textContent).toContain("ของฉัน");
+    expect(container.textContent).toContain("การยืมของ");
+    expect(container.textContent).toContain("ญาติโยม");
+
+    const loansBtn = Array.from(container.querySelectorAll(".sb-item")).find((b) => b.textContent?.includes("การยืมของ"));
+    await act(async () => {
+      loansBtn?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(navigatedTo).toBe("loans");
+
+    const logoutBtn = Array.from(container.querySelectorAll("button")).find((b) => b.getAttribute("aria-label") === "ออกจากระบบ");
+    await act(async () => {
+      logoutBtn?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(loggedOut).toBe(true);
   });
 
   it("temple page ceremony booking posts the request and shows the pending message", async () => {
@@ -333,15 +454,77 @@ describe("devotee views (mounted)", () => {
         title.dispatchEvent(new Event("input", { bubbles: true }));
       }
     });
-    // Submit the ceremony form (the 2nd form on the page; donate is the 1st).
-    const forms = container.querySelectorAll("form");
-    const ceremonyForm = forms[forms.length - 1];
+    // Submit the ceremony form specifically (the page also has donate + borrow forms).
+    const ceremonyForm = title?.closest("form");
     await act(async () => {
       ceremonyForm?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     });
     await flush();
     expect(container.textContent).toContain("ส่งคำขอจอง");
     expect(container.textContent).toContain("รอวัดยืนยัน");
+  });
+
+  it("temple page lists upcoming temple events", async () => {
+    await act(async () => {
+      root.render(
+        <TemplePage
+          api={makeApi()}
+          token="t"
+          templeId={templeId}
+          today="2026-06-04"
+          onBack={() => undefined}
+          onUnauthorized={() => undefined}
+        />,
+      );
+    });
+    await flush();
+    expect(container.textContent).toContain("กิจกรรมของวัด");
+    expect(container.textContent).toContain("งานกฐินประจำปี");
+    expect(container.textContent).toContain("ศาลาการเปรียญ");
+  });
+
+  it("temple page borrow flow posts the request and shows the pending message", async () => {
+    let requested: { itemId: string; quantity: string } | null = null;
+    const api = makeApi({
+      requestItemLoan: async (_t, _id, values) => {
+        requested = { itemId: values.itemId, quantity: values.quantity };
+        return {
+          request: { id: "ln1", loanNo: "LOAN-000002", itemName: "เต็นท์", quantity: 2, status: "requested", borrowedAt: "2026-06-10", dueAt: null },
+        };
+      },
+    });
+    await act(async () => {
+      root.render(
+        <TemplePage
+          api={api}
+          token="t"
+          templeId={templeId}
+          today="2026-06-04"
+          onBack={() => undefined}
+          onUnauthorized={() => undefined}
+        />,
+      );
+    });
+    await flush();
+    expect(container.textContent).toContain("ยืมของวัด");
+
+    const itemSelect = container.querySelector<HTMLSelectElement>("#loan-item");
+    expect(itemSelect).toBeTruthy();
+    await act(async () => {
+      if (itemSelect) {
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value")?.set;
+        setter?.call(itemSelect, borrowableItem.id);
+        itemSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    });
+    const borrowForm = itemSelect?.closest("form");
+    await act(async () => {
+      borrowForm?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    await flush();
+    expect(requested).toEqual({ itemId: borrowableItem.id, quantity: "1" });
+    expect(container.textContent).toContain("ส่งคำขอยืม");
+    expect(container.textContent).toContain("รอเจ้าหน้าที่ยืนยัน");
   });
 
   it("account view loads the profile and saves an edit via updateProfile", async () => {
@@ -388,7 +571,7 @@ describe("devotee views (mounted)", () => {
       },
     });
     await act(async () => {
-      root.render(<MyRecords api={api} token="t" onUnauthorized={() => undefined} />);
+      root.render(<MyReceipts api={api} token="t" onUnauthorized={() => undefined} />);
     });
     await flush();
     const btn = Array.from(container.querySelectorAll("button")).find((b) => b.textContent?.includes("ดู / พิมพ์"));

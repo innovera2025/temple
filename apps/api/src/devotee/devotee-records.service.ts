@@ -42,6 +42,19 @@ export interface DevoteeCeremonyView {
   createdAt: string;
 }
 
+export interface DevoteeItemLoanView {
+  id: string;
+  templeId: string;
+  templeNameTh: string;
+  loanNo: string;
+  itemName: string;
+  quantity: number;
+  borrowedAt: string;
+  dueAt: string | null;
+  status: string;
+  returnedQty: number | null;
+}
+
 const MAX_TAKE = 200;
 
 /**
@@ -77,6 +90,40 @@ export class DevoteeRecordsService {
       throw notFound("ไม่พบใบอนุโมทนา");
     }
     return this.receipts.preview(owned.tenantId, receiptId);
+  }
+
+  async listMyItemLoans(devoteeAccountId: string): Promise<DevoteeItemLoanView[]> {
+    const rows = await this.prisma.withSystemAccess((tx) =>
+      tx.itemLoan.findMany({
+        where: { devoteeAccountId },
+        select: {
+          id: true,
+          tenantId: true,
+          loanNo: true,
+          quantity: true,
+          borrowedAt: true,
+          dueAt: true,
+          status: true,
+          returnedQty: true,
+          item: { select: { name: true } },
+          tenant: { select: { nameTh: true } },
+        },
+        orderBy: [{ createdAt: "desc" }],
+        take: MAX_TAKE,
+      }),
+    );
+    return rows.map((row) => ({
+      id: row.id,
+      templeId: row.tenantId,
+      templeNameTh: row.tenant.nameTh,
+      loanNo: row.loanNo,
+      itemName: row.item.name,
+      quantity: row.quantity,
+      borrowedAt: row.borrowedAt.toISOString().slice(0, 10),
+      dueAt: row.dueAt ? row.dueAt.toISOString().slice(0, 10) : null,
+      status: row.status,
+      returnedQty: row.returnedQty,
+    }));
   }
 
   async listMyDonations(devoteeAccountId: string): Promise<DevoteeDonationView[]> {

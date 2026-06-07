@@ -12,5 +12,6 @@ import { PublicService } from "./public.service";
   imports: [PrismaModule],
   controllers: [PublicController],
   providers: [PublicService, RateLimitGuard],
+  exports: [PublicService],
 })
 export class PublicModule {}

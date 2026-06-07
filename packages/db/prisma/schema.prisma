@@ -157,8 +157,10 @@ enum AttachmentOwnerType {
 }
 
 enum LoanStatus {
+  requested
   borrowed
   returned
+  cancelled
 
   @@map("loan_status")
 }
@@ -267,6 +269,7 @@ model DevoteeAccount {
   donors        Donor[]
   refreshTokens DevoteeRefreshToken[]
   ceremonies    Ceremony[]
+  itemLoans     ItemLoan[]
 
   @@map("devotee_accounts")
 }
@@ -532,6 +535,8 @@ model ItemLoan {
   returnedQty   Int?                 @map("returned_qty")
   returnNote    String?              @map("return_note")
   note          String?
+  devoteeAccountId String?           @map("devotee_account_id") @db.Uuid
+  devoteeAccount   DevoteeAccount?   @relation(fields: [devoteeAccountId], references: [id])
   settlements   ItemLoanSettlement[]
   createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime             @default(now()) @map("updated_at") @db.Timestamptz(6)
@@ -541,6 +546,7 @@ model ItemLoan {
   @@index([tenantId])
   @@index([tenantId, itemId])
   @@index([tenantId, status])
+  @@index([devoteeAccountId])
   @@map("item_loans")
 }
 

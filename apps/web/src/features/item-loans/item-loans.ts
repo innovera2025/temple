@@ -4,6 +4,7 @@
  * its id is passed as borrowPhotoId (ถ่ายรูปก่อนยืม).
  */
 import {
+  type ApproveLoanInput,
   type BorrowableItemView,
   type CreateBorrowableItemInput,
   type CreateLoanInput,
@@ -13,10 +14,11 @@ import {
   type LoanStatus,
   LOAN_SETTLEMENT_TYPE_LABELS_TH,
   LOAN_STATUS_LABELS_TH,
+  type RejectLoanInput,
   type ReturnLoanInput,
 } from "@wat/shared";
 
-export type { BorrowableItemView, CreateBorrowableItemInput, CreateLoanInput, ItemLoanView, ReturnLoanInput } from "@wat/shared";
+export type { ApproveLoanInput, BorrowableItemView, CreateBorrowableItemInput, CreateLoanInput, ItemLoanView, RejectLoanInput, ReturnLoanInput } from "@wat/shared";
 
 export function loanStatusLabel(status: string): string {
   return LOAN_STATUS_LABELS_TH[status as LoanStatus] ?? status;
@@ -34,6 +36,8 @@ export interface ItemLoansApi {
   listLoans(query?: { itemId?: string; status?: string; q?: string }): Promise<ItemLoanView[]>;
   createLoan(input: CreateLoanInput): Promise<ItemLoanView>;
   returnLoan(id: string, input: ReturnLoanInput): Promise<ItemLoanView>;
+  approveLoan(id: string, input: ApproveLoanInput): Promise<ItemLoanView>;
+  rejectLoan(id: string, input: RejectLoanInput): Promise<ItemLoanView>;
 }
 
 export interface ItemLoansApiClientOptions {
@@ -79,5 +83,7 @@ export function createItemLoansApiClient(options: ItemLoansApiClientOptions): It
     listLoans: (query = {}) => get<ItemLoanView[]>(`/item-loans/loans${qs(query)}`, "loans"),
     createLoan: (input) => post<ItemLoanView>(`/item-loans/loans`, input, "loan"),
     returnLoan: (id, input) => post<ItemLoanView>(`/item-loans/loans/${id}/return`, input, "loan"),
+    approveLoan: (id, input) => post<ItemLoanView>(`/item-loans/loans/${id}/approve`, input, "loan"),
+    rejectLoan: (id, input) => post<ItemLoanView>(`/item-loans/loans/${id}/reject`, input, "loan"),
   };
 }

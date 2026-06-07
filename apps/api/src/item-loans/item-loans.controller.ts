@@ -1,8 +1,10 @@
 import { Body, Controller, Get, Inject, Ip, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import {
   isUuid,
+  validateApproveLoan,
   validateCreateBorrowableItem,
   validateCreateLoan,
+  validateRejectLoan,
   validateReturnLoan,
   validateUpdateBorrowableItem,
 } from "@wat/shared";
@@ -197,5 +199,24 @@ export class ItemLoansController {
     const result = validateReturnLoan(body);
     if (!result.success) throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ข้อมูลไม่ถูกต้อง", result.errors);
     return { loan: serializeLoan(await this.service.returnLoan(tenantId, user.sub, id, result.data, ip)) };
+  }
+
+  // ---- devotee request approval (requested -> borrowed / cancelled) ----
+  @Post("loans/:id/approve")
+  @Roles(...WRITE_ROLES)
+  async approveLoan(@CurrentUser() user: AuthenticatedUser, @CurrentTenant() tenantId: string, @Ip() ip: string, @Param("id") id: string, @Body() body: unknown) {
+    assertUuid(id);
+    const result = validateApproveLoan(body);
+    if (!result.success) throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ข้อมูลไม่ถูกต้อง", result.errors);
+    return { loan: serializeLoan(await this.service.approveLoanRequest(tenantId, user.sub, id, result.data, ip)) };
+  }
+
+  @Post("loans/:id/reject")
+  @Roles(...WRITE_ROLES)
+  async rejectLoan(@CurrentUser() user: AuthenticatedUser, @CurrentTenant() tenantId: string, @Ip() ip: string, @Param("id") id: string, @Body() body: unknown) {
+    assertUuid(id);
+    const result = validateRejectLoan(body);
+    if (!result.success) throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ข้อมูลไม่ถูกต้อง", result.errors);
+    return { loan: serializeLoan(await this.service.rejectLoanRequest(tenantId, user.sub, id, result.data.reason, ip)) };
   }
 }

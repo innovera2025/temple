@@ -39,6 +39,13 @@ export function ItemLoansPage({ api, attachmentsApi, today, canWrite, canManageI
   const [addingItem, setAddingItem] = useState(false);
   const [borrowing, setBorrowing] = useState(false);
   const [returning, setReturning] = useState<ItemLoanView | null>(null);
+  const [approving, setApproving] = useState<ItemLoanView | null>(null);
+  const [rejecting, setRejecting] = useState<ItemLoanView | null>(null);
+
+  // คำขอยืมจากญาติโยม (devotee requests) wait for staff approval before any
+  // stock is committed — split them out into their own queue.
+  const pending = loans?.filter((ln) => ln.status === "requested") ?? [];
+  const history = loans?.filter((ln) => ln.status !== "requested") ?? [];
 
   useEffect(() => {
     let active = true;
@@ -74,6 +81,32 @@ export function ItemLoansPage({ api, attachmentsApi, today, canWrite, canManageI
 
       {error ? <ErrorBox>โหลดข้อมูลไม่สำเร็จ: {error}</ErrorBox> : null}
 
+      {canWrite && pending.length > 0 ? (
+        <Card style={{ marginBottom: 16 }} data-testid="loan-request-queue">
+          <div className="card-head"><div><h3>คำขอยืมรอยืนยัน ({pending.length})</h3><div className="sub">คำขอจากญาติโยม — อนุมัติเพื่อถ่ายรูปและตัดยอดคงเหลือ หรือปฏิเสธ</div></div></div>
+          <div className="t-scroll">
+            <table className="tbl">
+              <thead><tr><th>เลขที่</th><th>สิ่งของ</th><th>ผู้ขอยืม</th><th className="num">จำนวน</th><th>วันที่ต้องการ</th><th /></tr></thead>
+              <tbody>
+                {pending.map((ln) => (
+                  <tr key={ln.id}>
+                    <td className="mono">{ln.loanNo}</td>
+                    <td>{ln.itemName}</td>
+                    <td><div style={{ fontWeight: 500 }}>{ln.borrowerName}</div>{ln.borrowerPhone ? <div className="muted" style={{ fontSize: 12 }}>{ln.borrowerPhone}</div> : null}</td>
+                    <td className="num tnum">{ln.quantity}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>{ln.borrowedAt}</td>
+                    <td className="num" style={{ whiteSpace: "nowrap" }}>
+                      <Button variant="primary" size="sm" onClick={() => setApproving(ln)}>อนุมัติ</Button>{" "}
+                      <Button variant="tertiary" size="sm" onClick={() => setRejecting(ln)}>ปฏิเสธ</Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      ) : null}
+
       <Card style={{ marginBottom: 16 }}>
         <div className="card-head"><div><h3>สิ่งของที่ให้ยืม</h3><div className="sub">คงเหลือ = ทั้งหมด − ที่ถูกยืมอยู่</div></div></div>
         <div className="t-scroll">
@@ -107,10 +140,10 @@ export function ItemLoansPage({ api, attachmentsApi, today, canWrite, canManageI
             <tbody>
               {!loans ? (
                 <tr><td colSpan={7} className="muted" style={{ textAlign: "center", padding: "20px" }}>{error ? "โหลดไม่สำเร็จ" : "กำลังโหลด…"}</td></tr>
-              ) : loans.length === 0 ? (
+              ) : history.length === 0 ? (
                 <tr><td colSpan={7} className="muted" style={{ textAlign: "center", padding: "20px" }}>ยังไม่มีรายการยืม</td></tr>
               ) : (
-                loans.map((ln) => (
+                history.map((ln) => (
                   <tr key={ln.id}>
                     <td className="mono">{ln.loanNo}</td>
                     <td>{ln.itemName}</td>
@@ -135,7 +168,92 @@ export function ItemLoansPage({ api, attachmentsApi, today, canWrite, canManageI
         <BorrowModal api={api} attachmentsApi={attachmentsApi} today={today} items={items.filter((i) => i.status === "active")} onClose={() => setBorrowing(false)} onSaved={() => { setBorrowing(false); reload(); }} />
       ) : null}
       {returning ? <ReturnModal api={api} today={today} loan={returning} onClose={() => setReturning(null)} onSaved={() => { setReturning(null); reload(); }} /> : null}
+      {approving ? <ApproveModal api={api} attachmentsApi={attachmentsApi} today={today} loan={approving} onClose={() => setApproving(null)} onSaved={() => { setApproving(null); reload(); }} /> : null}
+      {rejecting ? <RejectModal api={api} loan={rejecting} onClose={() => setRejecting(null)} onSaved={() => { setRejecting(null); reload(); }} /> : null}
     </div>
+  );
+}
+
+function ApproveModal({ api, attachmentsApi, today, loan, onClose, onSaved }: { api: ItemLoansApi; attachmentsApi: AttachmentsApi; today: string; loan: ItemLoanView; onClose: () => void; onSaved: () => void }): ReactElement {
+  const [borrowedAt, setBorrowedAt] = useState(loan.borrowedAt || today);
+  const [files, setFiles] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<string[]>([]);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const urls = files.map((f) => URL.createObjectURL(f));
+    setPreviews(urls);
+    return () => urls.forEach((u) => URL.revokeObjectURL(u));
+  }, [files]);
+
+  function addFiles(list: FileList | null): void {
+    if (!list) return;
+    const incoming = Array.from(list).filter((f) => f.type.startsWith("image/"));
+    setFiles((prev) => {
+      const merged = [...prev];
+      for (const f of incoming) {
+        if (!merged.some((m) => m.name === f.name && m.size === f.size)) merged.push(f);
+      }
+      return merged.slice(0, MAX_LOAN_PHOTOS);
+    });
+  }
+  const removeFile = (index: number): void => setFiles((prev) => prev.filter((_, i) => i !== index));
+
+  async function save(): Promise<void> {
+    if (files.length === 0) { setErr("ต้องแนบรูปถ่ายตอนส่งมอบก่อนอนุมัติ"); return; }
+    setBusy(true); setErr(null);
+    try {
+      const ids: string[] = [];
+      for (const f of files) {
+        const photo = await attachmentsApi.upload({ ownerType: "item_loan", ownerId: loan.itemId, fileName: f.name, mimeType: f.type || "image/jpeg", contentBase64: await fileToBase64(f) });
+        ids.push(photo.id);
+      }
+      await api.approveLoan(loan.id, { borrowPhotoIds: ids, borrowedAt });
+      onSaved();
+    } catch (e) { setErr(e instanceof Error ? e.message : "อนุมัติไม่สำเร็จ"); } finally { setBusy(false); }
+  }
+  return (
+    <Modal title="อนุมัติคำขอยืม" sub={`${loan.loanNo} · ${loan.itemName} (ขอยืม ${loan.quantity}) · ${loan.borrowerName}`} onClose={onClose}
+      footer={<><Button variant="secondary" onClick={onClose}>ยกเลิก</Button><Button variant="primary" disabled={busy} onClick={() => void save()}>{busy ? "กำลังอนุมัติ…" : "อนุมัติและส่งมอบ"}</Button></>}>
+      <div className="field"><label>วันที่ส่งมอบ</label><input className="control tnum" value={borrowedAt} onChange={(e) => setBorrowedAt(e.target.value)} /></div>
+      <div className="field">
+        <label>รูปถ่ายตอนส่งมอบ (บังคับ) — แนบได้หลายรูป</label>
+        {previews.length > 0 ? (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+            {previews.map((url, i) => (
+              <div key={url} style={{ position: "relative", width: 64, height: 64 }}>
+                <img src={url} alt={`รูปการส่งมอบ ${i + 1}`} style={{ width: 64, height: 64, objectFit: "cover", borderRadius: "var(--r)", border: "1px solid var(--border)" }} />
+                <button type="button" aria-label="ลบรูป" onClick={() => removeFile(i)} style={{ position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface)", color: "var(--ink-2)", cursor: "pointer", lineHeight: 1, fontSize: 13, padding: 0 }}>×</button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        <input className="control" type="file" accept="image/*" multiple disabled={files.length >= MAX_LOAN_PHOTOS} onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+        <span className="hint">{files.length}/{MAX_LOAN_PHOTOS} รูป · ถ่ายสดจากกล้องหรือเลือกจากเครื่องก็ได้</span>
+      </div>
+      {err ? <p className="error-text">{err}</p> : null}
+    </Modal>
+  );
+}
+
+function RejectModal({ api, loan, onClose, onSaved }: { api: ItemLoansApi; loan: ItemLoanView; onClose: () => void; onSaved: () => void }): ReactElement {
+  const [reason, setReason] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function save(): Promise<void> {
+    setBusy(true); setErr(null);
+    try {
+      await api.rejectLoan(loan.id, { reason: reason.trim() || undefined });
+      onSaved();
+    } catch (e) { setErr(e instanceof Error ? e.message : "ปฏิเสธไม่สำเร็จ"); } finally { setBusy(false); }
+  }
+  return (
+    <Modal title="ปฏิเสธคำขอยืม" sub={`${loan.loanNo} · ${loan.itemName} · ${loan.borrowerName}`} onClose={onClose}
+      footer={<><Button variant="secondary" onClick={onClose}>ยกเลิก</Button><Button variant="danger" disabled={busy} onClick={() => void save()}>{busy ? "กำลังปฏิเสธ…" : "ยืนยันปฏิเสธ"}</Button></>}>
+      <div className="field"><label>เหตุผล (ไม่บังคับ)</label><input className="control" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="เช่น สิ่งของไม่ว่างในช่วงเวลาที่ขอ" /></div>
+      {err ? <p className="error-text">{err}</p> : null}
+    </Modal>
   );
 }
 

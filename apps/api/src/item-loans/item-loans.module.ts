@@ -10,5 +10,6 @@ import { ItemLoansService } from "./item-loans.service";
   imports: [PrismaModule, AuthModule],
   controllers: [ItemLoansController],
   providers: [ItemLoansService, RolesGuard, TenantGuard],
+  exports: [ItemLoansService],
 })
 export class ItemLoansModule {}

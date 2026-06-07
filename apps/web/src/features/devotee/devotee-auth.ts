@@ -10,12 +10,14 @@
 import type {
   CeremonyType,
   DonationMethod,
+  PublicEventSummary,
   PublicTempleProfile,
   PublicTempleSummary,
   ReceiptPreview,
 } from "@wat/shared";
+import { MAX_LOAN_QUANTITY } from "@wat/shared";
 
-export type { ReceiptPreview } from "@wat/shared";
+export type { PublicEventSummary, ReceiptPreview } from "@wat/shared";
 
 export interface DevoteeIdentity {
   id: string;
@@ -135,6 +137,56 @@ export interface DevoteeCeremonyRecord {
   createdAt: string;
 }
 
+/** A borrowable item as a devotee may see it (public-safe; no borrower PII). */
+export interface DevoteeBorrowableItem {
+  id: string;
+  name: string;
+  category: string;
+  unit: string | null;
+  availableQty: number;
+}
+
+export interface DevoteeItemLoanValues {
+  itemId: string;
+  quantity: string;
+  borrowedAt: string;
+  dueAt: string;
+  requesterPhone: string;
+  note: string;
+}
+
+export interface DevoteeItemLoanErrors {
+  itemId?: string;
+  quantity?: string;
+  borrowedAt?: string;
+}
+
+export interface ItemLoanRequestResult {
+  request: {
+    id: string;
+    loanNo: string;
+    itemName: string;
+    quantity: number;
+    status: string;
+    borrowedAt: string | null;
+    dueAt: string | null;
+  };
+}
+
+/** A devotee's own borrow record across temples (รอเจ้าหน้าที่ยืนยัน/กำลังยืม/คืนแล้ว/ยกเลิก). */
+export interface DevoteeItemLoanRecord {
+  id: string;
+  templeId: string;
+  templeNameTh: string;
+  loanNo: string;
+  itemName: string;
+  quantity: number;
+  borrowedAt: string;
+  dueAt: string | null;
+  status: string;
+  returnedQty: number | null;
+}
+
 export interface DevoteeProfile {
   id: string;
   email: string;
@@ -220,6 +272,23 @@ export function validateDevoteeCeremonyForm(values: DevoteeCeremonyValues): Devo
 
 export function hasCeremonyErrors(errors: DevoteeCeremonyErrors): boolean {
   return Boolean(errors.title || errors.ceremonyDate);
+}
+
+export function validateDevoteeItemLoanForm(values: DevoteeItemLoanValues): DevoteeItemLoanErrors {
+  const errors: DevoteeItemLoanErrors = {};
+  if (!values.itemId) errors.itemId = "กรุณาเลือกสิ่งของที่ต้องการยืม";
+  const quantity = Number(values.quantity);
+  if (!values.quantity.trim() || !Number.isInteger(quantity) || quantity < 1) {
+    errors.quantity = "กรุณากรอกจำนวนเป็นจำนวนเต็มตั้งแต่ 1 ขึ้นไป";
+  } else if (quantity > MAX_LOAN_QUANTITY) {
+    errors.quantity = `จำนวนต้องไม่เกิน ${MAX_LOAN_QUANTITY}`;
+  }
+  if (!values.borrowedAt) errors.borrowedAt = "กรุณาเลือกวันที่ต้องการยืม";
+  return errors;
+}
+
+export function hasItemLoanErrors(errors: DevoteeItemLoanErrors): boolean {
+  return Boolean(errors.itemId || errors.quantity || errors.borrowedAt);
 }
 
 export function validateProfileForm(values: DevoteeProfileValues): DevoteeProfileErrors {
@@ -323,9 +392,17 @@ export interface DevoteeApi {
     templeId: string,
     values: DevoteeCeremonyValues,
   ): Promise<CeremonyBookingResult>;
+  listBorrowableItems(token: string, templeId: string): Promise<DevoteeBorrowableItem[]>;
+  templeEvents(token: string, templeId: string): Promise<PublicEventSummary[]>;
+  requestItemLoan(
+    token: string,
+    templeId: string,
+    values: DevoteeItemLoanValues,
+  ): Promise<ItemLoanRequestResult>;
   myDonations(token: string): Promise<DevoteeDonationRecord[]>;
   myReceipts(token: string): Promise<DevoteeReceiptRecord[]>;
   myCeremonies(token: string): Promise<DevoteeCeremonyRecord[]>;
+  myItemLoans(token: string): Promise<DevoteeItemLoanRecord[]>;
   getProfile(token: string): Promise<DevoteeProfile>;
   updateProfile(token: string, values: DevoteeProfileValues): Promise<DevoteeProfile>;
   changePassword(token: string, values: DevoteePasswordValues): Promise<void>;
@@ -429,6 +506,35 @@ export function createDevoteeApiClient(options: DevoteeApiClientOptions): Devote
       });
       return readJson<CeremonyBookingResult>(response, "จองพิธีไม่สำเร็จ");
     },
+    async listBorrowableItems(token, templeId) {
+      const response = await doFetch(`${options.baseUrl}/devotee/temples/${templeId}/borrowable-items`, {
+        headers: authHeaders(token),
+      });
+      const body = await readJson<{ items: DevoteeBorrowableItem[] }>(response, "โหลดรายการสิ่งของไม่สำเร็จ");
+      return body.items;
+    },
+    async templeEvents(token, templeId) {
+      const response = await doFetch(`${options.baseUrl}/devotee/temples/${templeId}/events`, {
+        headers: authHeaders(token),
+      });
+      const body = await readJson<{ events: PublicEventSummary[] }>(response, "โหลดกิจกรรมไม่สำเร็จ");
+      return body.events;
+    },
+    async requestItemLoan(token, templeId, values) {
+      const response = await doFetch(`${options.baseUrl}/devotee/temples/${templeId}/item-loans`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders(token) },
+        body: JSON.stringify({
+          itemId: values.itemId,
+          quantity: Number(values.quantity),
+          borrowedAt: values.borrowedAt,
+          ...(values.dueAt.trim() ? { dueAt: values.dueAt.trim() } : {}),
+          ...(values.requesterPhone.trim() ? { requesterPhone: values.requesterPhone.trim() } : {}),
+          ...(values.note.trim() ? { note: values.note.trim() } : {}),
+        }),
+      });
+      return readJson<ItemLoanRequestResult>(response, "ส่งคำขอยืมไม่สำเร็จ");
+    },
     async myDonations(token) {
       const response = await doFetch(`${options.baseUrl}/devotee/me/donations`, {
         headers: authHeaders(token),
@@ -449,6 +555,13 @@ export function createDevoteeApiClient(options: DevoteeApiClientOptions): Devote
       });
       const body = await readJson<{ ceremonies: DevoteeCeremonyRecord[] }>(response, "โหลดการจองไม่สำเร็จ");
       return body.ceremonies;
+    },
+    async myItemLoans(token) {
+      const response = await doFetch(`${options.baseUrl}/devotee/me/item-loans`, {
+        headers: authHeaders(token),
+      });
+      const body = await readJson<{ itemLoans: DevoteeItemLoanRecord[] }>(response, "โหลดการยืมของไม่สำเร็จ");
+      return body.itemLoans;
     },
     async getProfile(token) {
       const response = await doFetch(`${options.baseUrl}/devotee/me`, { headers: authHeaders(token) });

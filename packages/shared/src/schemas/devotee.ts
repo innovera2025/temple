@@ -6,6 +6,8 @@
 import { type FieldError, type ValidationResult } from "./donor";
 import { DONATION_METHODS, type DonationMethod, isValidIsoDate } from "./donation";
 import { CEREMONY_LIMITS, type CeremonyType, isCeremonyType } from "./ceremony";
+import { LOAN_LIMITS, MAX_LOAN_QUANTITY } from "./item-loan";
+import { isUuid } from "./platform";
 
 export const DEVOTEE_LIMITS = {
   email: 200,
@@ -178,6 +180,53 @@ export function validateDevoteeCeremony(input: unknown): ValidationResult<Devote
       ceremonyDate,
       ...(timeNote ? { timeNote } : {}),
       ...(location ? { location } : {}),
+      ...(requesterPhone ? { requesterPhone } : {}),
+      ...(note ? { note } : {}),
+    },
+  };
+}
+
+export interface DevoteeItemLoanInput {
+  itemId: string;
+  quantity: number;
+  borrowedAt: string;
+  dueAt?: string;
+  requesterPhone?: string;
+  note?: string;
+}
+
+/**
+ * A devotee requesting to borrow a temple item. The devotee supplies the item, the
+ * quantity, and the desired pickup/return dates; the server controls status
+ * (-> requested), the borrower name (the devotee's own name), and the devotee link.
+ * No photo here — the temple photographs the item at staff hand-over/approval.
+ */
+export function validateDevoteeItemLoanRequest(input: unknown): ValidationResult<DevoteeItemLoanInput> {
+  if (!isPlainObject(input)) return { success: false, errors: [{ field: "_root", message: "รูปแบบข้อมูลไม่ถูกต้อง" }] };
+  const errors: FieldError[] = [];
+  if (!isUuid(input.itemId)) errors.push({ field: "itemId", message: "ต้องเลือกสิ่งของที่จะยืม" });
+  const quantity = input.quantity;
+  if (typeof quantity !== "number" || !Number.isInteger(quantity) || quantity < 1 || quantity > MAX_LOAN_QUANTITY) {
+    errors.push({ field: "quantity", message: "จำนวนต้องเป็นจำนวนเต็มตั้งแต่ 1 ขึ้นไป" });
+  }
+  const borrowedAt = typeof input.borrowedAt === "string" ? input.borrowedAt.trim() : "";
+  if (!isValidIsoDate(borrowedAt)) errors.push({ field: "borrowedAt", message: "วันที่ต้องการยืมไม่ถูกต้อง (YYYY-MM-DD)" });
+  let dueAt: string | undefined;
+  if (input.dueAt !== undefined && input.dueAt !== null && input.dueAt !== "") {
+    const d = typeof input.dueAt === "string" ? input.dueAt.trim() : "";
+    if (!isValidIsoDate(d)) errors.push({ field: "dueAt", message: "กำหนดคืนไม่ถูกต้อง (YYYY-MM-DD)" });
+    else dueAt = d;
+  }
+  const requesterPhone = optString(input.requesterPhone, "requesterPhone", "เบอร์โทร", LOAN_LIMITS.borrowerPhone, errors);
+  const note = optString(input.note, "note", "หมายเหตุ", LOAN_LIMITS.note, errors);
+  if (errors.length > 0) return { success: false, errors };
+  return {
+    success: true,
+    data: {
+      itemId: input.itemId as string,
+      quantity: quantity as number,
+      borrowedAt,
+      ...(dueAt ? { dueAt } : {}),
       ...(requesterPhone ? { requesterPhone } : {}),
       ...(note ? { note } : {}),
     },

@@ -12,15 +12,21 @@ import { isValidIsoDate } from "./donation";
 import { type FieldError, type ValidationResult } from "./donor";
 import { type InventoryCategory, type InventoryStatus, isInventoryCategory, isInventoryStatus } from "./inventory";
 
-export const LOAN_STATUSES = ["borrowed", "returned"] as const;
+// `requested` = a devotee-submitted borrow request awaiting staff confirmation (no
+// photo / no stock decrement until approved); `cancelled` = a rejected/withdrawn
+// request. Both are server-set via the devotee plane — staff create walk-in loans
+// straight into `borrowed`.
+export const LOAN_STATUSES = ["requested", "borrowed", "returned", "cancelled"] as const;
 export type LoanStatus = (typeof LOAN_STATUSES)[number];
 
 export const LOAN_SETTLEMENT_TYPES = ["replacement", "cash"] as const;
 export type LoanSettlementType = (typeof LOAN_SETTLEMENT_TYPES)[number];
 
 export const LOAN_STATUS_LABELS_TH: Record<LoanStatus, string> = {
+  requested: "รอเจ้าหน้าที่ยืนยัน",
   borrowed: "กำลังยืม",
   returned: "คืนแล้ว",
+  cancelled: "ยกเลิก",
 };
 
 export const LOAN_SETTLEMENT_TYPE_LABELS_TH: Record<LoanSettlementType, string> = {
@@ -335,4 +341,39 @@ export function validateReturnLoan(input: unknown): ValidationResult<ReturnLoanI
   }
 
   return errors.length ? { success: false, errors } : { success: true, data: data as unknown as ReturnLoanInput };
+}
+
+export interface ApproveLoanInput {
+  borrowPhotoIds: string[];
+  borrowedAt?: string;
+}
+
+/** Staff approving a devotee borrow request: the hand-over photo(s) are required here. */
+export function validateApproveLoan(input: unknown): ValidationResult<ApproveLoanInput> {
+  if (!isPlainObject(input)) return { success: false, errors: [{ field: "_root", message: "ข้อมูลไม่ถูกต้อง" }] };
+  const errors: FieldError[] = [];
+  const data: Record<string, unknown> = {};
+  const photoIds = (Array.isArray(input.borrowPhotoIds) ? input.borrowPhotoIds : [])
+    .filter((id): id is string => typeof id === "string" && id.trim() !== "")
+    .map((id) => id.trim());
+  if (photoIds.length === 0) errors.push({ field: "borrowPhotoIds", message: "ต้องแนบรูปถ่ายตอนส่งมอบ" });
+  else if (photoIds.length > MAX_LOAN_PHOTOS) errors.push({ field: "borrowPhotoIds", message: `แนบรูปได้ไม่เกิน ${MAX_LOAN_PHOTOS} รูป` });
+  else data.borrowPhotoIds = photoIds;
+  if ("borrowedAt" in input && input.borrowedAt !== undefined && input.borrowedAt !== null && input.borrowedAt !== "") {
+    if (typeof input.borrowedAt !== "string" || !isValidIsoDate(input.borrowedAt.trim())) {
+      errors.push({ field: "borrowedAt", message: "วันที่ส่งมอบไม่ถูกต้อง (YYYY-MM-DD)" });
+    } else data.borrowedAt = input.borrowedAt.trim();
+  }
+  return errors.length ? { success: false, errors } : { success: true, data: data as unknown as ApproveLoanInput };
+}
+
+export interface RejectLoanInput {
+  reason?: string;
+}
+
+export function validateRejectLoan(input: unknown): ValidationResult<RejectLoanInput> {
+  if (!isPlainObject(input)) return { success: false, errors: [{ field: "_root", message: "ข้อมูลไม่ถูกต้อง" }] };
+  const errors: FieldError[] = [];
+  const reason = optString(input.reason, "reason", LOAN_LIMITS.returnNote, errors);
+  return errors.length ? { success: false, errors } : { success: true, data: reason ? { reason } : {} };
 }
