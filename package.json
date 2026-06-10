@@ -3,11 +3,14 @@
   "version": "0.0.0",
   "private": true,
   "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "turbo build",
     "dev": "turbo dev",
     "lint": "turbo lint",
-    "test": "pnpm --filter @wat/db test && pnpm --filter @wat/db seed && turbo test --filter=!@wat/db --concurrency=1",
+    "test": "pnpm --filter @wat/db run prisma migrate deploy && pnpm --filter @wat/db build && pnpm --filter @wat/db test && pnpm --filter @wat/db seed && turbo test --filter=!@wat/db --concurrency=1",
     "typecheck": "turbo typecheck"
   },
   "devDependencies": {

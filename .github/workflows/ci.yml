@@ -25,7 +25,23 @@ jobs:
           cache: pnpm
 
       - name: Install
-        run: pnpm install --frozen-lockfile=false
+        # frozen lockfile: dependency drift must fail CI, not silently rewrite
+        # the lockfile on the runner.
+        run: pnpm install --frozen-lockfile
+
+      # The integration suites talk to real Postgres/Redis AND shell out to
+      # `docker exec wat-dev-db psql ...`, so CI starts the same dev compose
+      # (same container names + credentials) the helpers expect.
+      - name: Start Postgres + Redis
+        run: docker compose -f infra/docker/docker-compose.dev.yml up -d --wait
+
+      - name: Configure environment
+        run: cp .env.example .env
+
+      - name: Prisma generate + migrate
+        run: |
+          pnpm --filter @wat/db run prisma generate
+          pnpm --filter @wat/db run prisma migrate deploy
 
       - name: Typecheck
         run: pnpm -w typecheck
@@ -33,8 +49,26 @@ jobs:
       - name: Lint
         run: pnpm -w lint
 
-      - name: Test
-        run: pnpm -w test
-
       - name: Build
         run: pnpm -w build
+
+      - name: Test
+        # Root script order: db gates (RLS / no-hard-delete / doc numbers) ->
+        # seed -> api/web suites against the seeded database.
+        run: pnpm -w test
+
+  docker:
+    # Broken Dockerfiles must fail CI, not the next manual deploy.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build production images
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci-build-only
+          POSTGRES_DB: ci
+          DATABASE_URL: postgresql://ci:ci-build-only@db:5432/ci?schema=public
+          JWT_SECRET: ci-build-only-secret-0123456789abcdefghijklmnop
+        run: docker compose -f infra/docker/docker-compose.prod.yml build
