@@ -48,7 +48,9 @@ function useRoute(): Route {
 
 function todayIso(): string {
   if (typeof window === "undefined") return "2026-01-01";
-  return new Date().toISOString().slice(0, 10);
+  // ICT (UTC+7) civil date — toISOString() alone is the UTC date, which is
+  // yesterday for the first 7 hours of every Thai day.
+  return new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
 function TempleApp(): ReactElement {

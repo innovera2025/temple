@@ -39,13 +39,21 @@ interface RecentDonationRow {
 const ANONYMOUS_DONOR_TH = "ผู้บริจาคไม่ประสงค์ออกนาม";
 const RECENT_LIMIT = 5;
 
-function currentMonth(): string {
-  const now = new Date();
-  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+const ICT_OFFSET_MS = 7 * 60 * 60 * 1000;
+
+/**
+ * "This month" must be the ICT (UTC+7) month — the reports module already uses
+ * ICT civil days, and UTC here would roll the dashboard over 7 hours late and
+ * disagree with the report for the same tenant. Exported for fixed-clock tests.
+ */
+export function ictMonth(now: Date): string {
+  const shifted = new Date(now.getTime() + ICT_OFFSET_MS);
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
-function monthStart(month: string): Date {
-  return new Date(`${month}-01T00:00:00.000Z`);
+/** The instant the ICT month begins (for timestamptz comparisons). */
+export function ictMonthStart(month: string): Date {
+  return new Date(`${month}-01T00:00:00.000+07:00`);
 }
 
 @Injectable()
@@ -65,11 +73,11 @@ export class DashboardService {
     tenantId: string,
     options: { includeFinancials: boolean },
   ): Promise<DashboardResult> {
-    const month = currentMonth();
+    const month = ictMonth(new Date());
 
     const counts = await this.prisma.withTenant(tenantId, async (tx) => {
       const [newDonorsThisMonth, awaitingReceiptCount, awaitingReconciliationCount] = await Promise.all([
-        tx.donor.count({ where: { createdAt: { gte: monthStart(month) } } }),
+        tx.donor.count({ where: { createdAt: { gte: ictMonthStart(month) } } }),
         // confirmed donations with no active (issued) receipt yet
         tx.donation.count({ where: { status: "confirmed", receipts: { none: { status: "issued" } } } }),
         // posted ledger entries not yet reconciled

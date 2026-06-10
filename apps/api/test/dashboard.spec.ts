@@ -9,6 +9,7 @@ import { AppModule } from "../src/app.module";
 import { AuthService } from "../src/auth/auth.service";
 import { ROLES_KEY } from "../src/common/decorators/roles.decorator";
 import { DashboardController } from "../src/dashboard/dashboard.controller";
+import { ictMonth, ictMonthStart } from "../src/dashboard/dashboard.service";
 import { DonationsController } from "../src/donations/donations.controller";
 import { DonorsController } from "../src/donors/donors.controller";
 import { LedgerController } from "../src/ledger/ledger.controller";
@@ -19,9 +20,11 @@ const financeEmail = "finance@wat-arun.example";
 const staffEmail = "staff@wat-arun.example";
 const devPassword = "Password123!";
 
-// Use the actual current month (the service derives it from the system clock).
-const NOW = new Date();
-const THIS_MONTH = `${NOW.getUTCFullYear()}-${String(NOW.getUTCMonth() + 1).padStart(2, "0")}`;
+// Use the actual current ICT month — the service derives "this month" from the
+// system clock in ICT (UTC+7), matching the reports module. Computing it the
+// same way here removes the 7-hour window where a UTC-derived month disagrees.
+const NOW_ICT = new Date(Date.now() + 7 * 60 * 60 * 1000);
+const THIS_MONTH = `${NOW_ICT.getUTCFullYear()}-${String(NOW_ICT.getUTCMonth() + 1).padStart(2, "0")}`;
 const IN_MONTH = `${THIS_MONTH}-15`;
 
 interface TokenPayload {
@@ -169,5 +172,16 @@ describe("finance dashboard", () => {
       "finance",
       "staff",
     ]);
+  });
+
+  it("derives 'this month' from the ICT calendar, not UTC (fixed-clock boundaries)", () => {
+    // 2026-05-31 18:30 UTC == 2026-06-01 01:30 ICT -> June in Thailand
+    expect(ictMonth(new Date("2026-05-31T18:30:00.000Z"))).toBe("2026-06");
+    // 2026-06-30 16:59 UTC == 2026-06-30 23:59 ICT -> still June
+    expect(ictMonth(new Date("2026-06-30T16:59:00.000Z"))).toBe("2026-06");
+    // 2026-06-30 17:00 UTC == 2026-07-01 00:00 ICT -> July begins
+    expect(ictMonth(new Date("2026-06-30T17:00:00.000Z"))).toBe("2026-07");
+    // and the month-start instant is ICT midnight (17:00 UTC the previous day)
+    expect(ictMonthStart("2026-06").toISOString()).toBe("2026-05-31T17:00:00.000Z");
   });
 });
