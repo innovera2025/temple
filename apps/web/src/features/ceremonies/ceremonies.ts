@@ -25,6 +25,7 @@ export interface Ceremony {
   ceremonyDate: string;
   timeNote: string | null;
   location: string | null;
+  hallId: string | null;
   requesterName: string | null;
   requesterPhone: string | null;
   assignedMonks: string | null;
@@ -129,11 +130,23 @@ export function buildCeremonyQuery(filters: CeremonyFilters = {}): string {
 // API client
 // ---------------------------------------------------------------------------
 
+export interface HallView {
+  id: string;
+  name: string;
+  capacity: number | null;
+  note: string | null;
+  isActive: boolean;
+}
+
 export interface CeremoniesApi {
   list(filters?: CeremonyFilters): Promise<Ceremony[]>;
   get(id: string): Promise<Ceremony>;
   create(input: CreateCeremonyInput): Promise<Ceremony>;
   update(id: string, patch: UpdateCeremonyInput): Promise<Ceremony>;
+  /** ศาลา/สถานที่ของวัด (จองศาลา). */
+  listHalls(includeInactive?: boolean): Promise<HallView[]>;
+  createHall(input: { name: string; capacity?: number | null; note?: string | null }): Promise<HallView>;
+  updateHall(id: string, patch: { name?: string; capacity?: number | null; isActive?: boolean }): Promise<HallView>;
 }
 
 export interface CeremoniesApiClientOptions {
@@ -192,6 +205,41 @@ export function createCeremoniesApiClient(options: CeremoniesApiClientOptions): 
           body: JSON.stringify(patch),
         }),
       );
+    },
+    async listHalls(includeInactive = false) {
+      const response = await doFetch(
+        `${options.baseUrl}/ceremonies/halls${includeInactive ? "?includeInactive=true" : ""}`,
+        { headers: headers() },
+      );
+      const body = (await response.json().catch(() => ({}))) as Record<string, unknown> & ApiErrorBody;
+      if (!response.ok) {
+        throw new Error(body.error?.message ?? "เกิดข้อผิดพลาดในการเชื่อมต่อระบบ");
+      }
+      return (body.halls ?? []) as HallView[];
+    },
+    async createHall(input) {
+      const response = await doFetch(`${options.baseUrl}/ceremonies/halls`, {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify(input),
+      });
+      const body = (await response.json().catch(() => ({}))) as Record<string, unknown> & ApiErrorBody;
+      if (!response.ok) {
+        throw new Error(body.error?.message ?? "เกิดข้อผิดพลาดในการเชื่อมต่อระบบ");
+      }
+      return body.hall as HallView;
+    },
+    async updateHall(id, patch) {
+      const response = await doFetch(`${options.baseUrl}/ceremonies/halls/${id}`, {
+        method: "PATCH",
+        headers: headers(),
+        body: JSON.stringify(patch),
+      });
+      const body = (await response.json().catch(() => ({}))) as Record<string, unknown> & ApiErrorBody;
+      if (!response.ok) {
+        throw new Error(body.error?.message ?? "เกิดข้อผิดพลาดในการเชื่อมต่อระบบ");
+      }
+      return body.hall as HallView;
     },
   };
 }

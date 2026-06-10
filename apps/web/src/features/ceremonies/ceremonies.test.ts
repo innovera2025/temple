@@ -16,6 +16,7 @@ const merit: Ceremony = {
   ceremonyDate: "2026-06-15",
   timeNote: "09:00 น.",
   location: "ศาลาการเปรียญ",
+  hallId: null,
   requesterName: "คุณสมชาย",
   requesterPhone: null,
   assignedMonks: null,

@@ -28,6 +28,8 @@ export const tenantTables = [
   "personnel",
   "ceremonies",
   "break_glass_grants",
+  "temple_halls",
+  "ceremony_monks",
 ] as const;
 
 export interface RlsTableStatus {

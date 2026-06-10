@@ -8,6 +8,7 @@
 
 import { isValidIsoDate } from "./donation";
 import { type FieldError, type ValidationResult } from "./donor";
+import { isUuid } from "./platform";
 
 export const CEREMONY_TYPES = ["merit", "funeral", "ordination", "housewarming", "robe_offering", "other"] as const;
 export type CeremonyType = (typeof CEREMONY_TYPES)[number];
@@ -59,8 +60,10 @@ export const CEREMONY_FIELD_LABELS_TH: Record<string, string> = {
   location: "สถานที่/ศาลา",
   requesterName: "เจ้าภาพ/ผู้ขอ",
   requesterPhone: "โทรศัพท์เจ้าภาพ",
-  assignedMonks: "พระที่นิมนต์",
+  assignedMonks: "พระที่นิมนต์ (นอกทะเบียน)",
   monkCount: "จำนวนพระ",
+  hallId: "ศาลา/สถานที่ของวัด",
+  monkPersonnelIds: "พระที่นิมนต์จากทะเบียน",
   note: "หมายเหตุ",
 };
 
@@ -78,6 +81,10 @@ export interface CeremonyInput {
   note?: string | null;
   /** Publish on the public (unauthenticated) upcoming-events feed. Default false. */
   isPublic?: boolean;
+  /** จองศาลา: a hall from the temple's hall registry (null = free-text location only). */
+  hallId?: string | null;
+  /** นิมนต์พระ: personnel ids (monk/novice) invited to this ceremony. */
+  monkPersonnelIds?: string[];
 }
 
 export type CreateCeremonyInput = CeremonyInput;
@@ -101,7 +108,7 @@ const STRING_FIELDS = [
   "assignedMonks",
   "note",
 ] as const;
-const ALL_KEYS = ["ceremonyType", "status", "title", "ceremonyDate", ...STRING_FIELDS, "monkCount", "isPublic"] as const;
+const ALL_KEYS = ["ceremonyType", "status", "title", "ceremonyDate", ...STRING_FIELDS, "monkCount", "isPublic", "hallId", "monkPersonnelIds"] as const;
 const DEFAULT_TAKE = 100;
 const MAX_TAKE = 500;
 const MAX_MONK_COUNT = 999;
@@ -165,6 +172,24 @@ function applyOptionalFields(input: Record<string, unknown>, data: Record<string
   if ("monkCount" in input) {
     const v = optMonkCount(input.monkCount, errors);
     if (v !== undefined) data.monkCount = v;
+  }
+  if ("hallId" in input) {
+    const v = input.hallId;
+    if (v === null || (typeof v === "string" && v.trim() === "")) {
+      data.hallId = null;
+    } else if (isUuid(v)) {
+      data.hallId = v;
+    } else {
+      errors.push({ field: "hallId", message: "ศาลา/สถานที่ของวัดไม่ถูกต้อง" });
+    }
+  }
+  if ("monkPersonnelIds" in input) {
+    const v = input.monkPersonnelIds;
+    if (Array.isArray(v) && v.length <= 50 && v.every((id) => isUuid(id))) {
+      data.monkPersonnelIds = [...new Set(v)];
+    } else {
+      errors.push({ field: "monkPersonnelIds", message: "รายชื่อพระที่นิมนต์ไม่ถูกต้อง (สูงสุด 50 รูป)" });
+    }
   }
   if ("isPublic" in input) {
     if (typeof input.isPublic === "boolean") data.isPublic = input.isPublic;

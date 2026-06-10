@@ -22,6 +22,7 @@ import {
   type CeremonyStatus,
   type CeremonyType,
   type CreateCeremonyInput,
+  type HallView,
   CEREMONY_FORM_SECTIONS,
   CEREMONY_STATUS_OPTIONS,
   CEREMONY_TYPE_OPTIONS,
@@ -991,7 +992,7 @@ function ceremonyRowActions(
   );
 }
 
-export function DesignEvents({ api, canWrite }: { api?: CeremoniesApi; canWrite?: boolean }): ReactElement {
+export function DesignEvents({ api, personnelApi, canWrite, canManageHalls }: { api?: CeremoniesApi; personnelApi?: PersonnelApi; canWrite?: boolean; canManageHalls?: boolean }): ReactElement {
   const [items, setItems] = useState<Ceremony[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [type, setType] = useState("all");
@@ -1000,11 +1001,20 @@ export function DesignEvents({ api, canWrite }: { api?: CeremoniesApi; canWrite?
   const [creating, setCreating] = useState(false);
   const [cType, setCType] = useState<CeremonyType>("merit");
   const [cPublic, setCPublic] = useState(false);
+  const [cHallId, setCHallId] = useState("");
+  const [cMonkIds, setCMonkIds] = useState<string[]>([]);
+  const [halls, setHalls] = useState<HallView[]>([]);
+  const [monks, setMonks] = useState<Personnel[]>([]);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionErr, setActionErr] = useState<string | null>(null);
+  const [managingHalls, setManagingHalls] = useState(false);
+  const [hallName, setHallName] = useState("");
+  const [hallCapacity, setHallCapacity] = useState("");
+  const [hallErr, setHallErr] = useState<string | null>(null);
+  const [hallBusy, setHallBusy] = useState(false);
   useEffect(() => {
     if (!api) return;
     let active = true;
@@ -1012,8 +1022,58 @@ export function DesignEvents({ api, canWrite }: { api?: CeremoniesApi; canWrite?
       (rows) => { if (active) setItems(rows); },
       (err: unknown) => { if (active) setError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ"); },
     );
+    // typeof guard: older/partial test doubles may not implement the halls API.
+    if (typeof api.listHalls === "function") {
+      api.listHalls(canManageHalls === true).then(
+        (rows) => { if (active) setHalls(rows ?? []); },
+        () => undefined,
+      );
+    }
     return () => { active = false; };
-  }, [api, reloadKey]);
+  }, [api, canManageHalls, reloadKey]);
+  useEffect(() => {
+    if (!personnelApi) return;
+    let active = true;
+    // พระ/สามเณรที่ยังปฏิบัติงานอยู่ สำหรับนิมนต์
+    personnelApi.list({ status: "active" }).then(
+      (rows) => { if (active) setMonks(rows.filter((p) => p.personnelType === "monk" || p.personnelType === "novice")); },
+      () => undefined,
+    );
+    return () => { active = false; };
+  }, [personnelApi]);
+
+  async function addHall(): Promise<void> {
+    if (!api) return;
+    const name = hallName.trim();
+    if (!name) { setHallErr("กรุณาระบุชื่อศาลา"); return; }
+    setHallBusy(true);
+    setHallErr(null);
+    try {
+      const capacity = hallCapacity.trim() ? Number(hallCapacity.trim()) : null;
+      await api.createHall({ name, capacity: Number.isInteger(capacity) && (capacity ?? 0) > 0 ? capacity : null });
+      setHallName("");
+      setHallCapacity("");
+      setReloadKey((k) => k + 1);
+    } catch (e) {
+      setHallErr(e instanceof Error ? e.message : "เพิ่มศาลาไม่สำเร็จ");
+    } finally {
+      setHallBusy(false);
+    }
+  }
+
+  async function toggleHall(hall: HallView): Promise<void> {
+    if (!api) return;
+    setHallBusy(true);
+    setHallErr(null);
+    try {
+      await api.updateHall(hall.id, { isActive: !hall.isActive });
+      setReloadKey((k) => k + 1);
+    } catch (e) {
+      setHallErr(e instanceof Error ? e.message : "อัปเดตศาลาไม่สำเร็จ");
+    } finally {
+      setHallBusy(false);
+    }
+  }
   const all = items ?? [];
   const filtered = all.filter(
     (e) => (type === "all" || e.ceremonyType === type) && (status === "all" || e.status === status),
@@ -1041,6 +1101,8 @@ export function DesignEvents({ api, canWrite }: { api?: CeremoniesApi; canWrite?
   function openCreate(): void {
     setCType("merit");
     setCPublic(false);
+    setCHallId("");
+    setCMonkIds([]);
     setDraft({});
     setSaveErr(null);
     setCreating(true);
@@ -1050,7 +1112,14 @@ export function DesignEvents({ api, canWrite }: { api?: CeremoniesApi; canWrite?
     setSaving(true);
     setSaveErr(null);
     try {
-      await api.create({ ceremonyType: cType, status: "planned", isPublic: cPublic, ...draft } as unknown as CreateCeremonyInput);
+      await api.create({
+        ceremonyType: cType,
+        status: "planned",
+        isPublic: cPublic,
+        ...(cHallId ? { hallId: cHallId } : {}),
+        ...(cMonkIds.length > 0 ? { monkPersonnelIds: cMonkIds } : {}),
+        ...draft,
+      } as unknown as CreateCeremonyInput);
       setCreating(false);
       setReloadKey((k) => k + 1);
     } catch (e) {
@@ -1062,7 +1131,12 @@ export function DesignEvents({ api, canWrite }: { api?: CeremoniesApi; canWrite?
   return (
     <div className="content-wrap">
       <PageHead eyebrow="งานวัด" title="กิจกรรมและพิธี" desc="จองและจัดการกิจกรรม งานบุญ พิธีอุปสมบท ฌาปนกิจ และการปฏิบัติธรรม"
-        actions={canWrite ? <Button variant="primary" icon={<Icon name="plus" size={15} />} onClick={openCreate}>จองกิจกรรม</Button> : undefined} />
+        actions={canWrite ? (
+          <>
+            {canManageHalls ? <Button variant="secondary" icon={<Icon name="building" size={15} />} onClick={() => { setHallErr(null); setManagingHalls(true); }}>จัดการศาลา</Button> : null}
+            <Button variant="primary" icon={<Icon name="plus" size={15} />} onClick={openCreate}>จองกิจกรรม</Button>
+          </>
+        ) : undefined} />
       {error ? <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: "var(--r)", background: "var(--danger-tint)", color: "var(--danger)", fontSize: 13 }}>โหลดข้อมูลกิจกรรมไม่สำเร็จ: {error}</div> : null}
       <div className="split">
         <Card>
@@ -1139,6 +1213,32 @@ export function DesignEvents({ api, canWrite }: { api?: CeremoniesApi; canWrite?
               {CEREMONY_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
+          <div className="field"><label>จองศาลา/สถานที่ของวัด</label>
+            <select className="control" value={cHallId} onChange={(e) => setCHallId(e.target.value)}>
+              <option value="">ไม่จองศาลา (ระบุสถานที่เองด้านล่าง)</option>
+              {halls.filter((h) => h.isActive).map((h) => (
+                <option key={h.id} value={h.id}>{h.name}{h.capacity ? ` (จุ ${h.capacity})` : ""}</option>
+              ))}
+            </select>
+            <span className="hint">ระบบกันจองชน: ศาลาเดียวกันรับได้วันละ 1 งาน หากชนจะแจ้งชื่องานที่จองไว้</span>
+          </div>
+          {monks.length > 0 ? (
+            <div className="field"><label>นิมนต์พระจากทะเบียน ({cMonkIds.length} รูป)</label>
+              <div style={{ maxHeight: 140, overflowY: "auto", border: "1px solid var(--border)", borderRadius: "var(--r)", padding: "6px 10px" }}>
+                {monks.map((m) => (
+                  <label key={m.id} style={{ display: "flex", gap: 8, alignItems: "center", padding: "3px 0", fontSize: 13 }}>
+                    <input
+                      type="checkbox"
+                      checked={cMonkIds.includes(m.id)}
+                      onChange={(e) => setCMonkIds((ids) => e.target.checked ? [...ids, m.id] : ids.filter((x) => x !== m.id))}
+                    />
+                    <span>{m.displayName}{m.rank ? ` · ${m.rank}` : ""}</span>
+                  </label>
+                ))}
+              </div>
+              <span className="hint">ระบบกันตารางพระชน: พระหนึ่งรูปรับนิมนต์ได้วันละ 1 งาน</span>
+            </div>
+          ) : null}
           {CEREMONY_FORM_SECTIONS.flatMap((section) => section.fields).map((f) => (
             <div className="field" key={f.key as string}>
               <label>{f.label}</label>
@@ -1154,6 +1254,36 @@ export function DesignEvents({ api, canWrite }: { api?: CeremoniesApi; canWrite?
             <span>เผยแพร่กิจกรรมนี้สู่หน้าสาธารณะ (ให้ญาติโยมทั่วไปเห็น)</span>
           </label>
           {saveErr ? <p className="error-text">{saveErr}</p> : null}
+        </Modal>
+      ) : null}
+
+      {managingHalls ? (
+        <Modal title="จัดการศาลา/สถานที่ของวัด" sub="ทะเบียนศาลาที่ใช้รับจองงานพิธี" onClose={() => setManagingHalls(false)}
+          footer={<Button variant="secondary" onClick={() => setManagingHalls(false)}>ปิด</Button>}>
+          <div>
+            {halls.length === 0 ? (
+              <p className="muted" style={{ fontSize: 13 }}>ยังไม่มีศาลาในทะเบียน — เพิ่มด้านล่าง</p>
+            ) : (
+              halls.map((h) => (
+                <div key={h.id} className="between" style={{ padding: "7px 0", borderBottom: "1px solid var(--border)", fontSize: 13.5 }}>
+                  <span>
+                    <span style={{ fontWeight: 600 }}>{h.name}</span>
+                    {h.capacity ? <span className="muted"> · จุ {h.capacity}</span> : null}
+                    {!h.isActive ? <Badge kind="void">ปิดใช้งาน</Badge> : null}
+                  </span>
+                  <Button variant="secondary" size="sm" disabled={hallBusy} onClick={() => void toggleHall(h)}>
+                    {h.isActive ? "ปิดใช้งาน" : "เปิดใช้งาน"}
+                  </Button>
+                </div>
+              ))
+            )}
+            <div className="form-grid" style={{ marginTop: 14 }}>
+              <label className="field"><span className="label">ชื่อศาลาใหม่</span><input className="control" value={hallName} onChange={(e) => setHallName(e.target.value)} placeholder="เช่น ศาลาการเปรียญ" /></label>
+              <label className="field"><span className="label">ความจุ (คน ไม่บังคับ)</span><input className="control tnum" inputMode="numeric" value={hallCapacity} onChange={(e) => setHallCapacity(e.target.value.replace(/[^0-9]/g, ""))} /></label>
+            </div>
+            {hallErr ? <p className="error-text">{hallErr}</p> : null}
+            <Button variant="primary" disabled={hallBusy} onClick={() => void addHall()}>{hallBusy ? "กำลังบันทึก…" : "เพิ่มศาลา"}</Button>
+          </div>
         </Modal>
       ) : null}
     </div>

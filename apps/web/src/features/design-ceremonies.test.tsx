@@ -136,4 +136,46 @@ describe("DesignEvents — wired to /ceremonies", () => {
     expect(arg.ceremonyType).toBe("merit");
     expect(arg.status).toBe("planned");
   });
+
+  it("books a hall and invites monks from the registry (จองศาลา + นิมนต์พระ)", async () => {
+    const api = {
+      list: vi.fn(async () => [] as Ceremony[]),
+      create: vi.fn(async () => CEREMONY),
+      listHalls: vi.fn(async () => [
+        { id: "44444444-4444-4444-8444-444444444444", name: "ศาลาการเปรียญ", capacity: 80, note: null, isActive: true },
+      ]),
+    } as unknown as CeremoniesApi;
+    const personnelApi = {
+      list: vi.fn(async () => [
+        { id: "55555555-5555-4555-8555-555555555555", displayName: "พระมหาทดสอบ", personnelType: "monk", status: "active", rank: null },
+        { id: "66666666-6666-4666-8666-666666666666", displayName: "เจ้าหน้าที่วัด", personnelType: "staff", status: "active", rank: null },
+      ]),
+    } as unknown as import("./personnel/personnel").PersonnelApi;
+
+    const container = await mount(<DesignEvents api={api} personnelApi={personnelApi} canWrite canManageHalls />);
+    await click(byText(container, "button", "จองกิจกรรม"));
+
+    // hall options come from the registry; non-monk personnel are filtered out
+    expect(container.textContent).toContain("ศาลาการเปรียญ");
+    expect(container.textContent).toContain("พระมหาทดสอบ");
+    expect(container.textContent).not.toContain("เจ้าหน้าที่วัด");
+
+    const hallSelects = Array.from(container.querySelectorAll(".modal select"));
+    await setValue(hallSelects[1] ?? null, "44444444-4444-4444-8444-444444444444"); // [0]=type, [1]=hall
+    const monkCheckbox = Array.from(container.querySelectorAll<HTMLInputElement>(".modal input[type=checkbox]"))
+      .find((c) => c.parentElement?.textContent?.includes("พระมหาทดสอบ"));
+    await click(monkCheckbox ?? null);
+
+    const inputs = Array.from(container.querySelectorAll<HTMLInputElement>(".modal input")).filter((i) => i.type !== "checkbox");
+    await setValue(inputs[0] ?? null, "งานนิมนต์");
+    await setValue(inputs[1] ?? null, "2569-07-01");
+    await click(byText(container, ".modal button", "บันทึก"));
+
+    const arg = ((api.create as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] ?? {}) as {
+      hallId?: string;
+      monkPersonnelIds?: string[];
+    };
+    expect(arg.hallId).toBe("44444444-4444-4444-8444-444444444444");
+    expect(arg.monkPersonnelIds).toEqual(["55555555-5555-4555-8555-555555555555"]);
+  });
 });

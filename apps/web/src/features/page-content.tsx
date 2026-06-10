@@ -91,7 +91,7 @@ export function PageContent({ page, baseUrl, getToken, role, today, onNavigate }
       content = <DesignLedger api={createLedgerApiClient(opts)} reportsApi={createReportsApiClient(opts)} today={today} canWrite={writable("ledger")} />;
       break;
     case "events":
-      content = <DesignEvents api={createCeremoniesApiClient(opts)} canWrite={writable("events")} />;
+      content = <DesignEvents api={createCeremoniesApiClient(opts)} personnelApi={createPersonnelApiClient(opts)} canWrite={writable("events")} canManageHalls={role === "admin"} />;
       break;
     case "people":
       content = <DesignPeople api={createPersonnelApiClient(opts)} canWrite={writable("people")} />;

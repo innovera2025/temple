@@ -211,6 +211,7 @@ model Temple {
   breakGlassGrants  BreakGlassGrant[]
   personnel         Personnel[]
   ceremonies        Ceremony[]
+  templeHalls       TempleHall[]
   inventoryItems    InventoryItem[]
   inventoryMovements InventoryMovement[]
   storageRooms      StorageRoom[]
@@ -439,6 +440,8 @@ model Ceremony {
   ceremonyDate   DateTime       @map("ceremony_date") @db.Date
   timeNote       String?        @map("time_note")
   location       String?
+  /// Booked hall — tenant-scoped composite FK lives in the migration SQL.
+  hallId         String?        @map("hall_id") @db.Uuid
   requesterName  String?        @map("requester_name")
   requesterPhone String?        @map("requester_phone")
   assignedMonks  String?        @map("assigned_monks")
@@ -447,14 +450,46 @@ model Ceremony {
   isPublic       Boolean        @default(false) @map("is_public")
   devoteeAccountId String?        @map("devotee_account_id") @db.Uuid
   devoteeAccount   DevoteeAccount? @relation(fields: [devoteeAccountId], references: [id])
+  invitedMonks   CeremonyMonk[]
   createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime       @default(now()) @map("updated_at") @db.Timestamptz(6)
 
   @@unique([tenantId, id])
   @@index([tenantId])
   @@index([tenantId, ceremonyDate])
+  @@index([tenantId, hallId, ceremonyDate])
   @@index([devoteeAccountId])
   @@map("ceremonies")
+}
+
+model TempleHall {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  tenant    Temple   @relation(fields: [tenantId], references: [id])
+  name      String
+  capacity  Int?
+  note      String?
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("temple_halls")
+}
+
+model CeremonyMonk {
+  tenantId    String   @map("tenant_id") @db.Uuid
+  ceremonyId  String   @map("ceremony_id") @db.Uuid
+  ceremony    Ceremony @relation(fields: [ceremonyId], references: [id], onDelete: Cascade)
+  personnelId String   @map("personnel_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@id([ceremonyId, personnelId])
+  @@index([tenantId])
+  @@index([tenantId, personnelId])
+  @@map("ceremony_monks")
 }
 
 model InventoryItem {
