@@ -3,6 +3,8 @@ import { Badge, Button } from "../../design-system";
 import { Icon } from "../../layout/icons";
 import { ROLE_NAMES } from "../../layout/nav";
 import { RegisterForm } from "./register-view";
+import { ForgotPasswordForm } from "./recovery-view";
+import type { RecoveryApiOptions } from "./recovery";
 import {
   AuthApi,
   AuthError,
@@ -30,6 +32,8 @@ export interface LoginScreenProps {
   accounts?: readonly SeedAccount[];
   /** Social sign-in buttons; default off until the OAuth callback flow exists. */
   showSocial?: boolean;
+  /** Enables the ลืมรหัสผ่าน flow (POST /auth/forgot-password). */
+  recoveryOptions?: RecoveryApiOptions;
 }
 
 // Social/OAuth providers from the design's SocialButtons. No backend -> disabled.
@@ -139,6 +143,7 @@ export function LoginScreen({
   onAuthenticated,
   accounts = SHOW_DEMO_ACCOUNTS ? SEED_ACCOUNTS : [],
   showSocial = SHOW_SOCIAL_LOGIN,
+  recoveryOptions,
 }: LoginScreenProps): ReactElement {
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState<string>(accounts[0]?.email ?? "");
@@ -147,6 +152,7 @@ export function LoginScreen({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>("");
   const [fieldErrors, setFieldErrors] = useState<LoginFormErrors>({});
+  const [forgotOpen, setForgotOpen] = useState(false);
 
   async function submitCredentials(nextEmail: string, nextPassword: string): Promise<void> {
     const errors = validateLoginForm({ email: nextEmail, password: nextPassword });
@@ -205,6 +211,16 @@ export function LoginScreen({
 
           {mode === "register" ? (
             <RegisterForm api={api} />
+          ) : forgotOpen && recoveryOptions ? (
+            <>
+              <div className="auth-kicker">ลืมรหัสผ่าน</div>
+              <h2>ตั้งรหัสผ่านใหม่</h2>
+              <ForgotPasswordForm
+                options={recoveryOptions}
+                plane="staff"
+                onClose={() => setForgotOpen(false)}
+              />
+            </>
           ) : (
             <>
               <div className="auth-kicker">เข้าสู่ระบบ</div>
@@ -257,16 +273,26 @@ export function LoginScreen({
                     />
                     จดจำการเข้าใช้
                   </label>
-                  {/* No password-reset endpoint -> disabled, honest. */}
-                  <button
-                    type="button"
-                    className="auth-link"
-                    disabled
-                    title={UNAVAILABLE_LABEL}
-                    aria-label={`ลืมรหัสผ่าน (${UNAVAILABLE_LABEL})`}
-                  >
-                    ลืมรหัสผ่าน?
-                  </button>
+                  {recoveryOptions ? (
+                    <button
+                      type="button"
+                      className="auth-link"
+                      onClick={() => setForgotOpen(true)}
+                      aria-label="ลืมรหัสผ่าน"
+                    >
+                      ลืมรหัสผ่าน?
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="auth-link"
+                      disabled
+                      title={UNAVAILABLE_LABEL}
+                      aria-label={`ลืมรหัสผ่าน (${UNAVAILABLE_LABEL})`}
+                    >
+                      ลืมรหัสผ่าน?
+                    </button>
+                  )}
                 </div>
 
                 {error ? (

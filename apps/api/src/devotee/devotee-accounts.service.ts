@@ -9,6 +9,7 @@ export interface DevoteeProfile {
   email: string;
   displayName: string;
   phone: string | null;
+  emailVerifiedAt: Date | null;
 }
 
 /**
@@ -27,7 +28,7 @@ export class DevoteeAccountsService {
     const account = await this.prisma.withSystemAccess((tx) =>
       tx.devoteeAccount.findFirst({
         where: { id: devoteeAccountId },
-        select: { id: true, email: true, displayName: true, phone: true },
+        select: { id: true, email: true, displayName: true, phone: true, emailVerifiedAt: true },
       }),
     );
     if (!account) {
@@ -49,7 +50,7 @@ export class DevoteeAccountsService {
       return tx.devoteeAccount.update({
         where: { id: devoteeAccountId },
         data: { displayName: input.displayName, phone: input.phone, updatedAt: new Date() },
-        select: { id: true, email: true, displayName: true, phone: true },
+        select: { id: true, email: true, displayName: true, phone: true, emailVerifiedAt: true },
       });
     });
   }

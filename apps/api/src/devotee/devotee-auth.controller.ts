@@ -1,8 +1,10 @@
-import { Body, Controller, Inject, Ip, Post, UseGuards } from "@nestjs/common";
-import { validateDevoteeLogin, validateDevoteeRegister } from "@wat/shared";
+import { Body, Controller, HttpCode, Inject, Ip, Post, UseGuards } from "@nestjs/common";
+import { MIN_DEVOTEE_PASSWORD, validateDevoteeLogin, validateDevoteeRegister } from "@wat/shared";
 import { RateLimit } from "../common/decorators/rate-limit.decorator";
 import { RateLimitGuard } from "../common/guards/rate-limit.guard";
 import { projectHttpException } from "../common/errors/project-error";
+import { RecoveryService } from "../common/recovery/recovery.service";
+import { readForgotPasswordBody, readResetPasswordBody } from "../auth/auth.controller";
 import { DevoteeAuthService, DevoteeTokenPair } from "./devotee-auth.service";
 
 function readRefreshToken(body: unknown): string {
@@ -23,7 +25,46 @@ function readRefreshToken(body: unknown): string {
 
 @Controller("devotee/auth")
 export class DevoteeAuthController {
-  constructor(@Inject(DevoteeAuthService) private readonly authService: DevoteeAuthService) {}
+  constructor(
+    @Inject(DevoteeAuthService) private readonly authService: DevoteeAuthService,
+    @Inject(RecoveryService) private readonly recovery: RecoveryService,
+  ) {}
+
+  /** Always 202 with the same body whether or not the email exists. */
+  @Post("forgot-password")
+  @HttpCode(202)
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ limit: 5, windowMs: 60_000 })
+  async forgotPassword(@Body() body: unknown): Promise<{ accepted: true }> {
+    const { email } = readForgotPasswordBody(body);
+    await this.recovery.requestDevoteeReset(email);
+    return { accepted: true };
+  }
+
+  @Post("reset-password")
+  @HttpCode(200)
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ limit: 10, windowMs: 60_000 })
+  async resetPassword(@Body() body: unknown): Promise<{ reset: true }> {
+    const { token, newPassword } = readResetPasswordBody(body, MIN_DEVOTEE_PASSWORD);
+    await this.recovery.resetDevoteePassword(token, newPassword);
+    return { reset: true };
+  }
+
+  @Post("verify-email")
+  @HttpCode(200)
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ limit: 10, windowMs: 60_000 })
+  async verifyEmail(@Body() body: unknown): Promise<{ verified: true }> {
+    const token = typeof (body as { token?: unknown })?.token === "string" ? (body as { token: string }).token.trim() : "";
+    if (!/^[0-9a-f]{64}$/.test(token)) {
+      throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ข้อมูลไม่ถูกต้อง", [
+        { field: "token", message: "ลิงก์ไม่ถูกต้อง" },
+      ]);
+    }
+    await this.recovery.verifyDevoteeEmail(token);
+    return { verified: true };
+  }
 
   @Post("register")
   @UseGuards(RateLimitGuard)

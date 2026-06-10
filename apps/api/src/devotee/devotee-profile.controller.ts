@@ -3,6 +3,7 @@ import { validateDevoteePasswordChange, validateDevoteeProfileUpdate } from "@wa
 import { RateLimit } from "../common/decorators/rate-limit.decorator";
 import { RateLimitGuard } from "../common/guards/rate-limit.guard";
 import { projectHttpException, unauthorized } from "../common/errors/project-error";
+import { RecoveryService } from "../common/recovery/recovery.service";
 import { CurrentDevotee } from "./decorators/current-devotee.decorator";
 import { DevoteeGuard } from "./guards/devotee.guard";
 import { DevoteeAccountsService, DevoteeProfile } from "./devotee-accounts.service";
@@ -13,10 +14,17 @@ interface SerializedProfile {
   email: string;
   displayName: string;
   phone: string | null;
+  emailVerified: boolean;
 }
 
 function serialize(p: DevoteeProfile): SerializedProfile {
-  return { id: p.id, email: p.email, displayName: p.displayName, phone: p.phone };
+  return {
+    id: p.id,
+    email: p.email,
+    displayName: p.displayName,
+    phone: p.phone,
+    emailVerified: p.emailVerifiedAt !== null,
+  };
 }
 
 /**
@@ -26,7 +34,10 @@ function serialize(p: DevoteeProfile): SerializedProfile {
 @Controller("devotee/me")
 @UseGuards(DevoteeGuard, RateLimitGuard)
 export class DevoteeProfileController {
-  constructor(@Inject(DevoteeAccountsService) private readonly accounts: DevoteeAccountsService) {}
+  constructor(
+    @Inject(DevoteeAccountsService) private readonly accounts: DevoteeAccountsService,
+    @Inject(RecoveryService) private readonly recovery: RecoveryService,
+  ) {}
 
   @Get()
   async profile(@CurrentDevotee() devotee: DevoteePrincipal | undefined): Promise<{ profile: SerializedProfile }> {
@@ -34,6 +45,19 @@ export class DevoteeProfileController {
       throw unauthorized("Missing access token");
     }
     return { profile: serialize(await this.accounts.requireProfile(devotee.sub)) };
+  }
+
+  /** Resend the email-verification link (no-op once verified). */
+  @Post("resend-verification")
+  @RateLimit({ limit: 3, windowMs: 60_000 })
+  async resendVerification(
+    @CurrentDevotee() devotee: DevoteePrincipal | undefined,
+  ): Promise<{ accepted: true }> {
+    if (!devotee) {
+      throw unauthorized("Missing access token");
+    }
+    await this.recovery.sendDevoteeVerification(devotee.sub);
+    return { accepted: true };
   }
 
   @Patch()

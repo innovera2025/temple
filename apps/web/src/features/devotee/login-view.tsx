@@ -1,6 +1,8 @@
 import { FormEvent, ReactElement, useState } from "react";
 import { Button } from "../../design-system";
 import { Icon } from "../../layout/icons";
+import { ForgotPasswordForm } from "../auth/recovery-view";
+import type { RecoveryApiOptions } from "../auth/recovery";
 import {
   DevoteeApi,
   DevoteeLoginErrors,
@@ -21,6 +23,8 @@ type Mode = "login" | "register";
 export interface DevoteeLoginViewProps {
   api: DevoteeApi;
   onAuthenticated: (session: DevoteeSession) => void;
+  /** Enables the ลืมรหัสผ่าน flow (POST /devotee/auth/forgot-password). */
+  recoveryOptions?: RecoveryApiOptions;
 }
 
 const emptyLogin: DevoteeLoginValues = { email: "", password: "" };
@@ -32,8 +36,9 @@ const emptyRegister: DevoteeRegisterValues = {
   phone: "",
 };
 
-export function DevoteeLoginView({ api, onAuthenticated }: DevoteeLoginViewProps): ReactElement {
+export function DevoteeLoginView({ api, onAuthenticated, recoveryOptions }: DevoteeLoginViewProps): ReactElement {
   const [mode, setMode] = useState<Mode>("login");
+  const [forgotOpen, setForgotOpen] = useState(false);
 
   return (
     <div className="devotee-auth">
@@ -70,7 +75,18 @@ export function DevoteeLoginView({ api, onAuthenticated }: DevoteeLoginViewProps
         </div>
 
         {mode === "login" ? (
-          <LoginForm api={api} onAuthenticated={onAuthenticated} />
+          forgotOpen && recoveryOptions ? (
+            <ForgotPasswordForm options={recoveryOptions} plane="devotee" onClose={() => setForgotOpen(false)} />
+          ) : (
+            <>
+              <LoginForm api={api} onAuthenticated={onAuthenticated} />
+              {recoveryOptions ? (
+                <button type="button" className="auth-link" onClick={() => setForgotOpen(true)}>
+                  ลืมรหัสผ่าน?
+                </button>
+              ) : null}
+            </>
+          )
         ) : (
           <RegisterForm api={api} onAuthenticated={onAuthenticated} />
         )}

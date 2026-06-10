@@ -67,6 +67,20 @@ export function validateEnv(config: Record<string, unknown>): Record<string, unk
     }
   }
 
+  // SMTP_URL is optional (dev/test use the log transport), but if set it must
+  // be an smtp(s):// URL; PUBLIC_WEB_URL backs the links inside recovery mail.
+  const smtpUrl = typeof config.SMTP_URL === "string" && config.SMTP_URL.trim() !== "" ? config.SMTP_URL.trim() : undefined;
+  if (smtpUrl && !/^smtps?:\/\//.test(smtpUrl)) {
+    throw new Error("SMTP_URL must be an smtp:// or smtps:// URL");
+  }
+  const publicWebUrl = typeof config.PUBLIC_WEB_URL === "string" && config.PUBLIC_WEB_URL.trim() !== "" ? config.PUBLIC_WEB_URL.trim() : undefined;
+  if (publicWebUrl && !/^https?:\/\//.test(publicWebUrl)) {
+    throw new Error("PUBLIC_WEB_URL must be an http(s) URL");
+  }
+  if (nodeEnv === "production" && smtpUrl && !publicWebUrl) {
+    throw new Error("PUBLIC_WEB_URL is required when SMTP_URL is set in production (recovery links must not point at localhost)");
+  }
+
   // OAuth client ids/redirects come in pairs — half-configured providers
   // produce confusing 503s at runtime, so fail at boot instead.
   for (const provider of ["GOOGLE", "FACEBOOK"] as const) {

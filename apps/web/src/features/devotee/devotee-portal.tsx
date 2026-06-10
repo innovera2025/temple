@@ -52,7 +52,7 @@ export function DevoteePortal({ baseUrl, today }: DevoteePortalProps): ReactElem
   }
 
   if (!session) {
-    return <DevoteeLoginView api={api} onAuthenticated={onAuthenticated} />;
+    return <DevoteeLoginView api={api} onAuthenticated={onAuthenticated} recoveryOptions={{ baseUrl }} />;
   }
 
   const token = session.accessToken;

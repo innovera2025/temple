@@ -15,6 +15,7 @@ import {
   Session,
 } from "./features/auth/auth";
 import { createTempleApiClient } from "./features/temple/temple";
+import { ResetPasswordPage, VerifyEmailPage } from "./features/auth/recovery-view";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000";
 
@@ -23,7 +24,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000
 // later slice; for now the default route is the temple product and #/smoke is a
 // dev-only escape hatch to the backend smoke shell. The Agent Control Tower is a
 // separate dev artifact and is never rendered here.
-type Route = "app" | "smoke" | "devotee" | "public" | "platform";
+type Route = "app" | "smoke" | "devotee" | "public" | "platform" | "reset-password" | "verify-email";
 
 function readRoute(): Route {
   if (typeof window === "undefined") return "app";
@@ -34,6 +35,9 @@ function readRoute(): Route {
   if (hash === "devotee" || hash.startsWith("devotee/")) return "devotee";
   if (hash === "public" || hash.startsWith("public/")) return "public";
   if (hash === "platform" || hash.startsWith("platform/")) return "platform";
+  // Landing pages for emailed links (work pre-auth on any plane).
+  if (hash.startsWith("reset-password")) return "reset-password";
+  if (hash.startsWith("verify-email")) return "verify-email";
   return "app";
 }
 
@@ -86,7 +90,11 @@ function TempleApp(): ReactElement {
 
   if (!session) {
     return (
-      <LoginScreen api={createAuthApiClient({ baseUrl: API_BASE_URL })} onAuthenticated={onAuthenticated} />
+      <LoginScreen
+        api={createAuthApiClient({ baseUrl: API_BASE_URL })}
+        onAuthenticated={onAuthenticated}
+        recoveryOptions={{ baseUrl: API_BASE_URL }}
+      />
     );
   }
   return (
@@ -123,6 +131,12 @@ export function App(): ReactElement {
   }
   if (route === "platform") {
     return <PlatformPortal baseUrl={API_BASE_URL} />;
+  }
+  if (route === "reset-password") {
+    return <ResetPasswordPage options={{ baseUrl: API_BASE_URL }} />;
+  }
+  if (route === "verify-email") {
+    return <VerifyEmailPage options={{ baseUrl: API_BASE_URL }} />;
   }
   return <TempleApp />;
 }

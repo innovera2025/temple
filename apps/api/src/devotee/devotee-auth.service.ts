@@ -4,6 +4,7 @@ import { type DevoteeLoginInput, type DevoteeRegisterInput } from "@wat/shared";
 import { projectHttpException, unauthorized } from "../common/errors/project-error";
 import { PasswordService } from "../auth/password.service";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { RecoveryService } from "../common/recovery/recovery.service";
 import { DevoteeTokenService } from "./devotee-token.service";
 
 export interface DevoteeTokenPair {
@@ -33,6 +34,7 @@ export class DevoteeAuthService {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(PasswordService) private readonly passwordService: PasswordService,
     @Inject(DevoteeTokenService) private readonly tokenService: DevoteeTokenService,
+    @Inject(RecoveryService) private readonly recovery: RecoveryService,
   ) {}
 
   async register(dto: DevoteeRegisterInput, ip?: string): Promise<DevoteeTokenPair> {
@@ -59,6 +61,10 @@ export class DevoteeAuthService {
         select: { id: true, email: true },
       });
     });
+
+    // Best-effort: a mail outage must never fail the registration itself —
+    // the portal offers a resend (POST /devotee/me/resend-verification).
+    await this.recovery.sendDevoteeVerification(account.id).catch(() => undefined);
 
     return this.issueTokenPair(account, ip);
   }

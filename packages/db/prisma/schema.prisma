@@ -264,6 +264,7 @@ model DevoteeAccount {
   passwordHash String?  @map("password_hash")
   phone        String?
   isActive     Boolean  @default(true) @map("is_active")
+  emailVerifiedAt DateTime? @map("email_verified_at") @db.Timestamptz(6)
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
   donors        Donor[]
@@ -272,6 +273,24 @@ model DevoteeAccount {
   itemLoans     ItemLoan[]
 
   @@map("devotee_accounts")
+}
+
+/// Single-use, hashed action tokens for account recovery / email verification.
+/// Plane-agnostic (staff user OR devotee account, exactly one set) — accessed
+/// only via withSystemAccess; never tenant-scoped, never returned raw.
+model AuthActionToken {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  purpose          String
+  tokenHash        String    @unique @map("token_hash")
+  userId           String?   @map("user_id") @db.Uuid
+  devoteeAccountId String?   @map("devotee_account_id") @db.Uuid
+  expiresAt        DateTime  @map("expires_at") @db.Timestamptz(6)
+  usedAt           DateTime? @map("used_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([userId])
+  @@index([devoteeAccountId])
+  @@map("auth_action_tokens")
 }
 
 model DevoteeRefreshToken {
