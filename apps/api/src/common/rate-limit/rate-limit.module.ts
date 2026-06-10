@@ -28,7 +28,16 @@ function resolveRedisUrl(): string | null {
       useFactory: (): RateLimitStore => {
         const url = resolveRedisUrl();
         if (url && process.env.NODE_ENV !== "test") {
-          new Logger("RateLimitModule").log(`Rate limiting backed by Redis at ${url}`);
+          // Never log the raw URL — REDIS_URL may carry redis://:password@host.
+          let safeUrl = url;
+          try {
+            const parsed = new URL(url);
+            parsed.password = parsed.password ? "***" : "";
+            safeUrl = parsed.toString();
+          } catch {
+            safeUrl = "(unparseable REDIS_URL)";
+          }
+          new Logger("RateLimitModule").log(`Rate limiting backed by Redis at ${safeUrl}`);
           return new RedisRateLimitStore(url);
         }
         return new InMemoryRateLimitStore();

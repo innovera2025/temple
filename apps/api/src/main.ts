@@ -2,8 +2,25 @@ import { HttpStatus, ValidationPipe } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { NestFactory } from "@nestjs/core";
 import { NestExpressApplication } from "@nestjs/platform-express";
+import { json } from "express";
 import "reflect-metadata";
 import { AppModule } from "./app.module";
+
+/**
+ * CORS_ORIGINS: comma-separated allow-list. In production the web app is
+ * served same-origin behind nginx (no cross-origin needed), so an unset value
+ * means NO cross-origin access; dev/test fall back to the Vite dev ports.
+ */
+function corsOrigins(): string[] | false {
+  const raw = process.env.CORS_ORIGINS?.trim();
+  if (raw) {
+    return raw.split(",").map((origin) => origin.trim()).filter(Boolean);
+  }
+  if (process.env.NODE_ENV === "production") {
+    return false;
+  }
+  return ["http://localhost:5173", "http://127.0.0.1:5173"];
+}
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -20,14 +37,22 @@ async function bootstrap(): Promise<void> {
   }
 
   app.enableCors({
-    origin: ["http://localhost:5173", "http://127.0.0.1:5173"],
+    origin: corsOrigins(),
     credentials: false,
     allowedHeaders: ["content-type", "authorization"],
     methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
   });
   // Base64 attachment uploads (capped at 5 MB decoded -> ~6.7 MB base64) need a
-  // larger JSON body than the 100 kB default.
-  app.useBodyParser("json", { limit: "12mb" });
+  // large JSON body — but ONLY on /attachments. Everything else (including the
+  // pre-auth login/refresh routes) keeps a tight 1 MB cap so a client cannot
+  // make the API buffer 12 MB bodies on arbitrary endpoints. The route-scoped
+  // parser runs first and marks the body consumed, so the global one skips it.
+  app.use("/attachments", json({ limit: "12mb" }));
+  app.useBodyParser("json", { limit: "1mb" });
+
+  // SIGTERM (docker stop / rolling deploy) must drain in-flight requests and
+  // run OnModuleDestroy hooks (Prisma disconnect) instead of being ignored.
+  app.enableShutdownHooks();
   app.useGlobalPipes(
     new ValidationPipe({
       errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY,

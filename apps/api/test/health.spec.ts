@@ -20,9 +20,15 @@ describe("GET /health", () => {
     await app.close();
   });
 
-  it("returns 200", async () => {
+  it("returns ok with a real database ping", async () => {
     const controller = app.get(HealthController);
 
-    expect(controller.check()).toEqual({ status: "ok" });
+    expect(await controller.check()).toEqual({ status: "ok", db: "ok" });
+  });
+
+  it("liveness probe never touches the database", () => {
+    const controller = app.get(HealthController);
+
+    expect(controller.live()).toEqual({ status: "ok" });
   });
 });

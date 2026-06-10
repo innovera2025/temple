@@ -10,12 +10,15 @@ interface ArgonHashParts {
   hash: Buffer;
 }
 
-const defaultArgonOptions = {
-  t: 1,
-  m: 1024,
-  p: 1,
-  dkLen: 32,
-};
+// OWASP Password Storage Cheat Sheet minimum for argon2id: m=19 MiB, t=2, p=1.
+// Old hashes (m=1024,t=1) still verify — params are parsed from the stored
+// encoding — and get the stronger cost transparently on next password change.
+// Tests keep the old light params: the cost factor is not what's under test,
+// and ~0.7s per hash (pure-JS argon2) makes auth-heavy specs hit timeouts.
+const defaultArgonOptions =
+  process.env.NODE_ENV === "test"
+    ? { t: 1, m: 1024, p: 1, dkLen: 32 }
+    : { t: 2, m: 19_456, p: 1, dkLen: 32 };
 
 function base64Url(value: Uint8Array): string {
   return Buffer.from(value).toString("base64url");

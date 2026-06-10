@@ -66,9 +66,13 @@ export class DevoteeDonationsService {
     devoteeAccountId: string,
     displayName: string,
   ): Promise<string> {
+    // PDPA: consent=false until the devotee explicitly grants it — registration
+    // and the donation flow capture no consent text/checkbox today, and a
+    // fabricated `true` would be false compliance evidence. Staff donor create
+    // defaults to false the same way (donors.service.ts).
     const rows = await tx.$queryRaw<{ id: string }[]>`
       INSERT INTO donors (tenant_id, display_name, devotee_account_id, consent)
-      VALUES (${tenantId}::uuid, ${displayName}, ${devoteeAccountId}::uuid, true)
+      VALUES (${tenantId}::uuid, ${displayName}, ${devoteeAccountId}::uuid, false)
       ON CONFLICT (tenant_id, devotee_account_id)
       DO UPDATE SET updated_at = now()
       RETURNING id
