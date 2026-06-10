@@ -283,6 +283,69 @@ describe("reconciliation / close period", () => {
     );
   });
 
+  it("blocks voiding a reconciled manual entry until unreconcile (audited, reason required)", async () => {
+    const entryId = await manualEntry(IN_PERIOD);
+    await ledger.reconcile(actorA, templeA, "127.0.0.1", entryId);
+
+    // reconciled -> void is locked
+    await expectProjectHttpError(
+      ledger.void(actorA, templeA, "127.0.0.1", entryId, { reason: "ยกเลิกรายการกระทบยอด" }),
+      409,
+      "CONFLICT",
+    );
+
+    // unreconcile requires a reason; clears reconciledAt and audits
+    await expectProjectHttpError(
+      ledger.unreconcile(actorA, templeA, "127.0.0.1", entryId, {}),
+      422,
+      "UNPROCESSABLE_ENTITY",
+    );
+    const { entry } = await ledger.unreconcile(actorA, templeA, "127.0.0.1", entryId, {
+      reason: "กระทบยอดผิดรายการ",
+    });
+    expect(entry.reconciledAt).toBeNull();
+    expect(await auditActions(templeA, entryId)).toContain("ledger:unreconcile");
+
+    // unreconciling twice is a 409; now void succeeds
+    await expectProjectHttpError(
+      ledger.unreconcile(actorA, templeA, "127.0.0.1", entryId, { reason: "ซ้ำ" }),
+      409,
+      "CONFLICT",
+    );
+    const voided = await ledger.void(actorA, templeA, "127.0.0.1", entryId, { reason: "ยกเลิก" });
+    expect(voided.entry.status).toBe("voided");
+  });
+
+  it("blocks editing/voiding a donation whose ledger entry is reconciled (409)", async () => {
+    const { donation } = await donations.create(actorA, templeA, "127.0.0.1", {
+      amountSatang: 50000,
+      method: "cash",
+      donationDate: IN_PERIOD,
+    });
+    const entryRows = await psqlJson<{ id: string }>(
+      `SELECT id FROM ledger_entries WHERE tenant_id = '${templeA}' AND donation_id = '${donation.id}' AND status = 'posted'`,
+    );
+    const entryId = entryRows[0]?.id;
+    expect(entryId).toBeTruthy();
+    await ledger.reconcile(actorA, templeA, "127.0.0.1", entryId ?? "");
+
+    await expectProjectHttpError(
+      donations.update(actorA, templeA, "127.0.0.1", donation.id, { amountSatang: 70000 }),
+      409,
+      "CONFLICT",
+    );
+    await expectProjectHttpError(
+      donations.void(actorA, templeA, "127.0.0.1", donation.id, { reason: "ยกเลิก" }),
+      409,
+      "CONFLICT",
+    );
+    // donation untouched, entry still reconciled
+    const rows = await psqlJson<{ status: string }>(
+      `SELECT status::text FROM donations WHERE id = '${donation.id}'`,
+    );
+    expect(rows).toEqual([{ status: "confirmed" }]);
+  });
+
   it("rejects re-reconciling an already-reconciled entry (409) with no duplicate audit row", async () => {
     const entryId = await manualEntry(IN_PERIOD);
     await ledger.reconcile(actorA, templeA, "127.0.0.1", entryId);

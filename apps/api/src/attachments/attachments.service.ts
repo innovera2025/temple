@@ -2,8 +2,16 @@ import { randomUUID } from "node:crypto";
 import { Inject, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { type AttachmentOwnerType, type UploadAttachmentInput } from "@wat/shared";
-import { conflict, notFound } from "../common/errors/project-error";
+import { conflict, forbidden, notFound } from "../common/errors/project-error";
 import { PrismaService } from "../common/prisma/prisma.service";
+
+// Attachments owned by money records are หลักฐาน (financial evidence): only
+// admin/finance may remove them, and removal is always a soft delete.
+const FINANCIAL_EVIDENCE_OWNER_TYPES: ReadonlySet<string> = new Set([
+  "donation",
+  "receipt",
+  "ledger_entry",
+]);
 
 // Bounds storage growth: per-entity and per-tenant totals (upload rate limiting
 // is enforced separately by RateLimitGuard on the controller).
@@ -96,7 +104,7 @@ export class AttachmentsService {
       }
 
       const existing = await tx.attachment.count({
-        where: { ownerType: input.ownerType, ownerId: input.ownerId },
+        where: { ownerType: input.ownerType, ownerId: input.ownerId, deletedAt: null },
       });
       if (existing >= MAX_ATTACHMENTS_PER_OWNER) {
         throw conflict(`แนบไฟล์ได้สูงสุด ${MAX_ATTACHMENTS_PER_OWNER} ไฟล์ต่อรายการ`);
@@ -104,7 +112,7 @@ export class AttachmentsService {
       // RLS-scoped: counts only this tenant's attachments. Best-effort ceiling (the
       // per-owner lock does not serialise across owners), which is fine for a
       // defensive bound — a tiny overshoot under heavy concurrency is acceptable.
-      if ((await tx.attachment.count({})) >= MAX_ATTACHMENTS_PER_TENANT) {
+      if ((await tx.attachment.count({ where: { deletedAt: null } })) >= MAX_ATTACHMENTS_PER_TENANT) {
         throw conflict("เกินจำนวนไฟล์แนบสูงสุดของวัด");
       }
 
@@ -145,13 +153,20 @@ export class AttachmentsService {
     ownerId: string,
   ): Promise<AttachmentRecord[]> {
     return (await this.prisma.withTenant(tenantId, (tx) =>
-      tx.attachment.findMany({ where: { ownerType, ownerId }, orderBy: { createdAt: "desc" }, select: META_SELECT }),
+      tx.attachment.findMany({
+        where: { ownerType, ownerId, deletedAt: null },
+        orderBy: { createdAt: "desc" },
+        select: META_SELECT,
+      }),
     )) as AttachmentRecord[];
   }
 
   async download(tenantId: string, id: string): Promise<AttachmentDownload> {
     const found = await this.prisma.withTenant(tenantId, (tx) =>
-      tx.attachment.findFirst({ where: { id }, select: { fileName: true, mimeType: true, data: true } }),
+      tx.attachment.findFirst({
+        where: { id, deletedAt: null },
+        select: { fileName: true, mimeType: true, data: true },
+      }),
     );
     if (!found) {
       throw notFound("ไม่พบไฟล์แนบ");
@@ -159,13 +174,33 @@ export class AttachmentsService {
     return { fileName: found.fileName, mimeType: found.mimeType, data: Buffer.from(found.data) };
   }
 
-  async remove(tenantId: string, actorUserId: string, id: string, ip?: string): Promise<void> {
+  /**
+   * Soft delete only — the blob stays for the retention window (no-hard-delete
+   * rule: attachments on donations/receipts/ledger entries are the หลักฐาน
+   * behind money records, and DB grants now block DELETE outright).
+   */
+  async remove(
+    tenantId: string,
+    actorUserId: string,
+    actorRole: string,
+    id: string,
+    ip?: string,
+  ): Promise<void> {
     await this.prisma.withTenant(tenantId, async (tx) => {
-      const before = (await tx.attachment.findFirst({ where: { id }, select: META_SELECT })) as AttachmentRecord | null;
+      const before = (await tx.attachment.findFirst({
+        where: { id, deletedAt: null },
+        select: META_SELECT,
+      })) as AttachmentRecord | null;
       if (!before) {
         throw notFound("ไม่พบไฟล์แนบ");
       }
-      await tx.attachment.delete({ where: { id } });
+      if (FINANCIAL_EVIDENCE_OWNER_TYPES.has(before.ownerType) && actorRole === "staff") {
+        throw forbidden("เฉพาะผู้ดูแลหรือฝ่ายการเงินเท่านั้นที่ลบหลักฐานการเงินได้");
+      }
+      await tx.attachment.update({
+        where: { id },
+        data: { deletedAt: new Date(), deletedByUserId: actorUserId },
+      });
       await tx.auditLog.create({
         data: {
           tenantId,
@@ -174,7 +209,7 @@ export class AttachmentsService {
           entityType: "attachment",
           entityId: id,
           before: metaSnapshot(before),
-          metadata: {},
+          metadata: { softDelete: true },
           ip,
         },
       });

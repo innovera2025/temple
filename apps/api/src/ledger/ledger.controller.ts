@@ -256,6 +256,26 @@ export class LedgerController {
     return { entry: serializeEntry(entry) };
   }
 
+  // Required first step before mutating a reconciled entry (mutations 409 while
+  // reconciledAt is set). Reuses the void validator: a mandatory Thai reason.
+  @Post("entries/:id/unreconcile")
+  @Roles(...LEDGER_WRITE_ROLES)
+  async unreconcile(
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentTenant() tenantId: string,
+    @Ip() ip: string,
+    @Param("id") id: string,
+    @Body() body: unknown,
+  ): Promise<{ entry: SerializedLedgerEntry }> {
+    assertUuidParam(id);
+    const result = validateVoidLedgerEntry(body);
+    if (!result.success) {
+      throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ข้อมูลไม่ถูกต้อง", result.errors);
+    }
+    const entry = await this.ledger.unreconcile(tenantId, user.sub, id, result.data.reason, ip);
+    return { entry: serializeEntry(entry) };
+  }
+
   @Post("periods/close")
   @Roles(...LEDGER_WRITE_ROLES)
   async closePeriod(

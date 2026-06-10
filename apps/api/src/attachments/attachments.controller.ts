@@ -124,7 +124,7 @@ export class AttachmentsController {
     @Param("id") id: string,
   ): Promise<{ deleted: true }> {
     assertUuid(id);
-    await this.attachments.remove(tenantId, actor.sub, id, ip);
+    await this.attachments.remove(tenantId, actor.sub, actor.role, id, ip);
     return { deleted: true };
   }
 }

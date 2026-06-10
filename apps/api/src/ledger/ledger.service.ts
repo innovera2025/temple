@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { type AuditActor, type AuditActorColumns, auditActorData } from "../common/audit/audit-actor";
+import { projectHttpException } from "../common/errors/project-error";
 import { allocateLedgerEntryNo } from "./ledger-numbering";
 import { assertDateNotInClosedPeriod, lockTenantLedger } from "./ledger-periods";
 
@@ -28,8 +29,24 @@ export interface LedgerEntryRecord {
   status: string;
   description: string | null;
   donationId: string | null;
+  reconciledAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/**
+ * Reconciliation is a finer-grained immutability control than period close: an
+ * entry already tied out to the bank statement must be un-reconciled (audited)
+ * before any mutation, or the books silently diverge from the reconciliation.
+ */
+function assertNotReconciled(entry: LedgerEntryRecord): void {
+  if (entry.reconciledAt) {
+    throw projectHttpException(
+      409,
+      "CONFLICT",
+      "รายการบัญชีนี้กระทบยอดแล้ว ต้องยกเลิกการกระทบยอดก่อนจึงจะแก้ไขหรือยกเลิกได้",
+    );
+  }
 }
 
 export interface LedgerAuditContext {
@@ -136,6 +153,7 @@ export class LedgerService {
     if (!before) {
       return;
     }
+    assertNotReconciled(before);
     // The original posting must not be locked, and the edit must not move the
     // entry into a closed period either.
     await assertDateNotInClosedPeriod(tx, before.entryDate);
@@ -181,6 +199,7 @@ export class LedgerService {
     if (!before) {
       return;
     }
+    assertNotReconciled(before);
     // Cannot reverse a posting that lives in a closed period.
     await assertDateNotInClosedPeriod(tx, before.entryDate);
 

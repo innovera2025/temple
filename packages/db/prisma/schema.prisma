@@ -686,17 +686,20 @@ model DocCounter {
 }
 
 model Attachment {
-  id         String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId   String              @map("tenant_id") @db.Uuid
-  tenant     Temple              @relation(fields: [tenantId], references: [id])
-  ownerType  AttachmentOwnerType @map("owner_type")
-  ownerId    String              @map("owner_id") @db.Uuid
-  fileName   String              @map("file_name")
-  mimeType   String              @map("mime_type")
-  storageKey String              @map("storage_key")
-  byteSize   BigInt              @map("byte_size")
-  data       Bytes
-  createdAt  DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  id              String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String              @map("tenant_id") @db.Uuid
+  tenant          Temple              @relation(fields: [tenantId], references: [id])
+  ownerType       AttachmentOwnerType @map("owner_type")
+  ownerId         String              @map("owner_id") @db.Uuid
+  fileName        String              @map("file_name")
+  mimeType        String              @map("mime_type")
+  storageKey      String              @map("storage_key")
+  byteSize        BigInt              @map("byte_size")
+  data            Bytes
+  createdAt       DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  deletedAt       DateTime?           @map("deleted_at") @db.Timestamptz(6)
+  deletedByUserId String?             @map("deleted_by_user_id") @db.Uuid
+  deleteReason    String?             @map("delete_reason")
 
   @@index([tenantId])
   @@index([tenantId, ownerType, ownerId])

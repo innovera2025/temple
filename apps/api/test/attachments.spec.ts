@@ -10,6 +10,7 @@ import { AttachmentsController } from "../src/attachments/attachments.controller
 import { AttachmentsService } from "../src/attachments/attachments.service";
 import { AuthService } from "../src/auth/auth.service";
 import { ROLES_KEY } from "../src/common/decorators/roles.decorator";
+import { DonationsController } from "../src/donations/donations.controller";
 import { DonorsController } from "../src/donors/donors.controller";
 import { ItemLoansController } from "../src/item-loans/item-loans.controller";
 
@@ -18,6 +19,7 @@ const templeA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const templeB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const adminEmail = "admin@wat-arun.example";
 const adminEmailB = "admin@wat-pho.example";
+const staffEmail = "staff@wat-arun.example";
 const devPassword = "Password123!";
 
 interface TokenPayload {
@@ -74,12 +76,14 @@ describe("attachments (แนบหลักฐาน)", () => {
   let app: INestApplication;
   let authService: AuthService;
   let donors: DonorsController;
+  let donations: DonationsController;
   let loans: ItemLoansController;
   let attachments: AttachmentsController;
   let attachmentsService: AttachmentsService;
   let reflector: Reflector;
   let actorA: TokenPayload;
   let actorB: TokenPayload;
+  let actorStaff: TokenPayload;
   let donorAId: string;
   let itemAId: string;
 
@@ -90,6 +94,7 @@ describe("attachments (แนบหลักฐาน)", () => {
 
     authService = app.get(AuthService);
     donors = app.get(DonorsController);
+    donations = app.get(DonationsController);
     loans = app.get(ItemLoansController);
     attachments = app.get(AttachmentsController);
     attachmentsService = app.get(AttachmentsService);
@@ -97,6 +102,7 @@ describe("attachments (แนบหลักฐาน)", () => {
 
     actorA = decodeJwtPayload((await authService.login({ email: adminEmail, password: devPassword })).accessToken);
     actorB = decodeJwtPayload((await authService.login({ email: adminEmailB, password: devPassword })).accessToken);
+    actorStaff = decodeJwtPayload((await authService.login({ email: staffEmail, password: devPassword })).accessToken);
 
     const { donor } = await donors.create(actorA, templeA, ip, { displayName: `ผู้บริจาคแนบ-${randomUUID().slice(0, 8)}` });
     donorAId = donor.id;
@@ -272,7 +278,7 @@ describe("attachments (แนบหลักฐาน)", () => {
     expect(actorB.tenant_id).toBe(templeB);
   });
 
-  it("deletes an attachment (audited) so it can no longer be downloaded", async () => {
+  it("deletes an attachment (audited) so it can no longer be downloaded — but the row survives (soft delete)", async () => {
     const { attachment } = await attachments.upload(actorA, templeA, ip, {
       ownerType: "donor",
       ownerId: donorAId,
@@ -287,6 +293,49 @@ describe("attachments (แนบหลักฐาน)", () => {
       404,
       "NOT_FOUND",
     );
+    const { attachments: list } = await attachments.list(templeA, "donor", donorAId);
+    expect(list.some((a) => a.id === attachment.id)).toBe(false);
+
+    // no-hard-delete: the row (and blob) is retained with deleted_at stamped
+    const { stdout } = await execFileAsync(
+      "docker",
+      [
+        "exec", "-i", process.env.POSTGRES_CONTAINER ?? "wat-dev-db",
+        "psql", "-U", process.env.POSTGRES_USER ?? "wat_dev", "-d", process.env.POSTGRES_DB ?? "wat_dev",
+        "-At", "-c",
+        `SELECT (deleted_at IS NOT NULL)::text || ':' || (deleted_by_user_id IS NOT NULL)::text FROM attachments WHERE id = '${attachment.id}'`,
+      ],
+      { maxBuffer: 1024 * 1024 },
+    );
+    expect(stdout.trim()).toBe("true:true");
+  });
+
+  it("forbids staff from deleting financial-evidence attachments (donation slip), allows finance/admin", async () => {
+    const { donation } = await donations.create(actorA, templeA, ip, {
+      amountSatang: 9900,
+      method: "bank_transfer",
+      donationDate: "2026-06-10",
+    });
+    const { attachment } = await attachments.upload(actorA, templeA, ip, {
+      ownerType: "donation",
+      ownerId: donation.id,
+      fileName: "slip.png",
+      mimeType: "image/png",
+      contentBase64,
+    });
+
+    await expectProjectHttpError(
+      attachments.remove(actorStaff, templeA, ip, attachment.id),
+      403,
+      "FORBIDDEN",
+    );
+    // still downloadable — the staff attempt must not have removed anything
+    const file = await attachmentsService.download(templeA, attachment.id);
+    expect(file.fileName).toBe("slip.png");
+
+    // admin may remove it (soft delete, audited)
+    await attachments.remove(actorA, templeA, ip, attachment.id);
+    expect(await attachmentAuditCount(templeA, "attachment:delete", attachment.id)).toBe(1);
   });
 
   it("returns 404 for a malformed id and 422 for a bad list query", async () => {

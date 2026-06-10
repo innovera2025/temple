@@ -13,6 +13,12 @@ import { AuthenticatedRequest } from "../common/types/authenticated-request";
 import { AuditMetadata, AUDIT_METADATA_KEY } from "./audit.decorator";
 import { AuditService } from "./audit.service";
 
+// WARNING: this interceptor writes the audit row in a SEPARATE transaction
+// AFTER the handler returns (mutation-then-audit, non-atomic). It must never
+// be used on endpoints that mutate financial data — those write their audit
+// row inside the same tenant transaction as the mutation (see donations /
+// ledger / receipts services). Kept for non-financial, low-stakes actions only.
+
 interface AuditResponse {
   entityId?: string;
   before?: Prisma.InputJsonValue;

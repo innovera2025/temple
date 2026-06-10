@@ -251,6 +251,13 @@ export class LedgerEntriesService {
       if (before.status !== "posted") {
         throw projectHttpException(409, "CONFLICT", "รายการบัญชีนี้ไม่อยู่ในสถานะที่ยกเลิกได้");
       }
+      if (before.reconciledAt) {
+        throw projectHttpException(
+          409,
+          "CONFLICT",
+          "รายการบัญชีนี้กระทบยอดแล้ว ต้องยกเลิกการกระทบยอดก่อนจึงจะยกเลิกได้",
+        );
+      }
       await assertDateNotInClosedPeriod(tx, before.entryDate);
 
       const after = (await tx.ledgerEntry.update({
@@ -323,6 +330,60 @@ export class LedgerEntriesService {
           entityId: after.id,
           before: entrySnapshot(before),
           after: entrySnapshot(after),
+          metadata: {},
+          ip,
+        },
+      });
+
+      return after;
+    });
+  }
+
+  /**
+   * Clear `reconciledAt` (audited `ledger:unreconcile`, reason required) so a
+   * wrongly-reconciled entry can be corrected. This is the required first step
+   * before editing/voiding a reconciled entry — mutation guards reject 409
+   * while `reconciledAt` is set.
+   */
+  async unreconcile(
+    tenantId: string,
+    actorUserId: string,
+    id: string,
+    reason: string,
+    ip?: string,
+  ): Promise<LedgerEntryDetail> {
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      await lockTenantLedger(tx, tenantId);
+      await tx.$queryRaw`SELECT id FROM ledger_entries WHERE id = ${id}::uuid FOR UPDATE`;
+
+      const before = (await tx.ledgerEntry.findFirst({
+        where: { id },
+        include: ENTRY_INCLUDE,
+      })) as unknown as LedgerEntryDetail | null;
+      if (!before) {
+        throw projectHttpException(404, "NOT_FOUND", "ไม่พบรายการบัญชี");
+      }
+      if (!before.reconciledAt) {
+        throw projectHttpException(409, "CONFLICT", "รายการนี้ยังไม่ได้กระทบยอด");
+      }
+      await assertDateNotInClosedPeriod(tx, before.entryDate);
+
+      const after = (await tx.ledgerEntry.update({
+        where: { id },
+        data: { reconciledAt: null, updatedAt: new Date() },
+        include: ENTRY_INCLUDE,
+      })) as unknown as LedgerEntryDetail;
+
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          actorUserId,
+          action: "ledger:unreconcile",
+          entityType: "ledger_entry",
+          entityId: after.id,
+          before: entrySnapshot(before),
+          after: entrySnapshot(after),
+          reason,
           metadata: {},
           ip,
         },
