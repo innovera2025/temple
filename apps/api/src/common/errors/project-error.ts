@@ -10,20 +10,24 @@ export interface ProjectErrorBody {
 }
 
 const statusCodes: Record<number, string> = {
+  [HttpStatus.BAD_REQUEST]: "BAD_REQUEST",
   [HttpStatus.UNAUTHORIZED]: "UNAUTHORIZED",
   [HttpStatus.FORBIDDEN]: "FORBIDDEN",
   [HttpStatus.NOT_FOUND]: "NOT_FOUND",
   [HttpStatus.CONFLICT]: "CONFLICT",
+  [HttpStatus.PAYLOAD_TOO_LARGE]: "PAYLOAD_TOO_LARGE",
   [HttpStatus.UNPROCESSABLE_ENTITY]: "UNPROCESSABLE_ENTITY",
   [HttpStatus.TOO_MANY_REQUESTS]: "TOO_MANY_REQUESTS",
   [HttpStatus.SERVICE_UNAVAILABLE]: "SERVICE_UNAVAILABLE",
 };
 
 const statusMessages: Record<number, string> = {
+  [HttpStatus.BAD_REQUEST]: "Bad request",
   [HttpStatus.UNAUTHORIZED]: "Unauthorized",
   [HttpStatus.FORBIDDEN]: "Forbidden",
   [HttpStatus.NOT_FOUND]: "Not found",
   [HttpStatus.CONFLICT]: "Conflict",
+  [HttpStatus.PAYLOAD_TOO_LARGE]: "Payload too large",
   [HttpStatus.UNPROCESSABLE_ENTITY]: "Unprocessable entity",
   [HttpStatus.TOO_MANY_REQUESTS]: "Too many requests",
   [HttpStatus.SERVICE_UNAVAILABLE]: "Service unavailable",

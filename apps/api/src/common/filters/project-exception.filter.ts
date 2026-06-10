@@ -119,8 +119,31 @@ export class ProjectExceptionFilter implements ExceptionFilter {
     if (exception instanceof Prisma.PrismaClientKnownRequestError) {
       return mapKnownPrismaError(exception);
     }
+    // Express middleware errors (body-parser via http-errors) carry a 4xx
+    // status: an oversize body (413) or malformed JSON (400) is the CLIENT's
+    // fault and must not surface as a 500. Since Nest 11 these flow through
+    // the exception filter instead of Express's default error handler.
+    const middlewareStatus = httpErrorsStatus(exception);
+    if (middlewareStatus === HttpStatus.PAYLOAD_TOO_LARGE) {
+      return { statusCode: 413, code: "PAYLOAD_TOO_LARGE", message: "ข้อมูลหรือไฟล์มีขนาดใหญ่เกินกำหนด" };
+    }
+    if (middlewareStatus !== null) {
+      return { statusCode: middlewareStatus, code: "BAD_REQUEST", message: "รูปแบบคำขอไม่ถูกต้อง" };
+    }
     // Validation / unknown-request / init errors are query-construction or
     // infrastructure faults — report a sanitised 500 (logged above).
     return { statusCode: 500, code: "INTERNAL_SERVER_ERROR", message: "เกิดข้อผิดพลาดภายในระบบ" };
   }
+}
+
+/** 4xx status of an http-errors-style middleware error, else null. */
+function httpErrorsStatus(exception: unknown): number | null {
+  if (!(exception instanceof Error)) {
+    return null;
+  }
+  const status = (exception as { statusCode?: unknown }).statusCode ?? (exception as { status?: unknown }).status;
+  if (typeof status === "number" && Number.isInteger(status) && status >= 400 && status < 500) {
+    return status;
+  }
+  return null;
 }
