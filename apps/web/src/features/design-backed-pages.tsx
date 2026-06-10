@@ -51,6 +51,8 @@ import {
 } from "./donations/donations";
 import { type ReceiptsApi, type ReceiptView, receiptStatusLabel } from "./receipts/receipts";
 import { type ReportsApi, type ReportType, downloadCsv, reportFilename } from "./reports/reports";
+import { type AuditApi, type AuditLogView } from "./audit/audit";
+import { type TempleApi, type TempleProfile } from "./temple/temple";
 
 /*
  * Design-backed temple-admin pages, ported faithfully from the design source of
@@ -269,13 +271,20 @@ export function DesignDashboard({ api, goto }: { api?: DashboardApi; goto?: (pag
 // ============ 2. DONATION INTAKE ============
 const PRESETS = [100, 500, 1000, 2000, 5000, 10000];
 
-export function DesignDonations({ api, donorsApi, today }: { api?: DonationsApi; donorsApi?: DonorsApi; today?: string }): ReactElement {
+export function DesignDonations({ api, donorsApi, receiptsApi, canWrite = true, today }: { api?: DonationsApi; donorsApi?: DonorsApi; receiptsApi?: ReceiptsApi; canWrite?: boolean; today?: string }): ReactElement {
   const [form, setForm] = useState<DonationFormValues>(() => emptyDonationForm(today ?? "2569-06-04"));
   const [donors, setDonors] = useState<DonorRecord[]>([]);
   const [errors, setErrors] = useState<FieldError[]>([]);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [recent, setRecent] = useState<DonationView[] | null>(null);
+  const [receipts, setReceipts] = useState<ReceiptView[]>([]);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [voidTarget, setVoidTarget] = useState<DonationView | null>(null);
+  const [voidReason, setVoidReason] = useState("");
+  const [voidErr, setVoidErr] = useState<string | null>(null);
+  const [actionBusy, setActionBusy] = useState(false);
 
   useEffect(() => {
     if (!donorsApi) return;
@@ -284,10 +293,22 @@ export function DesignDonations({ api, donorsApi, today }: { api?: DonationsApi;
     return () => { active = false; };
   }, [donorsApi]);
 
+  useEffect(() => {
+    if (!api) return;
+    let active = true;
+    Promise.all([api.list(), receiptsApi ? receiptsApi.list() : Promise.resolve([])]).then(
+      ([dons, rcs]) => { if (active) { setRecent((dons ?? []).slice(0, 10)); setReceipts(rcs ?? []); } },
+      () => { if (active) setRecent([]); },
+    );
+    return () => { active = false; };
+  }, [api, receiptsApi, reloadKey]);
+
   const amt = Number(form.amountBaht) || 0;
   const set = (patch: Partial<DonationFormValues>): void => setForm((f) => ({ ...f, ...patch }));
   const selectedDonor = donors.find((d) => d.id === form.donorId);
   const amountError = firstError(errors, "amountSatang") ?? firstError(errors, "amountBaht");
+  const donorNameById = new Map(donors.map((d) => [d.id, d.displayName]));
+  const issuedByDonation = new Set(receipts.filter((r) => r.status === "issued").map((r) => r.donationId));
 
   async function submit(): Promise<void> {
     if (!api) return;
@@ -300,10 +321,43 @@ export function DesignDonations({ api, donorsApi, today }: { api?: DonationsApi;
       await api.create(result.data);
       setToast("บันทึกการบริจาคแล้ว · ลงบัญชีรายรับอัตโนมัติ");
       setForm(emptyDonationForm(today ?? form.donationDate));
+      setReloadKey((k) => k + 1);
     } catch (e) {
       setSubmitError(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function issueReceipt(donation: DonationView): Promise<void> {
+    if (!receiptsApi) return;
+    setActionBusy(true);
+    try {
+      const receipt = await receiptsApi.issue(donation.id);
+      setToast(`ออกใบอนุโมทนาบัตรแล้ว · เลขที่ ${receipt.receiptNo} (พิมพ์ได้ที่หน้า “ใบอนุโมทนาบัตร”)`);
+      setReloadKey((k) => k + 1);
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : "ออกใบอนุโมทนาบัตรไม่สำเร็จ");
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function submitVoid(): Promise<void> {
+    if (!api || !voidTarget) return;
+    if (!voidReason.trim()) { setVoidErr("กรุณาระบุเหตุผลการยกเลิก"); return; }
+    setActionBusy(true);
+    setVoidErr(null);
+    try {
+      await api.void(voidTarget.id, voidReason.trim());
+      setVoidTarget(null);
+      setVoidReason("");
+      setToast("ยกเลิกการบริจาคแล้ว · ระบบกลับรายการบัญชีและใบอนุโมทนาให้อัตโนมัติ");
+      setReloadKey((k) => k + 1);
+    } catch (e) {
+      setVoidErr(e instanceof Error ? e.message : "ยกเลิกไม่สำเร็จ");
+    } finally {
+      setActionBusy(false);
     }
   }
 
@@ -363,6 +417,51 @@ export function DesignDonations({ api, donorsApi, today }: { api?: DonationsApi;
           </div>
         </div>
       </div>
+
+      <Card style={{ marginTop: 16 }}>
+        <div className="card-head"><h3>รายการบริจาคล่าสุด</h3></div>
+        <Table>
+          <thead><tr><th>วันที่</th><th>ผู้บริจาค</th><th style={{ textAlign: "right" }}>จำนวนเงิน</th><th>ช่องทาง</th><th>สถานะ</th><th>ใบอนุโมทนา</th><th /></tr></thead>
+          <tbody>
+            {!recent ? (
+              <tr><td colSpan={7} className="muted" style={{ padding: 18 }}>กำลังโหลด…</td></tr>
+            ) : recent.length === 0 ? (
+              <tr><td colSpan={7} className="muted" style={{ padding: 18 }}>ยังไม่มีรายการบริจาค</td></tr>
+            ) : recent.map((d) => {
+              const hasReceipt = issuedByDonation.has(d.id);
+              return (
+                <tr key={d.id}>
+                  <td className="tnum" style={{ whiteSpace: "nowrap" }}>{d.donationDate}</td>
+                  <td>{d.donorId ? (donorNameById.get(d.donorId) ?? "—") : "ไม่ระบุผู้บริจาค"}</td>
+                  <td className="tnum" style={{ textAlign: "right", fontWeight: 600 }}>{displayBaht(d.amountSatang)}</td>
+                  <td>{methodLabel(d.method)}</td>
+                  <td><Badge kind={d.status === "confirmed" ? "credit" : d.status === "cancelled" ? "debit" : "pending"} dot>{statusLabel(d.status)}</Badge></td>
+                  <td>{hasReceipt ? <Badge kind="reconciled" dot>ออกแล้ว</Badge> : <span className="muted">ยังไม่ออก</span>}</td>
+                  <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                    {canWrite && d.status === "confirmed" ? (
+                      <span className="row" style={{ gap: 6, justifyContent: "flex-end" }}>
+                        {!hasReceipt && receiptsApi ? (
+                          <Button variant="secondary" size="sm" disabled={actionBusy} onClick={() => void issueReceipt(d)}>ออกใบอนุโมทนา</Button>
+                        ) : null}
+                        <Button variant="danger" size="sm" disabled={actionBusy} onClick={() => { setVoidTarget(d); setVoidReason(""); setVoidErr(null); }}>ยกเลิก</Button>
+                      </span>
+                    ) : null}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </Table>
+      </Card>
+
+      {voidTarget ? (
+        <Modal title="ยกเลิกการบริจาค" sub={`${displayBaht(voidTarget.amountSatang)} · ${voidTarget.donationDate}`} onClose={() => setVoidTarget(null)}
+          footer={<><Button variant="secondary" onClick={() => setVoidTarget(null)}>ปิด</Button><Button variant="danger" disabled={actionBusy} onClick={() => void submitVoid()}>{actionBusy ? "กำลังยกเลิก…" : "ยืนยันยกเลิก"}</Button></>}>
+          <p style={{ margin: "0 0 12px", fontSize: 13, color: "var(--ink-2)" }}>รายการจะไม่ถูกลบ — สถานะเปลี่ยนเป็น “ยกเลิก” พร้อมกลับรายการบัญชีรายรับและใบอนุโมทนาที่ออกไว้ และบันทึกเหตุผลลงบันทึกการใช้งาน</p>
+          <div className="field"><label htmlFor="void-donation-reason">เหตุผลการยกเลิก<span className="req"> *</span></label><textarea id="void-donation-reason" className="control" value={voidReason} onChange={(e) => setVoidReason(e.target.value)} placeholder="เช่น บันทึกซ้ำ / ยอดผิด" style={{ minHeight: 64 }} /></div>
+          {voidErr ? <p className="error-text">{voidErr}</p> : null}
+        </Modal>
+      ) : null}
       <Toast msg={toast} />
     </div>
   );
@@ -487,10 +586,19 @@ function toThaiDigits(s: string): string {
   return s.replace(/[0-9]/g, (d) => "๐๑๒๓๔๕๖๗๘๙".charAt(d.charCodeAt(0) - 48));
 }
 
-export function DesignReceipt({ api, donationsApi, donorsApi }: { api?: ReceiptsApi; donationsApi?: DonationsApi; donorsApi?: DonorsApi }): ReactElement {
+/** Compose the temple address line for the certificate from profile parts. */
+function templeAddressLine(p: TempleProfile | null): string {
+  if (!p) return "";
+  const parts = [p.addressTh, p.subdistrict ? `ต.${p.subdistrict}` : null, p.district ? `อ.${p.district}` : null, p.province ? `จ.${p.province}` : null, p.postalCode].filter(Boolean);
+  const addr = parts.join(" ");
+  return p.phone ? (addr ? `${addr} · โทร. ${p.phone}` : `โทร. ${p.phone}`) : addr;
+}
+
+export function DesignReceipt({ api, donationsApi, donorsApi, templeApi }: { api?: ReceiptsApi; donationsApi?: DonationsApi; donorsApi?: DonorsApi; templeApi?: TempleApi }): ReactElement {
   const [receipts, setReceipts] = useState<ReceiptView[] | null>(null);
   const [donations, setDonations] = useState<DonationView[]>([]);
   const [donors, setDonors] = useState<DonorRecord[]>([]);
+  const [temple, setTemple] = useState<TempleProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selId, setSelId] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -504,12 +612,17 @@ export function DesignReceipt({ api, donationsApi, donorsApi }: { api?: Receipts
     let active = true;
     setReceipts(null);
     setError(null);
-    Promise.all([api.list(), donationsApi ? donationsApi.list() : Promise.resolve([]), donorsApi ? donorsApi.list() : Promise.resolve([])]).then(
-      ([rcs, dons, dnrs]) => { if (active) { setReceipts(rcs); setDonations(dons); setDonors(dnrs); } },
+    Promise.all([
+      api.list(),
+      donationsApi ? donationsApi.list() : Promise.resolve([]),
+      donorsApi ? donorsApi.list() : Promise.resolve([]),
+      templeApi ? templeApi.get().catch(() => null) : Promise.resolve(null),
+    ]).then(
+      ([rcs, dons, dnrs, profile]) => { if (active) { setReceipts(rcs); setDonations(dons); setDonors(dnrs); setTemple(profile); } },
       (err: unknown) => { if (active) setError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ"); },
     );
     return () => { active = false; };
-  }, [api, donationsApi, donorsApi, reloadKey]);
+  }, [api, donationsApi, donorsApi, templeApi, reloadKey]);
 
   const donationById = new Map(donations.map((d) => [d.id, d]));
   const donorById = new Map(donors.map((d) => [d.id, d]));
@@ -553,8 +666,8 @@ export function DesignReceipt({ api, donationsApi, donorsApi }: { api?: Receipts
             <div className="cert-temple">
               <div className="doc-seal"><Icon name="lotus" size={30} /></div>
               <div>
-                <div className="cert-temple-name">วัดธรรมสถิตวนาราม</div>
-                <div className="cert-temple-addr">๑๒๓ หมู่ ๔ ต.ในเมือง อ.เมือง จ.เชียงใหม่ ๕๐๐๐๐ · โทร. ๐๕๓-๑๒๓-๔๕๖๗</div>
+                <div className="cert-temple-name">{temple?.nameTh ?? "…"}</div>
+                <div className="cert-temple-addr">{templeAddressLine(temple) || "กรอกที่อยู่วัดได้ที่หน้า “ข้อมูลวัด”"}</div>
               </div>
             </div>
             <div className="cert-no">
@@ -588,7 +701,7 @@ export function DesignReceipt({ api, donationsApi, donorsApi }: { api?: Receipts
             <div className="cert-edoc">เอกสารนี้ออกโดยระบบอิเล็กทรอนิกส์</div>
             <div className="cert-sign">
               <div className="cert-sign-line" aria-hidden="true" />
-              <div className="cert-sign-name">พระอธิการสมหวัง สุจิตฺโต</div>
+              <div className="cert-sign-name">{temple?.abbotName ?? "(ลงนาม)"}</div>
               <div className="cert-sign-role">เจ้าอาวาส</div>
             </div>
           </div>
@@ -1230,12 +1343,14 @@ export function DesignReports({ api, today }: { api?: ReportsApi; today?: string
               <label className="field"><span className="label">รายงานที่เลือก</span><div className="control" style={{ display: "flex", alignItems: "center", background: "var(--surface-2)" }}>{cur.name}</div></label>
               <label className="field"><span className="label">ช่วงเวลา</span><div style={{ display: "flex", gap: 8, alignItems: "center" }}><input className="control tnum" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} /><span className="muted">ถึง</span><input className="control tnum" value={dateTo} onChange={(e) => setDateTo(e.target.value)} /></div></label>
               <div className="field"><span className="label">รูปแบบไฟล์</span>
-                <div className="opt-row">{([["pdf", "PDF", "เหมาะสำหรับพิมพ์และจัดเก็บ"], ["xlsx", "Excel (.xlsx)", "เปิดแก้ไขและคำนวณต่อได้"], ["csv", "CSV", "นำเข้าระบบอื่น (พร้อมใช้งาน)"]] as Array<[string, string, string]>).map(([k, t, d]) => (
+                {/* Only formats that actually work are offered — PDF/Excel come back when implemented. */}
+                <div className="opt-row">{([["csv", "CSV", "เปิดได้ใน Excel และนำเข้าระบบอื่นได้"]] as Array<[string, string, string]>).map(([k, t, d]) => (
                   <label key={k} className={`opt ${fmt === k ? "sel" : ""}`} onClick={() => setFmt(k)}>
                     <input type="radio" checked={fmt === k} readOnly style={{ marginTop: 2 }} />
                     <span><span className="o-title">{t}</span><span className="o-desc" style={{ display: "block" }}>{d}</span></span>
                   </label>
                 ))}</div>
+                <span className="hint">PDF และ Excel (.xlsx) จะเพิ่มในรุ่นถัดไป</span>
               </div>
               <Button variant="primary" className="btn-block" icon={<Icon name="download" size={15} />} disabled={busy} onClick={() => void generate()}>{busy ? "กำลังสร้าง…" : "สร้างและดาวน์โหลด"}</Button>
               {result ? <p style={{ margin: "10px 0 0", fontSize: 12.5, color: "var(--credit)", textAlign: "center" }}>{result}</p> : null}
@@ -1440,57 +1555,114 @@ export function DesignRoles({ role, api }: { role: TempleRole; api?: UsersApi })
 }
 
 // ============ 10. AUDIT LOG ============
-const AUDIT = [
-  { id: "A-90412", at: "2569-06-04 09:42:11", actor: "ศิริพร อินทรา", role: "finance", action: "create", entity: "การบริจาค RC-2569-0142", detail: "บันทึกบริจาค ฿5,000 — กองทุนบูรณะอุโบสถ", ip: "10.0.2.51" },
-  { id: "A-90411", at: "2569-06-04 09:40:02", actor: "ศิริพร อินทรา", role: "finance", action: "issue", entity: "ใบอนุโมทนา RC-2569-0142", detail: "ออกใบอนุโมทนาบัตรเลขที่ อ.๒๕๖๙/๐๑๔๒", ip: "10.0.2.51" },
-  { id: "A-90408", at: "2569-06-04 08:15:44", actor: "ประยูร พงษ์ศักดิ์", role: "admin", action: "update", entity: "สิทธิ์ผู้ใช้", detail: "เปลี่ยนบทบาท \"บุญมา ใจเอื้อ\" → เจ้าหน้าที่ทั่วไป", ip: "10.0.2.40" },
-  { id: "A-90405", at: "2569-06-03 16:21:09", actor: "ศิริพร อินทรา", role: "finance", action: "reconcile", entity: "บัญชี LG-0460", detail: "กระทบยอด ฿12,000 กับใบแจ้งยอดธนาคาร", ip: "10.0.2.51" },
-  { id: "A-90402", at: "2569-06-03 14:02:55", actor: "ประยูร พงษ์ศักดิ์", role: "admin", action: "void", entity: "บัญชี LG-0451", detail: "ยกเลิกรายการค่าน้ำซ้ำ (เหตุผล: บันทึกซ้ำ)", ip: "10.0.2.40" },
-  { id: "A-90399", at: "2569-06-03 11:30:18", actor: "ระบบออนไลน์", role: "system", action: "create", entity: "การบริจาค RC-2569-0137", detail: "รับบริจาคออนไลน์ ฿10,000 ผ่านบัตรเครดิต", ip: "—" },
+// Real audit actions are namespaced ("donation:void"); chips filter by family
+// prefix and the verb after ":" picks the badge.
+const AUDIT_FAMILIES: Array<{ prefix: string; label: string }> = [
+  { prefix: "donation", label: "การบริจาค" },
+  { prefix: "receipt", label: "ใบอนุโมทนา" },
+  { prefix: "ledger", label: "บัญชี" },
+  { prefix: "attachment", label: "ไฟล์แนบ" },
+  { prefix: "user", label: "ผู้ใช้" },
+  { prefix: "period", label: "งวดบัญชี" },
 ];
-const ACTION_META: Record<string, { label: string; cls: "credit" | "pending" | "accent" | "reconciled" | "debit" | "neutral" }> = {
-  create: { label: "สร้าง", cls: "credit" }, update: { label: "แก้ไข", cls: "pending" }, issue: { label: "ออกเอกสาร", cls: "accent" }, reconcile: { label: "กระทบยอด", cls: "reconciled" }, void: { label: "ยกเลิก", cls: "debit" }, login: { label: "เข้าระบบ", cls: "neutral" }, export: { label: "ส่งออก", cls: "reconciled" },
+const AUDIT_VERB_META: Record<string, { label: string; cls: "credit" | "pending" | "accent" | "reconciled" | "debit" | "neutral" }> = {
+  create: { label: "สร้าง", cls: "credit" }, post: { label: "ลงบัญชี", cls: "credit" }, update: { label: "แก้ไข", cls: "pending" },
+  issue: { label: "ออกเอกสาร", cls: "accent" }, reissue: { label: "ออกใหม่", cls: "accent" }, reconcile: { label: "กระทบยอด", cls: "reconciled" },
+  unreconcile: { label: "ยกเลิกกระทบยอด", cls: "pending" }, void: { label: "ยกเลิก", cls: "debit" }, cancel: { label: "ยกเลิก", cls: "debit" },
+  delete: { label: "ลบ", cls: "debit" }, close: { label: "ปิดงวด", cls: "reconciled" }, export: { label: "ส่งออก", cls: "reconciled" },
 };
+const AUDIT_ENTITY_LABELS: Record<string, string> = {
+  donation: "การบริจาค", receipt: "ใบอนุโมทนาบัตร", ledger_entry: "รายการบัญชี", attachment: "ไฟล์แนบ",
+  user: "ผู้ใช้", reconciliation_period: "งวดบัญชี", report: "รายงาน", donor: "ผู้บริจาค",
+  ceremony: "งานพิธี", personnel: "บุคลากร", borrowable_item: "ของวัด", item_loan: "การยืมของ",
+};
+const AUDIT_ROLE_LABELS: Record<string, string> = { admin: "ผู้ดูแลระบบ", finance: "ฝ่ายการเงิน", staff: "เจ้าหน้าที่" };
 
-export function DesignAudit(): ReactElement {
+function auditVerbMeta(action: string): { label: string; cls: "credit" | "pending" | "accent" | "reconciled" | "debit" | "neutral" } {
+  const verb = action.includes(":") ? action.slice(action.indexOf(":") + 1) : action;
+  return AUDIT_VERB_META[verb] ?? { label: verb, cls: "neutral" };
+}
+
+const AUDIT_PAGE_SIZE = 50;
+
+export function DesignAudit({ api }: { api?: AuditApi }): ReactElement {
   const [q, setQ] = useState("");
-  const [action, setAction] = useState("all");
-  const filtered = AUDIT.filter((l) => {
-    if (action !== "all" && l.action !== action) return false;
-    if (q && !(l.actor.includes(q) || l.entity.includes(q) || l.detail.includes(q))) return false;
-    return true;
+  const [family, setFamily] = useState("all");
+  const [logs, setLogs] = useState<AuditLogView[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+
+  useEffect(() => {
+    if (!api) return;
+    let active = true;
+    setLogs(null);
+    setError(null);
+    api.list({
+      ...(family !== "all" ? { actionPrefix: `${family}:` } : {}),
+      take: AUDIT_PAGE_SIZE,
+      skip: page * AUDIT_PAGE_SIZE,
+    }).then(
+      (rows) => { if (active) setLogs(rows); },
+      (err: unknown) => { if (active) setError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ"); },
+    );
+    return () => { active = false; };
+  }, [api, family, page]);
+
+  const filtered = (logs ?? []).filter((l) => {
+    if (!q) return true;
+    const hay = `${l.actorName ?? ""} ${l.action} ${l.entityType} ${l.reason ?? ""}`;
+    return hay.includes(q);
   });
+
   return (
     <div className="content-wrap">
-      <PageHead eyebrow="ระบบ" title="บันทึกการใช้งาน" desc="บันทึกทุกการกระทำสำคัญในระบบ — ใครทำอะไร เมื่อไร เพื่อการตรวจสอบและความโปร่งใส ข้อมูลนี้ลบไม่ได้"
-        actions={<Button variant="secondary" icon={<Icon name="download" size={15} />}>ส่งออกบันทึก</Button>} />
+      <PageHead eyebrow="ระบบ" title="บันทึกการใช้งาน" desc="บันทึกทุกการกระทำสำคัญในระบบ — ใครทำอะไร เมื่อไร เพื่อการตรวจสอบและความโปร่งใส ข้อมูลนี้ลบไม่ได้" />
+      {error ? <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: "var(--r)", background: "var(--danger-tint)", color: "var(--danger)", fontSize: 13 }}>โหลดบันทึกการใช้งานไม่สำเร็จ: {error}</div> : null}
       <Card>
         <Toolbar>
-          <SearchBox value={q} onChange={setQ} placeholder="ค้นหาผู้ใช้ รายการ หรือรายละเอียด" />
+          <SearchBox value={q} onChange={setQ} placeholder="ค้นหาผู้ใช้ การกระทำ หรือเหตุผล" />
           <div style={{ width: 1, height: 24, background: "var(--border)", margin: "0 4px" }} />
-          <button type="button" className={`chip ${action === "all" ? "active" : ""}`} onClick={() => setAction("all")}>ทั้งหมด</button>
-          {Object.entries(ACTION_META).map(([k, m]) => <button key={k} type="button" className={`chip ${action === k ? "active" : ""}`} onClick={() => setAction(k)}>{m.label}</button>)}
+          <button type="button" className={`chip ${family === "all" ? "active" : ""}`} onClick={() => { setFamily("all"); setPage(0); }}>ทั้งหมด</button>
+          {AUDIT_FAMILIES.map((f) => <button key={f.prefix} type="button" className={`chip ${family === f.prefix ? "active" : ""}`} onClick={() => { setFamily(f.prefix); setPage(0); }}>{f.label}</button>)}
           <span className="muted" style={{ marginLeft: "auto" }}>{filtered.length} รายการ</span>
         </Toolbar>
         <Table>
-          <thead><tr><th>เวลา</th><th>ผู้ใช้งาน</th><th>การกระทำ</th><th>รายการ / รายละเอียด</th><th>IP</th></tr></thead>
-          <tbody>{filtered.map((l) => {
-            const m = ACTION_META[l.action] ?? { label: l.action, cls: "neutral" as const };
-            return (
-              <tr key={l.id}>
-                <td className="mono" style={{ whiteSpace: "nowrap", fontSize: 12 }}>{l.at}</td>
-                <td><div className="row" style={{ gap: 9 }}>
-                  <span className={`av ${l.role === "finance" ? "blue" : l.role === "staff" ? "green" : ""}`.trim()} style={l.role === "system" ? { background: "var(--surface-3)", color: "var(--ink-3)" } : undefined}>{l.actor.charAt(0)}</span>
-                  <span><span style={{ display: "block", fontSize: 13, fontWeight: 500 }}>{l.actor}</span><span className="muted" style={{ fontSize: 11.5 }}>{l.role}</span></span>
-                </div></td>
-                <td><Badge kind={m.cls} dot>{m.label}</Badge></td>
-                <td><div style={{ fontWeight: 500 }}>{l.entity}</div><div className="muted" style={{ fontSize: 12.5 }}>{l.detail}</div></td>
-                <td className="mono muted" style={{ fontSize: 12 }}>{l.ip}</td>
-              </tr>
-            );
-          })}</tbody>
+          <thead><tr><th>เวลา</th><th>ผู้ใช้งาน</th><th>การกระทำ</th><th>รายการ / เหตุผล</th><th>IP</th></tr></thead>
+          <tbody>
+            {!logs ? (
+              <tr><td colSpan={5} className="muted" style={{ padding: 18 }}>{error ? "โหลดไม่สำเร็จ" : "กำลังโหลด…"}</td></tr>
+            ) : filtered.length === 0 ? (
+              <tr><td colSpan={5} className="muted" style={{ padding: 18 }}>ยังไม่มีบันทึกการใช้งานในหมวดนี้</td></tr>
+            ) : filtered.map((l) => {
+              const m = auditVerbMeta(l.action);
+              const actorName = l.actorName ?? (l.actorType === "devotee" ? "ญาติโยม (พอร์ทัล)" : "ระบบ");
+              const roleLabel = l.actorRole ? (AUDIT_ROLE_LABELS[l.actorRole] ?? l.actorRole) : l.actorType === "devotee" ? "พอร์ทัลญาติโยม" : "—";
+              return (
+                <tr key={l.id}>
+                  <td className="mono" style={{ whiteSpace: "nowrap", fontSize: 12 }}>{l.createdAt.slice(0, 19).replace("T", " ")}</td>
+                  <td><div className="row" style={{ gap: 9 }}>
+                    <span className={`av ${l.actorRole === "finance" ? "blue" : l.actorRole === "staff" ? "green" : ""}`.trim()} style={!l.actorName ? { background: "var(--surface-3)", color: "var(--ink-3)" } : undefined}>{actorName.charAt(0)}</span>
+                    <span><span style={{ display: "block", fontSize: 13, fontWeight: 500 }}>{actorName}</span><span className="muted" style={{ fontSize: 11.5 }}>{roleLabel}</span></span>
+                  </div></td>
+                  <td><Badge kind={m.cls} dot>{m.label}</Badge></td>
+                  <td>
+                    <div style={{ fontWeight: 500 }}>{AUDIT_ENTITY_LABELS[l.entityType] ?? l.entityType}{l.entityId ? <span className="mono muted" style={{ fontSize: 11.5 }}> · {l.entityId.slice(0, 8)}</span> : null}</div>
+                    {l.reason ? <div className="muted" style={{ fontSize: 12.5 }}>เหตุผล: {l.reason}</div> : null}
+                  </td>
+                  <td className="mono muted" style={{ fontSize: 12 }}>{l.ip ?? "—"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
         </Table>
-        <div className="t-foot"><span>แสดง {filtered.length} จาก {AUDIT.length} รายการ</span><span className="row" style={{ gap: 6 }}><Icon name="lock" size={13} />บันทึกนี้ไม่สามารถแก้ไขหรือลบได้</span></div>
+        <div className="t-foot">
+          <span className="row" style={{ gap: 8 }}>
+            <Button variant="secondary" size="sm" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>ก่อนหน้า</Button>
+            <span>หน้า {page + 1}</span>
+            <Button variant="secondary" size="sm" disabled={!logs || logs.length < AUDIT_PAGE_SIZE} onClick={() => setPage((p) => p + 1)}>ถัดไป</Button>
+          </span>
+          <span className="row" style={{ gap: 6 }}><Icon name="lock" size={13} />บันทึกนี้ไม่สามารถแก้ไขหรือลบได้</span>
+        </div>
       </Card>
     </div>
   );

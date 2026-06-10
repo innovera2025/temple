@@ -12,10 +12,12 @@ describe("App (default temple product)", () => {
   it("renders the design-backed temple login screen as the default route", () => {
     const html = renderToStaticMarkup(<App />);
 
-    // Design-backed brand + Thai copy (admin-app.jsx LoginScreen).
-    expect(html).toContain("วัดธรรมสถิตวนาราม");
+    // Design-backed brand + Thai copy (admin-app.jsx LoginScreen). Pre-login
+    // branding is the generic product name — the tenant is unknown until login.
+    expect(html).toContain("ระบบจัดการวัด");
     expect(html).toContain("ขอเชิญร่วมบุญ");
     expect(html).toContain("เข้าสู่ระบบ");
+    expect(html).not.toContain("วัดธรรมสถิตวนาราม");
   });
 
   it("is the temple product, not the Agent Control Tower", () => {

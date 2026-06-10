@@ -16,9 +16,11 @@ export interface TopbarProps {
   /** ref to the hamburger so focus can be restored to it when the drawer closes. */
   menuButtonRef?: Ref<HTMLButtonElement>;
   onMenu: () => void;
+  /** The signed-in tenant's temple name (breadcrumb root). */
+  templeName?: string;
 }
 
-export function Topbar({ page, role, roleName, menuOpen = false, menuControls, menuButtonRef, onMenu }: TopbarProps): ReactElement {
+export function Topbar({ page, role, roleName, menuOpen = false, menuControls, menuButtonRef, onMenu, templeName }: TopbarProps): ReactElement {
   return (
     <div className="topbar">
       <button
@@ -34,15 +36,14 @@ export function Topbar({ page, role, roleName, menuOpen = false, menuControls, m
       </button>
 
       <div className="crumbs">
-        <span>วัดธรรมสถิตวนาราม</span>
+        <span>{templeName ?? "ระบบจัดการวัด"}</span>
         <Icon name="chevR" size={13} />
         <b>{PAGE_TITLES[page]}</b>
       </div>
 
-      <div className="tb-search">
-        <Icon name="search" size={15} />
-        <input type="search" placeholder="ค้นหาใบเสร็จ ผู้บริจาค รายการบัญชี..." aria-label="ค้นหา" />
-      </div>
+      {/* The global search box was decorative (no behavior) — removed until a
+          real cross-entity search exists; each table has its own working search. */}
+      <div style={{ flex: 1 }} />
 
       <Badge kind={ROLE_BADGE_KIND[role]} dot>
         {roleName}

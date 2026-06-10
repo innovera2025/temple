@@ -19,6 +19,7 @@ export interface RoleShellProps {
   onNavigate: (id: PageId) => void;
   onLogout: () => void;
   counts?: Partial<Record<PageId, number>>;
+  templeName?: string;
   children: ReactNode;
 }
 
@@ -29,6 +30,7 @@ export function RoleShell({
   onNavigate,
   onLogout,
   counts,
+  templeName,
   children,
 }: RoleShellProps): ReactElement {
   const [open, setOpen] = useState(false);
@@ -91,6 +93,7 @@ export function RoleShell({
         user={{ name: userName, roleName }}
         can={(id) => canForRole(role, id)}
         onLogout={onLogout}
+        templeName={templeName}
       />
       {open ? <div className="backdrop" onClick={close} aria-hidden="true" /> : null}
       <div className="tb-main">
@@ -102,6 +105,7 @@ export function RoleShell({
           menuOpen={open}
           menuControls={SIDEBAR_ID}
           onMenu={() => setOpen((value) => !value)}
+          templeName={templeName}
         />
         <main ref={mainRef} className="tb-content">
           {children}

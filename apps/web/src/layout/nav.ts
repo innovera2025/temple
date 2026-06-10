@@ -100,7 +100,7 @@ export const PAGE_TITLES: Record<PageId, string> = {
 // reachable while the design's own navigation (NAV) stays untouched.
 export const EXTRA_NAV: NavGroup[] = [
   {
-    group: "เพิ่มเติม (นอกเหนือดีไซน์)",
+    group: "เมนูเพิ่มเติม",
     items: [
       { id: "temple", label: "ข้อมูลวัด", icon: "building" },
       { id: "inventory", label: "คลังของบริจาค/พัสดุ", icon: "box" },

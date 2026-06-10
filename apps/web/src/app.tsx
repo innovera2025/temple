@@ -14,6 +14,7 @@ import {
   saveSession,
   Session,
 } from "./features/auth/auth";
+import { createTempleApiClient } from "./features/temple/temple";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000";
 
@@ -59,6 +60,18 @@ function TempleApp(): ReactElement {
     const role = (loadSession()?.user.role ?? "admin") as TempleRole;
     return defaultPageFor(role);
   });
+  const [templeName, setTempleName] = useState<string | undefined>(undefined);
+
+  // The sidebar shows the signed-in tenant's real temple name (never a demo
+  // placeholder); fetched once per session, non-fatal if it fails.
+  useEffect(() => {
+    if (!session) { setTempleName(undefined); return; }
+    let active = true;
+    createTempleApiClient({ baseUrl: API_BASE_URL, getToken: () => session.accessToken })
+      .get()
+      .then((profile) => { if (active) setTempleName(profile.nameTh); }, () => undefined);
+    return () => { active = false; };
+  }, [session]);
 
   function onAuthenticated(next: Session): void {
     saveSession(next);
@@ -83,6 +96,7 @@ function TempleApp(): ReactElement {
       page={page}
       onNavigate={setPage}
       onLogout={logout}
+      templeName={templeName}
     >
       <PageContent
         page={page}

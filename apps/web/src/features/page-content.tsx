@@ -17,6 +17,7 @@ import { createDonorsApiClient } from "./donors/donors";
 import { createDonationsApiClient } from "./donations/donations";
 import { createReceiptsApiClient } from "./receipts/receipts";
 import { createReportsApiClient } from "./reports/reports";
+import { createAuditApiClient } from "./audit/audit";
 import {
   DesignAudit,
   DesignDashboard,
@@ -61,19 +62,30 @@ export function PageContent({ page, baseUrl, getToken, role, today, onNavigate }
     return level === "edit" || level === "full";
   };
 
+  // The API enforces authorization; this gate keeps the UI honest — a staff
+  // user navigated (or deep-linked) into a finance-only page should see a
+  // clear no-permission message, not a wall of failed requests.
+  if (permOf(role, page) === "none") {
+    return (
+      <div className="page-content" data-page={page}>
+        <UnavailablePage title="ไม่มีสิทธิ์เข้าถึง" reason="บัญชีของคุณไม่มีสิทธิ์ใช้งานหน้านี้ หากจำเป็นต้องใช้งาน กรุณาติดต่อผู้ดูแลระบบของวัด" />
+      </div>
+    );
+  }
+
   let content: ReactElement;
   switch (page) {
     case "dashboard":
       content = <DesignDashboard api={createDashboardApiClient(opts)} goto={onNavigate} />;
       break;
     case "donations":
-      content = <DesignDonations api={createDonationsApiClient(opts)} donorsApi={createDonorsApiClient(opts)} today={today} />;
+      content = <DesignDonations api={createDonationsApiClient(opts)} donorsApi={createDonorsApiClient(opts)} receiptsApi={createReceiptsApiClient(opts)} canWrite={writable("donations")} today={today} />;
       break;
     case "donors":
       content = <DesignDonors api={createDonorsApiClient(opts)} canWrite={writable("donors")} goto={onNavigate} />;
       break;
     case "receipt":
-      content = <DesignReceipt api={createReceiptsApiClient(opts)} donationsApi={createDonationsApiClient(opts)} donorsApi={createDonorsApiClient(opts)} />;
+      content = <DesignReceipt api={createReceiptsApiClient(opts)} donationsApi={createDonationsApiClient(opts)} donorsApi={createDonorsApiClient(opts)} templeApi={createTempleApiClient(opts)} />;
       break;
     case "ledger":
       content = <DesignLedger api={createLedgerApiClient(opts)} reportsApi={createReportsApiClient(opts)} today={today} canWrite={writable("ledger")} />;
@@ -100,7 +112,7 @@ export function PageContent({ page, baseUrl, getToken, role, today, onNavigate }
       content = <ItemLoansPage api={createItemLoansApiClient(opts)} attachmentsApi={createAttachmentsApiClient(opts)} today={today} canWrite={writable("item-loans")} canManageItems={role === "admin"} />;
       break;
     case "audit":
-      content = <DesignAudit />;
+      content = <DesignAudit api={createAuditApiClient(opts)} />;
       break;
     case "designsystem":
       content = <DesignSystemShowcase />;

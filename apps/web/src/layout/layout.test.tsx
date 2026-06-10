@@ -56,17 +56,24 @@ const noop = (): void => undefined;
 const user = { name: "ประยูร พงษ์ศักดิ์", roleName: "ผู้ดูแลระบบ" };
 
 describe("Sidebar (role-filtered NAV from shell.jsx)", () => {
-  it("renders the brand and the active page", () => {
+  it("renders the brand (real tenant name from the profile, with a generic fallback) and the active page", () => {
     const html = renderToStaticMarkup(
-      <Sidebar page="dashboard" role="admin" goto={noop} user={user} can={(id) => can("admin", id)} onLogout={noop} />,
+      <Sidebar page="dashboard" role="admin" goto={noop} user={user} can={(id) => can("admin", id)} onLogout={noop} templeName="วัดอรุณราชวราราม" />,
     );
-    expect(html).toContain("วัดธรรมสถิตวนาราม");
+    expect(html).toContain("วัดอรุณราชวราราม");
     expect(html).toContain("sb-item active");
     expect(html).toContain("แดชบอร์ด");
     // EXTRA_NAV (Core Modules outside the design NAV) appears as a labelled group.
-    expect(html).toContain("เพิ่มเติม (นอกเหนือดีไซน์)");
+    expect(html).toContain("เมนูเพิ่มเติม");
     expect(html).toContain("ข้อมูลวัด");
     expect(html).toContain("คลังของบริจาค/พัสดุ");
+
+    // No hardcoded demo temple; without a profile the brand falls back generically.
+    const fallback = renderToStaticMarkup(
+      <Sidebar page="dashboard" role="admin" goto={noop} user={user} can={(id) => can("admin", id)} onLogout={noop} />,
+    );
+    expect(fallback).toContain("ระบบจัดการวัด");
+    expect(fallback).not.toContain("วัดธรรมสถิตวนาราม");
   });
 
   it("hides items a staff user cannot access", () => {
@@ -96,12 +103,14 @@ describe("Sidebar (role-filtered NAV from shell.jsx)", () => {
 describe("Topbar", () => {
   it("shows the breadcrumb page title and the role badge", () => {
     const html = renderToStaticMarkup(
-      <Topbar page="ledger" role="finance" roleName="เจ้าหน้าที่การเงิน" onMenu={noop} />,
+      <Topbar page="ledger" role="finance" roleName="เจ้าหน้าที่การเงิน" onMenu={noop} templeName="วัดอรุณราชวราราม" />,
     );
-    expect(html).toContain("วัดธรรมสถิตวนาราม");
+    expect(html).toContain("วัดอรุณราชวราราม");
     expect(html).toContain("บัญชีรายรับ-รายจ่าย");
     expect(html).toContain("badge credit");
     expect(html).toContain("เจ้าหน้าที่การเงิน");
+    // The decorative (non-functional) global search box is gone.
+    expect(html).not.toContain("tb-search");
   });
 
   it("exposes the hamburger as an accessible toggle (aria-expanded + aria-controls)", () => {
@@ -124,12 +133,12 @@ describe("Topbar", () => {
 describe("RoleShell", () => {
   it("composes sidebar + topbar + children and is not the Agent Control Tower", () => {
     const html = renderToStaticMarkup(
-      <RoleShell userName="ประยูร พงษ์ศักดิ์" role="admin" page="dashboard" onNavigate={noop} onLogout={noop}>
+      <RoleShell userName="ประยูร พงษ์ศักดิ์" role="admin" page="dashboard" onNavigate={noop} onLogout={noop} templeName="วัดอรุณราชวราราม">
         <div>เนื้อหาหน้า</div>
       </RoleShell>,
     );
     expect(html).toContain('class="app"');
-    expect(html).toContain("วัดธรรมสถิตวนาราม");
+    expect(html).toContain("วัดอรุณราชวราราม");
     expect(html).toContain("เนื้อหาหน้า");
     expect(html).not.toContain("Agent Control Tower");
     expect(html).not.toContain("orchestrator");

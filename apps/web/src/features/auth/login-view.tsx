@@ -23,13 +23,25 @@ type Mode = "login" | "register";
 export interface LoginScreenProps {
   api: AuthApi;
   onAuthenticated: (session: Session) => void;
-  /** Quick-login seed accounts (dev convenience). Defaults to the real seed table. */
+  /**
+   * Quick-login seed accounts (dev convenience). Hidden unless the build sets
+   * VITE_SHOW_DEMO_ACCOUNTS=true — production must never show seed credentials.
+   */
   accounts?: readonly SeedAccount[];
+  /** Social sign-in buttons; default off until the OAuth callback flow exists. */
+  showSocial?: boolean;
 }
 
 // Social/OAuth providers from the design's SocialButtons. No backend -> disabled.
 const SOCIAL_PROVIDERS = ["Google", "Facebook"] as const;
 const SOCIAL_PROVIDER_IDS = { Google: "google", Facebook: "facebook" } as const;
+
+// Dev-only conveniences — both default OFF so a production build never shows
+// seed credentials, and never shows social buttons while the OAuth flow has no
+// callback (the buttons would dead-end at the provider). Set in dev .env:
+//   VITE_SHOW_DEMO_ACCOUNTS=true / VITE_SHOW_SOCIAL_LOGIN=true
+const SHOW_DEMO_ACCOUNTS = import.meta.env.VITE_SHOW_DEMO_ACCOUNTS === "true";
+const SHOW_SOCIAL_LOGIN = import.meta.env.VITE_SHOW_SOCIAL_LOGIN === "true";
 
 function BrandPanel(): ReactElement {
   return (
@@ -58,14 +70,14 @@ function BrandPanel(): ReactElement {
 
       <div className="a-lead">
         <div className="a-line" />
-        <h1>วัดธรรมสถิตวนาราม</h1>
+        <h1>ระบบจัดการวัด</h1>
         <p className="a-sub">
           ระบบจัดการวัดออนไลน์ สำหรับเจ้าหน้าที่และญาติโยม จองศาลา จองกุฏิ แจ้งบวช ฌาปนกิจ
           และร่วมบุญออนไลน์
         </p>
       </div>
 
-      <div className="a-foot">© ๒๕๖๙ วัดธรรมสถิตวนาราม · เพื่อความสะดวกของพุทธศาสนิกชน</div>
+      <div className="a-foot">© ๒๕๖๙ ระบบจัดการวัด · เพื่อความสะดวกของพุทธศาสนิกชน</div>
     </div>
   );
 }
@@ -125,11 +137,12 @@ function SocialButtons({ api }: { api: AuthApi }): ReactElement {
 export function LoginScreen({
   api,
   onAuthenticated,
-  accounts = SEED_ACCOUNTS,
+  accounts = SHOW_DEMO_ACCOUNTS ? SEED_ACCOUNTS : [],
+  showSocial = SHOW_SOCIAL_LOGIN,
 }: LoginScreenProps): ReactElement {
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState<string>(accounts[0]?.email ?? "");
-  const [password, setPassword] = useState<string>(DEMO_PASSWORD);
+  const [password, setPassword] = useState<string>(accounts.length > 0 ? DEMO_PASSWORD : "");
   const [remember, setRemember] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>("");
@@ -198,8 +211,12 @@ export function LoginScreen({
               <h2>ขอเชิญร่วมบุญ</h2>
               <p className="a-hint">เข้าสู่ระบบเพื่อจองบริการของวัด ร่วมบุญ หรือจัดการงานวัด</p>
 
-              <SocialButtons api={api} />
-              <div className="auth-or">หรือใช้อีเมล</div>
+              {showSocial ? (
+                <>
+                  <SocialButtons api={api} />
+                  <div className="auth-or">หรือใช้อีเมล</div>
+                </>
+              ) : null}
 
               <form onSubmit={onSubmit} noValidate>
                 <div className="field">
@@ -263,31 +280,35 @@ export function LoginScreen({
                 </Button>
               </form>
 
-              <div className="auth-or">หรือเข้าใช้งานด้วยบัญชีตัวอย่าง (เดโม)</div>
-              <div className="opt-row">
-                {accounts.map((account) => (
-                  <button
-                    key={account.email}
-                    type="button"
-                    className="acct"
-                    onClick={() => quickLogin(account)}
-                    disabled={busy}
-                  >
-                    <span className="av-sm">{account.label.charAt(0)}</span>
-                    <span className="acct-meta">
-                      <span className="acct-name">{account.label}</span>
-                      <span className="acct-role">
-                        {ROLE_NAMES[account.role]} · {account.email}
-                      </span>
-                    </span>
-                    <Icon name="chevR" size={16} className="acct-go" />
-                  </button>
-                ))}
-              </div>
+              {accounts.length > 0 ? (
+                <>
+                  <div className="auth-or">หรือเข้าใช้งานด้วยบัญชีตัวอย่าง (เดโม)</div>
+                  <div className="opt-row">
+                    {accounts.map((account) => (
+                      <button
+                        key={account.email}
+                        type="button"
+                        className="acct"
+                        onClick={() => quickLogin(account)}
+                        disabled={busy}
+                      >
+                        <span className="av-sm">{account.label.charAt(0)}</span>
+                        <span className="acct-meta">
+                          <span className="acct-name">{account.label}</span>
+                          <span className="acct-role">
+                            {ROLE_NAMES[account.role]} · {account.email}
+                          </span>
+                        </span>
+                        <Icon name="chevR" size={16} className="acct-go" />
+                      </button>
+                    ))}
+                  </div>
 
-              <p className="auth-demo-note">
-                <Badge kind="neutral">เดโม</Badge> บัญชีตัวอย่างใช้รหัสผ่านชุดทดสอบของฐานข้อมูลสำหรับนักพัฒนา
-              </p>
+                  <p className="auth-demo-note">
+                    <Badge kind="neutral">เดโม</Badge> บัญชีตัวอย่างใช้รหัสผ่านชุดทดสอบของฐานข้อมูลสำหรับนักพัฒนา
+                  </p>
+                </>
+              ) : null}
             </>
           )}
         </div>

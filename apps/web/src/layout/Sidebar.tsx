@@ -23,13 +23,15 @@ export interface SidebarProps {
   role: TempleRole;
   can: (id: PageId) => boolean;
   onLogout: () => void;
+  /** The signed-in tenant's temple name (from the temple profile). */
+  templeName?: string;
 }
 
 function avatarInitial(name: string): string {
   return (name || "ผู้ใช้").replace(/^(นาย|นางสาว|นาง|พระ)\s?/, "").charAt(0);
 }
 
-export function Sidebar({ id, closeButtonRef, page, goto, open, onClose, counts, user, can, onLogout }: SidebarProps): ReactElement {
+export function Sidebar({ id, closeButtonRef, page, goto, open, onClose, counts, user, can, onLogout, templeName }: SidebarProps): ReactElement {
   return (
     <aside id={id} className={`sidebar ${open ? "open" : ""}`.trim()} aria-label="เมนูนำทาง">
       <div className="sb-brand">
@@ -37,7 +39,7 @@ export function Sidebar({ id, closeButtonRef, page, goto, open, onClose, counts,
           <Icon name="lotus" size={20} />
         </div>
         <div style={{ minWidth: 0 }}>
-          <div className="name">วัดธรรมสถิตวนาราม</div>
+          <div className="name">{templeName ?? "ระบบจัดการวัด"}</div>
           <div className="sub">ระบบบริหารจัดการวัด</div>
         </div>
         <button ref={closeButtonRef} type="button" className="iconbtn sb-close" aria-label="ปิดเมนู" onClick={onClose}>

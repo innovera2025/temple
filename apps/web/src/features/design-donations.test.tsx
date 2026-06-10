@@ -75,6 +75,53 @@ describe("DesignDonations — wired to POST /donations", () => {
     expect(container.querySelector(".error-text")).not.toBeNull();
   });
 
+  it("lists recent donations with issue-receipt and void actions (confirmed rows only)", async () => {
+    const baseDonation = {
+      donorId: "d1", currency: "THB", method: "cash", note: null, fundAccountId: null,
+      createdAt: "2026-06-02T00:00:00.000Z", updatedAt: "2026-06-02T00:00:00.000Z",
+    };
+    const list = vi.fn(async () => [
+      { ...baseDonation, id: "don-1", amountSatang: "500000", donationDate: "2026-06-02", status: "confirmed" },
+      { ...baseDonation, id: "don-2", amountSatang: "100000", donationDate: "2026-06-01", status: "cancelled" },
+    ]);
+    const issue = vi.fn(async () => ({ id: "rc-1", receiptNo: "RC-2569-0001", donationId: "don-1", status: "issued", issuedAt: "2026-06-02T00:00:00.000Z" }));
+    const api = { list, create: vi.fn(), void: vi.fn() } as unknown as DonationsApi;
+    const receiptsApi = { list: vi.fn(async () => []), issue } as unknown as import("./receipts/receipts").ReceiptsApi;
+    const container = await mount(<DesignDonations api={api} donorsApi={donorsApi} receiptsApi={receiptsApi} today="2026-06-02" />);
+
+    expect(container.textContent).toContain("รายการบริจาคล่าสุด");
+    // confirmed row gets both actions; cancelled row gets none
+    const issueBtn = Array.from(container.querySelectorAll("button")).find((b) => b.textContent === "ออกใบอนุโมทนา");
+    expect(issueBtn).toBeDefined();
+    await click(issueBtn ?? null);
+    expect(issue).toHaveBeenCalledWith("don-1");
+    expect(container.textContent).toContain("ออกใบอนุโมทนาบัตรแล้ว · เลขที่ RC-2569-0001");
+  });
+
+  it("voids a donation through the reason modal (reason required)", async () => {
+    const list = vi.fn(async () => [{
+      id: "don-1", donorId: null, amountSatang: "500000", currency: "THB", method: "cash",
+      donationDate: "2026-06-02", status: "confirmed", note: null, fundAccountId: null,
+      createdAt: "2026-06-02T00:00:00.000Z", updatedAt: "2026-06-02T00:00:00.000Z",
+    }]);
+    const voidFn = vi.fn(async () => ({}) as never);
+    const api = { list, create: vi.fn(), void: voidFn } as unknown as DonationsApi;
+    const container = await mount(<DesignDonations api={api} donorsApi={donorsApi} today="2026-06-02" />);
+
+    const voidBtn = Array.from(container.querySelectorAll("button")).find((b) => b.textContent === "ยกเลิก");
+    await click(voidBtn ?? null);
+    // submitting without a reason is blocked
+    const confirmBtn = Array.from(container.querySelectorAll("button")).find((b) => b.textContent?.includes("ยืนยันยกเลิก"));
+    await click(confirmBtn ?? null);
+    expect(voidFn).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("กรุณาระบุเหตุผลการยกเลิก");
+
+    await setInput(container.querySelector("#void-donation-reason"), "บันทึกซ้ำ");
+    await click(confirmBtn ?? null);
+    expect(voidFn).toHaveBeenCalledWith("don-1", "บันทึกซ้ำ");
+    expect(container.textContent).toContain("ยกเลิกการบริจาคแล้ว");
+  });
+
   it("surfaces an API error without faking success", async () => {
     const api = { list: vi.fn(), create: vi.fn(async () => { throw new Error("เลขที่เอกสารชนกัน"); }), void: vi.fn() } as unknown as DonationsApi;
     const container = await mount(<DesignDonations api={api} donorsApi={donorsApi} today="2026-06-02" />);

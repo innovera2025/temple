@@ -61,7 +61,7 @@ describe("PageContent — page → view routing", () => {
       ["people", ["พระสงฆ์และเจ้าหน้าที่", "พระ-เณร", "เพิ่มบุคลากร"]],
       ["reports", ["รายงานและส่งออกข้อมูล", "ตั้งค่ารายงาน", "PDF"]],
       ["roles", ["สิทธิ์ผู้ใช้งาน", "บัญชีผู้ใช้งาน", "บทบาทและสิทธิ์"]],
-      ["audit", ["บันทึกการใช้งาน", "ข้อมูลนี้ลบไม่ได้", "ส่งออกบันทึก"]],
+      ["audit", ["บันทึกการใช้งาน", "ข้อมูลนี้ลบไม่ได้", "กำลังโหลด…"]],
       ["designsystem", ["ระบบออกแบบ", "btn btn-primary"]],
     ];
     for (const [page, texts] of expectations) {
@@ -92,10 +92,12 @@ describe("PageContent — page → view routing", () => {
     // audit: tax/lock footer line with the immutability note
     const audit = render("audit");
     expect(audit).toContain("บันทึกนี้ไม่สามารถแก้ไขหรือลบได้");
-    // receipt: tax-deduction info box + temple phone in the document header
+    // receipt: tax-deduction info box; the document header renders the REAL
+    // tenant profile now (no hardcoded demo temple name/phone).
     const receipt = render("receipt");
     expect(receipt).toContain("ลดหย่อนภาษีได้");
-    expect(receipt).toContain("โทร. ๐๕๓-๑๒๓-๔๕๖๗");
+    expect(receipt).not.toContain("วัดธรรมสถิตวนาราม");
+    expect(receipt).not.toContain("โทร. ๐๕๓-๑๒๓-๔๕๖๗");
   });
 
   it("hides the donor create action for a role without donor write access (staff)", () => {

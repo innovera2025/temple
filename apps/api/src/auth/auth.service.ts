@@ -146,9 +146,13 @@ export class AuthService {
     });
   }
 
-  startSocialSignup(provider: SocialProvider, dto: Pick<SocialStartDto, "redirectUri">): SocialStartResult {
+  // NOTE: the code-exchange callback for this flow is not built yet — the web
+  // login hides the social buttons unless VITE_SHOW_SOCIAL_LOGIN=true. The
+  // redirect URI comes ONLY from server env (never the client) so this can't
+  // be pointed at an attacker-chosen destination.
+  startSocialSignup(provider: SocialProvider, _dto: Pick<SocialStartDto, "redirectUri">): SocialStartResult {
     const env = oauthEnv(provider);
-    const redirectUri = env.redirectUri ?? dto.redirectUri;
+    const redirectUri = env.redirectUri;
     if (!env.clientId || !redirectUri) {
       throw serviceUnavailable(`${provider} OAuth ยังไม่ได้ตั้งค่า client id / redirect uri`);
     }

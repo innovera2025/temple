@@ -3,7 +3,7 @@ import { createRoot, Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LoginScreen } from "./login-view";
-import { AuthApi, AuthError, Session } from "./auth";
+import { AuthApi, AuthError, SEED_ACCOUNTS, Session } from "./auth";
 
 // React's act() requires this flag to be set in a test environment.
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -68,7 +68,6 @@ describe("LoginScreen — design-backed brand + copy", () => {
       <LoginScreen api={testApi()} onAuthenticated={noop} />,
     );
     expect(html).toContain("ระบบจัดการวัด");
-    expect(html).toContain("วัดธรรมสถิตวนาราม");
     expect(html).toContain("ระบบจัดการวัดออนไลน์ สำหรับเจ้าหน้าที่และญาติโยม");
     expect(html).toContain("จองศาลา จองกุฏิ แจ้งบวช ฌาปนกิจ และร่วมบุญออนไลน์");
     expect(html).toContain("ขอเชิญร่วมบุญ");
@@ -76,13 +75,18 @@ describe("LoginScreen — design-backed brand + copy", () => {
     expect(html).toContain("auth-temple");
     // The submit/tab call-to-action.
     expect(html).toContain("เข้าสู่ระบบ");
+    // No specific temple is branded pre-login (the tenant is unknown), and
+    // production defaults hide both demo accounts and the social buttons.
+    expect(html).not.toContain("วัดธรรมสถิตวนาราม");
+    expect(html).not.toContain("บัญชีตัวอย่าง (เดโม)");
+    expect(html).not.toContain("soc-btn");
   });
 });
 
 describe("LoginScreen — register/social flows", () => {
-  it("renders social sign-in enabled while forgot-password remains disabled", async () => {
+  it("renders social sign-in enabled (when opted in) while forgot-password remains disabled", async () => {
     const container = await mount(
-      <LoginScreen api={testApi()} onAuthenticated={noop} />,
+      <LoginScreen api={testApi()} onAuthenticated={noop} showSocial />,
     );
     const social = Array.from(container.querySelectorAll<HTMLButtonElement>(".soc-btn"));
     expect(social.length).toBe(2);
@@ -151,7 +155,7 @@ describe("LoginScreen — real login flow", () => {
     const login = vi.fn(async () => ({ accessToken: "tok", refreshToken: "ref" }));
     let session: Session | null = null;
     const container = await mount(
-      <LoginScreen api={testApi({ login })} onAuthenticated={(s) => (session = s)} />,
+      <LoginScreen api={testApi({ login })} onAuthenticated={(s) => (session = s)} accounts={SEED_ACCOUNTS} />,
     );
 
     await submitForm(container.querySelector("form"));
@@ -168,7 +172,9 @@ describe("LoginScreen — real login flow", () => {
       throw new AuthError(401, "invalid");
     });
     const onAuthenticated = vi.fn();
-    const container = await mount(<LoginScreen api={testApi({ login })} onAuthenticated={onAuthenticated} />);
+    const container = await mount(
+      <LoginScreen api={testApi({ login })} onAuthenticated={onAuthenticated} accounts={SEED_ACCOUNTS} />,
+    );
 
     await submitForm(container.querySelector("form"));
 
@@ -193,7 +199,9 @@ describe("LoginScreen — real login flow", () => {
       () => new Promise<{ accessToken: string }>((resolve) => (resolveLogin = resolve)),
     );
     const onAuthenticated = vi.fn();
-    const container = await mount(<LoginScreen api={testApi({ login })} onAuthenticated={onAuthenticated} />);
+    const container = await mount(
+      <LoginScreen api={testApi({ login })} onAuthenticated={onAuthenticated} accounts={SEED_ACCOUNTS} />,
+    );
 
     await submitForm(container.querySelector("form"));
 
@@ -217,7 +225,7 @@ describe("LoginScreen — real login flow", () => {
     const login = vi.fn(async () => ({ accessToken: "tok" }));
     let session: Session | null = null;
     const container = await mount(
-      <LoginScreen api={testApi({ login })} onAuthenticated={(s) => (session = s)} />,
+      <LoginScreen api={testApi({ login })} onAuthenticated={(s) => (session = s)} accounts={SEED_ACCOUNTS} />,
     );
 
     const financeBtn = Array.from(container.querySelectorAll<HTMLButtonElement>(".acct")).find((b) =>
