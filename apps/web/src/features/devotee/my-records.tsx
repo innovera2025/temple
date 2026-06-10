@@ -34,6 +34,7 @@ function methodLabel(method: string): string {
 function statusBadge(status: string): ReactElement {
   if (status === "issued") return <Badge kind="reconciled">ออกแล้ว</Badge>;
   if (status === "confirmed") return <Badge kind="credit">สำเร็จ</Badge>;
+  if (status === "pledged") return <Badge kind="pending">รอวัดยืนยันยอด</Badge>;
   if (status === "cancelled" || status === "voided") return <Badge kind="void">ยกเลิก</Badge>;
   return <Badge kind="neutral">{status}</Badge>;
 }

@@ -26,8 +26,10 @@ export const DONATION_METHOD_LABELS_TH: Record<DonationMethod, string> = {
 export const DONATION_STATUSES = ["pledged", "confirmed", "cancelled"] as const;
 export type DonationStatus = (typeof DONATION_STATUSES)[number];
 
+// `pledged` = self-reported through the devotee portal, money not yet verified
+// by staff — no income is posted to the ledger until the confirm step.
 export const DONATION_STATUS_LABELS_TH: Record<DonationStatus, string> = {
-  pledged: "ตั้งใจบริจาค",
+  pledged: "รอยืนยันยอด",
   confirmed: "ยืนยันแล้ว",
   cancelled: "ยกเลิกแล้ว",
 };

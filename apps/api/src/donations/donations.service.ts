@@ -23,8 +23,18 @@ export interface DonationRecord {
 
 export interface CreatedDonation {
   donation: DonationRecord;
-  ledgerEntry: LedgerEntryRecord;
+  /** null for a `pledged` donation — income posts only on staff confirmation. */
+  ledgerEntry: LedgerEntryRecord | null;
 }
+
+/**
+ * Who vouches for the money having actually arrived:
+ * - "confirmed": staff recorded cash/transfer in hand -> post income now.
+ * - "pledged": self-reported (devotee plane) -> NO ledger posting until a
+ *   staff `confirm()` verifies the funds. The official books must never
+ *   contain unverified self-service income.
+ */
+export type DonationCreateStatus = "confirmed" | "pledged";
 
 interface LedgerAccountRow {
   id: string;
@@ -154,26 +164,30 @@ export class DonationsService {
     resolveDonorId: (tx: Prisma.TransactionClient) => Promise<string>,
     input: Omit<CreateDonationInput, "donorId">,
     ip?: string,
+    status: DonationCreateStatus = "confirmed",
   ): Promise<CreatedDonation> {
     return this.prisma.withTenant(tenantId, async (tx) => {
       const donorId = await resolveDonorId(tx);
-      return this.createInTx(tx, tenantId, actor, { ...input, donorId }, ip);
+      return this.createInTx(tx, tenantId, actor, { ...input, donorId }, ip, status);
     });
   }
 
-  /** Donation create + income post + audit, run inside the caller's tenant tx. */
+  /** Donation create (+ income post when confirmed) + audit, in the caller's tenant tx. */
   private async createInTx(
     tx: Prisma.TransactionClient,
     tenantId: string,
     actor: AuditActor,
     input: CreateDonationInput,
     ip?: string,
+    status: DonationCreateStatus = "confirmed",
   ): Promise<CreatedDonation> {
     const donationDate = toDateOnly(input.donationDate);
 
     if (input.donorId) {
       await this.assertDonorInTenant(tx, input.donorId);
     }
+    // Resolve (and validate) the revenue account up front even for a pledge,
+    // so a bad fundAccountId is a clean 422 at submit time, not at confirm time.
     const account = await this.resolveRevenueAccount(tx, input.fundAccountId ?? undefined);
 
     const donation = (await tx.donation.create({
@@ -183,7 +197,7 @@ export class DonationsService {
         amountSatang: BigInt(input.amountSatang),
         method: input.method,
         donationDate,
-        status: "confirmed",
+        status,
         note: input.note ?? null,
         fundAccountId: input.fundAccountId ?? null,
       },
@@ -202,6 +216,10 @@ export class DonationsService {
       },
     });
 
+    if (status === "pledged") {
+      return { donation, ledgerEntry: null };
+    }
+
     const ledgerEntry = await this.ledger.postDonationIncome(
       tx,
       {
@@ -216,6 +234,67 @@ export class DonationsService {
     );
 
     return { donation, ledgerEntry };
+  }
+
+  /**
+   * Staff verification of a pledged (self-service) donation: only after a
+   * staff member confirms the money actually arrived does the income post to
+   * the official ledger. Row-locked so two concurrent confirms serialize (the
+   * loser re-reads `confirmed` and gets 409); the posting respects closed
+   * periods exactly like a staff-recorded donation.
+   */
+  async confirm(
+    tenantId: string,
+    actor: AuditActor,
+    id: string,
+    ip?: string,
+  ): Promise<CreatedDonation> {
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      await this.lockDonationRow(tx, id);
+      const before = (await tx.donation.findFirst({ where: { id } })) as DonationRecord | null;
+      if (!before) {
+        throw projectHttpException(404, "NOT_FOUND", "ไม่พบรายการบริจาค");
+      }
+      if (before.status !== "pledged") {
+        throw projectHttpException(409, "CONFLICT", "ยืนยันได้เฉพาะรายการที่รอตรวจสอบยอด");
+      }
+
+      const account = await this.resolveRevenueAccount(tx, before.fundAccountId ?? undefined);
+
+      const after = (await tx.donation.update({
+        where: { id },
+        data: { status: "confirmed", updatedAt: new Date() },
+      })) as DonationRecord;
+
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          ...auditActorData(actor),
+          action: "donation:confirm",
+          entityType: "donation",
+          entityId: after.id,
+          before: donationSnapshot(before),
+          after: donationSnapshot(after),
+          metadata: {},
+          ip,
+        },
+      });
+
+      const ledgerEntry = await this.ledger.postDonationIncome(
+        tx,
+        {
+          tenantId,
+          accountId: account.id,
+          donationId: after.id,
+          amountSatang: after.amountSatang,
+          entryDate: after.donationDate,
+          description: LEDGER_INCOME_DESCRIPTION,
+        },
+        { actor, ip },
+      );
+
+      return { donation: after, ledgerEntry };
+    });
   }
 
   async list(tenantId: string, query: DonationSearchQuery): Promise<DonationRecord[]> {

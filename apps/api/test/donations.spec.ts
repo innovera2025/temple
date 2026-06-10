@@ -515,13 +515,55 @@ describe("donations + auto-posted income ledger", () => {
     );
   });
 
-  it("restricts roles: create allows staff, void is admin/finance only", () => {
+  it("confirms a pledged (devotee-reported) donation: income posts ONLY at staff confirmation", async () => {
+    const pledgedId = (
+      await psqlJson<{ id: string }>(
+        `INSERT INTO donations (tenant_id, amount_satang, method, donation_date, status) VALUES ('${templeA}', 77700, 'bank_transfer', '${today}', 'pledged') RETURNING id`,
+      )
+    )[0]?.id as string;
+
+    // pledged -> nothing in the books yet
+    expect(await psql(`SELECT count(*) FROM ledger_entries WHERE donation_id = '${pledgedId}'`)).toBe("0");
+
+    const { donation, ledgerEntry } = await donations.confirm(actorA, templeA, "127.0.0.1", pledgedId);
+    expect(donation.status).toBe("confirmed");
+    expect(ledgerEntry).toMatchObject({ status: "posted", amountSatang: "77700", donationId: pledgedId });
+
+    const audits = await auditRowsFor(templeA, pledgedId);
+    expect(audits.map((a) => a.action)).toContain("donation:confirm");
+
+    // double-confirm -> 409, and still exactly one posted entry
+    await expectProjectHttpError(
+      donations.confirm(actorA, templeA, "127.0.0.1", pledgedId),
+      409,
+      "CONFLICT",
+    );
+    expect(await psql(`SELECT count(*) FROM ledger_entries WHERE donation_id = '${pledgedId}'`)).toBe("1");
+
+    // confirming a staff-recorded (already confirmed) donation -> 409
+    const { donation: staffDonation } = await donations.create(actorA, templeA, "127.0.0.1", {
+      amountSatang: 1000,
+      method: "cash",
+      donationDate: today,
+    });
+    await expectProjectHttpError(
+      donations.confirm(actorA, templeA, "127.0.0.1", staffDonation.id),
+      409,
+      "CONFLICT",
+    );
+  });
+
+  it("restricts roles: create allows staff, void/confirm are admin/finance only", () => {
     expect(reflector.get<string[]>(ROLES_KEY, DonationsController.prototype.create)).toEqual([
       "admin",
       "finance",
       "staff",
     ]);
     expect(reflector.get<string[]>(ROLES_KEY, DonationsController.prototype.void)).toEqual([
+      "admin",
+      "finance",
+    ]);
+    expect(reflector.get<string[]>(ROLES_KEY, DonationsController.prototype.confirm)).toEqual([
       "admin",
       "finance",
     ]);

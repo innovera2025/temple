@@ -32,9 +32,10 @@ export class DevoteeDonationsService {
     const tenantId = await this.temples.assertActiveTemple(templeId);
     const { displayName } = await this.accounts.requireProfile(devotee.sub);
 
-    // Reuse the staff donation path (auto-posts the income ledger entry to the
-    // revenue account). The actor is the devotee, so its audit rows carry
-    // actor_type='devotee'/actor_devotee_account_id=me and a NULL actor_user_id.
+    // Reuse the staff donation path, but as a PLEDGE: a self-reported donation
+    // must never post income into the official ledger until staff verify the
+    // money actually arrived (POST /donations/:id/confirm). The actor is the
+    // devotee, so audit rows carry actor_type='devotee' and a NULL user id.
     // The donor find-or-create runs INSIDE the donation transaction (resolver
     // below), so a failed donation (e.g. 422) rolls the donor back too — no
     // orphan donor is ever committed.
@@ -49,6 +50,7 @@ export class DevoteeDonationsService {
         ...(input.note ? { note: input.note } : {}),
       },
       ip,
+      "pledged",
     );
   }
 

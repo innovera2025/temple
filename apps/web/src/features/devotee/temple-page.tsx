@@ -430,9 +430,9 @@ function DonateForm({ api, token, templeId, today, onUnauthorized }: DonateFormP
       {result ? (
         <div className="auth-success" role="status">
           <p>
-            อนุโมทนาบุญ! บันทึกการบริจาค {formatSatang(result.donation.amountSatang)} บาท เรียบร้อยแล้ว
+            อนุโมทนาบุญ! รับแจ้งการบริจาค {formatSatang(result.donation.amountSatang)} บาท เรียบร้อยแล้ว
           </p>
-          <p className="muted">เลขที่รายการบัญชี: {result.ledgerEntry.entryNo}</p>
+          <p className="muted">รอเจ้าหน้าที่วัดตรวจสอบยอดและยืนยัน จากนั้นสถานะจะเปลี่ยนเป็น “สำเร็จ” ในหน้า “รายการของฉัน”</p>
         </div>
       ) : null}
 

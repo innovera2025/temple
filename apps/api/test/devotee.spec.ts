@@ -220,9 +220,15 @@ describe("devotee self-service plane", () => {
       devoteeAccountId: randomUUID(),
     } as never);
 
-    expect(result.donation.status).toBe("confirmed");
+    // Self-reported money is a PLEDGE: no income posts to the official ledger
+    // until staff confirm the funds (POST /donations/:id/confirm).
+    expect(result.donation.status).toBe("pledged");
     expect(result.donation.amountSatang).toBe("50000");
-    expect(result.ledgerEntry.entryNo).toBeTruthy();
+    expect(result.ledgerEntry).toBeNull();
+    const ledgerCount = await psql(
+      `SELECT count(*) FROM ledger_entries WHERE donation_id = ${lit(result.donation.id)}`,
+    );
+    expect(ledgerCount).toBe("0");
 
     // The donor is keyed to THIS devotee (token), never the forged id.
     const donorDevotee = await psql(
@@ -242,11 +248,11 @@ describe("devotee self-service plane", () => {
     );
     expect(auditRow).toBe(`devotee|NULL|${devotee1.sub}`);
 
-    // The ledger:post audit row carries the devotee actor too.
-    const ledgerAudit = await psql(
-      `SELECT actor_type, actor_user_id FROM audit_logs WHERE action = 'ledger:post' AND entity_id = ${lit(result.ledgerEntry.id)}`,
+    // No ledger:post audit either — posting happens only at staff confirmation.
+    const ledgerAuditCount = await psql(
+      `SELECT count(*) FROM audit_logs WHERE action = 'ledger:post' AND (metadata->>'donationId') = ${lit(result.donation.id)}`,
     );
-    expect(ledgerAudit.startsWith("devotee|")).toBe(true);
+    expect(ledgerAuditCount).toBe("0");
   });
 
   it("reuses ONE donor per (temple, devotee) across repeat donations", async () => {

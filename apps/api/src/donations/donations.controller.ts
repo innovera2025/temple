@@ -127,9 +127,41 @@ export class DonationsController {
       result.data,
       ip,
     );
+    if (!created.ledgerEntry) {
+      // Staff-recorded donations are always confirmed -> always posted.
+      throw projectHttpException(500, "INTERNAL", "ไม่พบรายการบัญชีที่ลงคู่กับการบริจาค");
+    }
     return {
       donation: serializeDonation(created.donation),
       ledgerEntry: serializeLedgerEntry(created.ledgerEntry),
+    };
+  }
+
+  /**
+   * ยืนยันยอดบริจาคที่ญาติโยมแจ้งผ่านพอร์ทัล (status `pledged`): staff vouch
+   * that the money actually arrived — the income posts to the ledger only here.
+   */
+  @Post(":id/confirm")
+  @Roles(...DONATION_VOID_ROLES)
+  async confirm(
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentTenant() tenantId: string,
+    @Ip() ip: string,
+    @Param("id") id: string,
+  ): Promise<{ donation: SerializedDonation; ledgerEntry: SerializedLedgerEntry }> {
+    assertUuidParam(id);
+    const confirmed = await this.donations.confirm(
+      tenantId,
+      { kind: "user", userId: user.sub },
+      id,
+      ip,
+    );
+    if (!confirmed.ledgerEntry) {
+      throw projectHttpException(500, "INTERNAL", "ไม่พบรายการบัญชีที่ลงคู่กับการบริจาค");
+    }
+    return {
+      donation: serializeDonation(confirmed.donation),
+      ledgerEntry: serializeLedgerEntry(confirmed.ledgerEntry),
     };
   }
 

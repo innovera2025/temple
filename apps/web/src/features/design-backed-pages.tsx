@@ -343,6 +343,20 @@ export function DesignDonations({ api, donorsApi, receiptsApi, canWrite = true, 
     }
   }
 
+  async function confirmPledge(donation: DonationView): Promise<void> {
+    if (!api) return;
+    setActionBusy(true);
+    try {
+      await api.confirm(donation.id);
+      setToast("ยืนยันรับเงินแล้ว · ลงบัญชีรายรับเรียบร้อย");
+      setReloadKey((k) => k + 1);
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : "ยืนยันรับเงินไม่สำเร็จ");
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
   async function submitVoid(): Promise<void> {
     if (!api || !voidTarget) return;
     if (!voidReason.trim()) { setVoidErr("กรุณาระบุเหตุผลการยกเลิก"); return; }
@@ -438,7 +452,12 @@ export function DesignDonations({ api, donorsApi, receiptsApi, canWrite = true, 
                   <td><Badge kind={d.status === "confirmed" ? "credit" : d.status === "cancelled" ? "debit" : "pending"} dot>{statusLabel(d.status)}</Badge></td>
                   <td>{hasReceipt ? <Badge kind="reconciled" dot>ออกแล้ว</Badge> : <span className="muted">ยังไม่ออก</span>}</td>
                   <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                    {canWrite && d.status === "confirmed" ? (
+                    {canWrite && d.status === "pledged" ? (
+                      <span className="row" style={{ gap: 6, justifyContent: "flex-end" }}>
+                        <Button variant="primary" size="sm" disabled={actionBusy} onClick={() => void confirmPledge(d)}>ยืนยันรับเงิน</Button>
+                        <Button variant="danger" size="sm" disabled={actionBusy} onClick={() => { setVoidTarget(d); setVoidReason(""); setVoidErr(null); }}>ยกเลิก</Button>
+                      </span>
+                    ) : canWrite && d.status === "confirmed" ? (
                       <span className="row" style={{ gap: 6, justifyContent: "flex-end" }}>
                         {!hasReceipt && receiptsApi ? (
                           <Button variant="secondary" size="sm" disabled={actionBusy} onClick={() => void issueReceipt(d)}>ออกใบอนุโมทนา</Button>

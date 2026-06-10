@@ -129,6 +129,8 @@ export interface DonationsApi {
   list(query?: DonationSearchQuery): Promise<DonationView[]>;
   create(input: CreateDonationInput): Promise<DonationView>;
   void(id: string, reason: string): Promise<DonationView>;
+  /** Staff verification of a devotee pledge — posts the income on success. */
+  confirm(id: string): Promise<DonationView>;
 }
 
 export function buildDonationQuery(query: DonationSearchQuery = {}): string {
@@ -192,6 +194,13 @@ export function createDonationsApiClient(options: DonationsApiClientOptions): Do
         method: "POST",
         headers: headers(),
         body: JSON.stringify({ reason }),
+      });
+      return handle(response, (body) => body.donation as DonationView);
+    },
+    async confirm(id) {
+      const response = await doFetch(`${options.baseUrl}/donations/${id}/confirm`, {
+        method: "POST",
+        headers: headers(),
       });
       return handle(response, (body) => body.donation as DonationView);
     },

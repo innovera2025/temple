@@ -77,7 +77,8 @@ export interface DonationResult {
     donationDate: string;
     status: string;
   };
-  ledgerEntry: { id: string; entryNo: string };
+  /** null while the pledge awaits staff verification — no income posted yet. */
+  ledgerEntry: { id: string; entryNo: string } | null;
 }
 
 export interface DevoteeDonationRecord {

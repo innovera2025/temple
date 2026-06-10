@@ -32,7 +32,7 @@ interface SerializedLedgerEntry {
 
 function serialize(created: CreatedDonation): {
   donation: SerializedDonation;
-  ledgerEntry: SerializedLedgerEntry;
+  ledgerEntry: SerializedLedgerEntry | null;
 } {
   const { donation, ledgerEntry } = created;
   return {
@@ -47,13 +47,17 @@ function serialize(created: CreatedDonation): {
       note: donation.note,
       createdAt: donation.createdAt.toISOString(),
     },
-    ledgerEntry: {
-      id: ledgerEntry.id,
-      entryNo: ledgerEntry.entryNo,
-      amountSatang: ledgerEntry.amountSatang.toString(),
-      entryDate: ledgerEntry.entryDate.toISOString().slice(0, 10),
-      status: ledgerEntry.status,
-    },
+    // null until staff confirm the pledge — devotee donations never post
+    // income to the official ledger by themselves.
+    ledgerEntry: ledgerEntry
+      ? {
+          id: ledgerEntry.id,
+          entryNo: ledgerEntry.entryNo,
+          amountSatang: ledgerEntry.amountSatang.toString(),
+          entryDate: ledgerEntry.entryDate.toISOString().slice(0, 10),
+          status: ledgerEntry.status,
+        }
+      : null,
   };
 }
 
@@ -74,7 +78,7 @@ export class DevoteeDonationsController {
     @Param("templeId") templeId: string,
     @Ip() ip: string,
     @Body() body: unknown,
-  ): Promise<{ donation: SerializedDonation; ledgerEntry: SerializedLedgerEntry }> {
+  ): Promise<{ donation: SerializedDonation; ledgerEntry: SerializedLedgerEntry | null }> {
     if (!devotee) {
       throw unauthorized("Missing access token");
     }

@@ -127,8 +127,8 @@ function makeApi(overrides: Partial<DevoteeApi> = {}): DevoteeApi {
     listTemples: async () => [templeSummary],
     getTemple: async () => templeProfile,
     donate: async () => ({
-      donation: { id: "d1", amountSatang: "50000", method: "cash", donationDate: "2026-06-01", status: "confirmed" },
-      ledgerEntry: { id: "l1", entryNo: "LG-2026-0001" },
+      donation: { id: "d1", amountSatang: "50000", method: "cash", donationDate: "2026-06-01", status: "pledged" },
+      ledgerEntry: null,
     }),
     bookCeremony: async () => ({
       booking: { id: "c1", status: "requested", title: "ทำบุญขึ้นบ้านใหม่", ceremonyDate: "2026-07-01" },
@@ -310,7 +310,10 @@ describe("devotee views (mounted)", () => {
     });
     await flush();
     expect(container.textContent).toContain("อนุโมทนาบุญ");
-    expect(container.textContent).toContain("LG-2026-0001");
+    // A devotee donation is a pledge: no ledger entry number — the portal
+    // explains that staff will verify the amount before it counts.
+    expect(container.textContent).toContain("รอเจ้าหน้าที่วัดตรวจสอบยอดและยืนยัน");
+    expect(container.textContent).not.toContain("เลขที่รายการบัญชี");
   });
 
   it("blocks an over-cap donation client-side without calling the API", async () => {
@@ -319,8 +322,8 @@ describe("devotee views (mounted)", () => {
       donate: async () => {
         donateCalled = true;
         return {
-          donation: { id: "d1", amountSatang: "1", method: "cash", donationDate: "2026-06-04", status: "confirmed" },
-          ledgerEntry: { id: "l1", entryNo: "LG-1" },
+          donation: { id: "d1", amountSatang: "1", method: "cash", donationDate: "2026-06-04", status: "pledged" },
+          ledgerEntry: null,
         };
       },
     });
