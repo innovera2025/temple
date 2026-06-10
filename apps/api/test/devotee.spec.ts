@@ -511,7 +511,7 @@ describe("devotee self-service plane", () => {
 
   it("lists upcoming PUBLIC events for a temple with safe columns only (no requester PII)", async () => {
     await psql(
-      `INSERT INTO ceremonies (tenant_id, ceremony_type, title, ceremony_date, status, is_public, requester_name, requester_phone) VALUES (${lit(templeA)}, 'kathin', 'งานกฐินสาธารณะ', '2031-11-05', 'planned', true, 'ห้ามเปิดเผย', '0800000000')`,
+      `INSERT INTO ceremonies (tenant_id, ceremony_type, title, ceremony_date, status, is_public, requester_name, requester_phone) VALUES (${lit(templeA)}, 'robe_offering', 'งานกฐินสาธารณะ', '2031-11-05', 'planned', true, 'ห้ามเปิดเผย', '0800000000')`,
     );
     const { events } = await itemLoansCtrl.events(templeA);
     const ev = events.find((e) => e.title === "งานกฐินสาธารณะ");

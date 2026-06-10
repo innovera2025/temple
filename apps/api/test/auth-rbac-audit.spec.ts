@@ -287,6 +287,25 @@ describe("auth, RBAC, tenant context, and audit", () => {
     );
   });
 
+  it("replaying a consumed refresh token revokes the whole family (reuse containment)", async () => {
+    const first = await authService.login({ email: adminEmail, password: devPassword });
+    const rotated = await authService.refresh({ refreshToken: first.refreshToken });
+
+    // Replaying the already-consumed token is rejected AND revokes the family —
+    // the freshly rotated token must be dead too, and the revocation must
+    // survive the 401 (it persists in its own transaction).
+    await expectProjectHttpError(
+      authService.refresh({ refreshToken: first.refreshToken }),
+      401,
+      "UNAUTHORIZED",
+    );
+    await expectProjectHttpError(
+      authService.refresh({ refreshToken: rotated.refreshToken }),
+      401,
+      "UNAUTHORIZED",
+    );
+  });
+
   it("allows only one concurrent refresh rotation for the same refresh token", async () => {
     const first = await authService.login({ email: adminEmail, password: devPassword });
     const attempts = await Promise.allSettled([

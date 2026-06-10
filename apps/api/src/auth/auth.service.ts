@@ -173,7 +173,7 @@ export class AuthService {
     const now = new Date();
     const replacementTokenId = randomUUID();
 
-    return this.prisma.withTenant(payload.tenant_id, async (tx) => {
+    const result = await this.prisma.withTenant(payload.tenant_id, async (tx) => {
       const revoked = await tx.authRefreshToken.updateMany({
         where: {
           id: payload.token_id,
@@ -190,7 +190,16 @@ export class AuthService {
       });
 
       if (revoked.count !== 1) {
-        throw unauthorized("Invalid refresh token");
+        // Reuse containment: a replay of an ALREADY-revoked token (matching hash)
+        // means the family may be compromised. The family revocation must NOT run
+        // here — a throw inside this transaction would roll it back — so signal
+        // the caller, which persists the revocation in its own transaction.
+        const existing = await tx.authRefreshToken.findUnique({
+          where: { id: payload.token_id },
+          select: { tokenHash: true, revokedAt: true },
+        });
+        const reuseDetected = existing?.tokenHash === tokenHash && existing.revokedAt !== null;
+        return { ok: false as const, reuseDetected };
       }
 
       const user = await tx.user.findFirst({
@@ -233,15 +242,32 @@ export class AuthService {
       });
 
       return {
-        accessToken: this.tokenService.signAccessToken({
-          sub: user.id,
-          tenant_id: user.tenantId,
-          role: user.role,
-          email: user.email,
-        }),
-        refreshToken: replacement.refreshToken,
+        ok: true as const,
+        tokens: {
+          accessToken: this.tokenService.signAccessToken({
+            sub: user.id,
+            tenant_id: user.tenantId,
+            role: user.role,
+            email: user.email,
+          }),
+          refreshToken: replacement.refreshToken,
+        },
       };
     });
+
+    if (!result.ok) {
+      if (result.reuseDetected) {
+        await this.prisma.withTenant(payload.tenant_id, (tx) =>
+          tx.authRefreshToken.updateMany({
+            where: { userId: payload.sub, revokedAt: null },
+            data: { revokedAt: now },
+          }),
+        );
+      }
+      throw unauthorized("Invalid refresh token");
+    }
+
+    return result.tokens;
   }
 
   async logout(dto: LogoutDto): Promise<{ revoked: true }> {

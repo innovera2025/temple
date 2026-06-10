@@ -181,6 +181,17 @@ describe("platform admin", () => {
     expect(claims.tenant_id).toBeUndefined();
   });
 
+  it("replaying a consumed platform refresh token revokes the whole family", async () => {
+    const t0 = await platformAuth.login({ email: supportEmail, password: devPassword });
+    const t1 = await platformAuth.refresh(t0.refreshToken);
+    expect(t1.refreshToken).not.toBe(t0.refreshToken);
+
+    // Replay of the consumed t0 is rejected AND (reuse containment) the family
+    // revocation persists past the 401 — so the rotated t1 is dead too.
+    await expectHttpError(platformAuth.refresh(t0.refreshToken), 401);
+    await expectHttpError(platformAuth.refresh(t1.refreshToken), 401);
+  });
+
   it("rejects a disabled platform user and a wrong password at login", async () => {
     const hash = await passwordService.hash(devPassword);
     const email = `disabled-${randomUUID()}@innovera.example`;
