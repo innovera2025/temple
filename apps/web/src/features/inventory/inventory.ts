@@ -117,33 +117,61 @@ const HEADER_MAP: Record<string, keyof ImportItemInput> = {
   note: "note", "หมายเหตุ": "note",
 };
 
-/** Parse an .xlsx File (first sheet) into import rows, mapping TH/EN headers.
- *  SheetJS is loaded on demand so it stays out of the main bundle. */
+/**
+ * Normalize an exceljs cell value to display text — cells can hold rich text,
+ * hyperlinks, formula results, or dates, not just scalars.
+ */
+function cellText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "object") {
+    const v = value as { richText?: Array<{ text: string }>; text?: unknown; result?: unknown };
+    if (Array.isArray(v.richText)) return v.richText.map((part) => part.text).join("");
+    if (v.text !== undefined) return String(v.text);
+    if (v.result !== undefined) return cellText(v.result);
+    return "";
+  }
+  return String(value);
+}
+
+/** Parse an .xlsx File (first sheet, header row first) into import rows,
+ *  mapping TH/EN headers. exceljs is loaded on demand so it stays out of the
+ *  main bundle. (Replaced the abandoned SheetJS build that carried unpatched
+ *  advisories — exceljs reads modern .xlsx only, not legacy .xls.) */
 export async function parseInventoryXlsx(file: File): Promise<ImportItemInput[]> {
-  const XLSX = await import("xlsx");
+  const ExcelJS = await import("exceljs");
   const buffer = await file.arrayBuffer();
-  const wb = XLSX.read(new Uint8Array(buffer), { type: "array" });
-  const sheetName = wb.SheetNames[0];
-  const sheet = sheetName ? wb.Sheets[sheetName] : undefined;
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buffer);
+  const sheet = wb.worksheets[0];
   if (!sheet) return [];
-  const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+
+  // Column -> import field, resolved from the header row (row 1).
+  const fields = new Map<number, keyof ImportItemInput>();
+  sheet.getRow(1).eachCell({ includeEmpty: false }, (cell, col) => {
+    const header = cellText(cell.value).trim();
+    const field = HEADER_MAP[header.toLowerCase()] ?? HEADER_MAP[header];
+    if (field) fields.set(col, field);
+  });
+
   const rows: ImportItemInput[] = [];
-  for (const r of raw) {
+  sheet.eachRow({ includeEmpty: false }, (sheetRow, rowNumber) => {
+    if (rowNumber === 1) return;
     const row: Record<string, unknown> = {};
-    for (const [header, value] of Object.entries(r)) {
-      const field = HEADER_MAP[String(header).trim().toLowerCase()] ?? HEADER_MAP[String(header).trim()];
-      if (!field) continue;
+    sheetRow.eachCell({ includeEmpty: false }, (cell, col) => {
+      const field = fields.get(col);
+      if (!field) return;
+      const text = cellText(cell.value).trim();
       if (field === "quantity") {
-        const n = Number(String(value).replace(/[^0-9.-]/g, ""));
-        if (Number.isFinite(n) && String(value).trim() !== "") row.quantity = Math.trunc(n);
-      } else {
-        const s = String(value).trim();
-        if (s) row[field] = s;
+        const n = Number(text.replace(/[^0-9.-]/g, ""));
+        if (Number.isFinite(n) && text !== "") row.quantity = Math.trunc(n);
+      } else if (text) {
+        row[field] = text;
       }
-    }
+    });
     // skip fully-empty rows
     if (Object.keys(row).length > 0) rows.push(row as unknown as ImportItemInput);
-  }
+  });
   return rows;
 }
 

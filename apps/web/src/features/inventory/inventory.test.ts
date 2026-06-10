@@ -1,4 +1,4 @@
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { describe, expect, it, vi } from "vitest";
 import {
   buildItemQuery,
@@ -23,13 +23,12 @@ const item: InventoryItem = {
 };
 
 /** Build an in-memory .xlsx and wrap it as a File-like object for parseInventoryXlsx. */
-function xlsxFile(aoa: unknown[][]): File {
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
-  const out = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer | Uint8Array;
-  const ab = out instanceof Uint8Array ? out.buffer : out;
-  return { arrayBuffer: async () => ab } as unknown as File;
+async function xlsxFile(aoa: unknown[][]): Promise<File> {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Sheet1");
+  for (const row of aoa) ws.addRow(row);
+  const ab = await wb.xlsx.writeBuffer();
+  return { arrayBuffer: async () => ab as ArrayBuffer } as unknown as File;
 }
 
 describe("inventory helpers", () => {
@@ -159,7 +158,7 @@ describe("inventory API client", () => {
 
 describe("parseInventoryXlsx", () => {
   it("maps Thai headers, coerces quantity, and skips empty rows", async () => {
-    const file = xlsxFile([
+    const file = await xlsxFile([
       ["ชื่อ", "ประเภท", "จำนวน", "หน่วย", "ห้อง", "หมายเหตุ"],
       ["โต๊ะหมู่บูชา", "อุปกรณ์/ครุภัณฑ์", "2", "ชุด", "โรงเก็บ A", "สภาพดี"],
       ["", "", "", "", "", ""],
@@ -180,7 +179,7 @@ describe("parseInventoryXlsx", () => {
   });
 
   it("maps English headers too", async () => {
-    const file = xlsxFile([
+    const file = await xlsxFile([
       ["name", "category", "qty", "unit", "room"],
       ["Bowl", "supplies", "5", "ชิ้น", "Store 1"],
     ]);

@@ -348,7 +348,7 @@ export function InventoryPage({ api, canWrite }: { api: InventoryApi; canWrite: 
             <input
               ref={fileInputRef}
               type="file"
-              accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               className="hidden"
               aria-label="ไฟล์ Excel นำเข้า"
               onChange={(event) => { void onImportFile(event.target.files?.[0] ?? null); }}

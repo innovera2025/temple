@@ -1,7 +1,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InventoryApi, InventoryItem, InventoryMovement, RoomView } from "./inventory";
 import { InventoryPage, ItemForm, ItemsTable, MovementForm, MovementsTable } from "./inventory-view";
 
@@ -158,23 +158,24 @@ describe("inventory page (mounted)", () => {
     expect(fileInput).toBeTruthy();
 
     // Build a real .xlsx and drive the change handler (parseInventoryXlsx runs for real).
-    const XLSX = await import("xlsx");
-    const ws = XLSX.utils.aoa_to_sheet([
-      ["ชื่อ", "จำนวน", "ห้อง"],
-      ["เทียน", "10", "โรงเก็บใหม่"],
-    ]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
-    const out = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer | Uint8Array;
-    const ab = out instanceof Uint8Array ? out.buffer : out;
-    const file = { name: "in.xlsx", arrayBuffer: async () => ab } as unknown as File;
+    const { default: ExcelJS } = await import("exceljs");
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Sheet1");
+    ws.addRow(["ชื่อ", "จำนวน", "ห้อง"]);
+    ws.addRow(["เทียน", "10", "โรงเก็บใหม่"]);
+    const ab = await wb.xlsx.writeBuffer();
+    const file = { name: "in.xlsx", arrayBuffer: async () => ab as ArrayBuffer } as unknown as File;
     Object.defineProperty(fileInput, "files", { value: [file], configurable: true });
 
     await act(async () => {
       fileInput.dispatchEvent(new Event("change", { bubbles: true }));
     });
+    // exceljs parses asynchronously (zip inflate) — wait for the handler to
+    // finish instead of counting microtask flushes.
+    await vi.waitFor(() => {
+      if (importedRows === null) throw new Error("import not finished yet");
+    });
     await act(async () => {
-      await Promise.resolve();
       await Promise.resolve();
     });
 
