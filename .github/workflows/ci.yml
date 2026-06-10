@@ -71,4 +71,6 @@ jobs:
           POSTGRES_DB: ci
           DATABASE_URL: postgresql://ci:ci-build-only@db:5432/ci?schema=public
           JWT_SECRET: ci-build-only-secret-0123456789abcdefghijklmnop
+          REDIS_PASSWORD: ci-build-only
+          BACKUP_PASSPHRASE: ci-build-only
         run: docker compose -f infra/docker/docker-compose.prod.yml build

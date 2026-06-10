@@ -8,7 +8,8 @@
 # so the browser talks to the API same-origin (no CORS needed).
 # ---------------------------------------------------------------------------
 
-FROM node:22-bookworm-slim AS builder
+# Digest-pinned — see apps/api/Dockerfile note on refreshing deliberately.
+FROM node:22-bookworm-slim@sha256:7af03b14a13c8cdd38e45058fd957bf00a72bbe17feac43b1c15a689c029c732 AS builder
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 RUN corepack enable
@@ -30,7 +31,7 @@ RUN pnpm --filter @wat/shared build \
   && pnpm --filter @wat/web build
 
 # ---- runner: static assets on nginx ------------------------------------------
-FROM nginx:1.27-alpine AS runner
+FROM nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10 AS runner
 COPY infra/docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /app/apps/web/dist /usr/share/nginx/html
 EXPOSE 80

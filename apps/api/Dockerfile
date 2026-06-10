@@ -7,7 +7,9 @@
 # Stages: base -> builder -> (migrate | runner).
 # ---------------------------------------------------------------------------
 
-FROM node:22-bookworm-slim AS base
+# Digest-pinned (node:22-bookworm-slim) — reproducible builds, no silent
+# upstream drift. Refresh deliberately: docker buildx imagetools inspect node:22-bookworm-slim
+FROM node:22-bookworm-slim@sha256:7af03b14a13c8cdd38e45058fd957bf00a72bbe17feac43b1c15a689c029c732 AS base
 # Prisma's query engine needs OpenSSL + CA certs at build and run time.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends openssl ca-certificates \
@@ -47,13 +49,34 @@ FROM builder AS migrate
 ENV DATABASE_URL=""
 CMD ["pnpm", "--filter", "@wat/db", "exec", "prisma", "migrate", "deploy"]
 
-# ---- runner: lean-ish runtime, non-root --------------------------------------
+# ---- pruned: clean production-only install ------------------------------------
+# vitest/tsx/turbo/typescript have no business in the production image — size
+# and attack surface. A fresh `--prod` install is deterministic where
+# `pnpm prune --prod` is not (it leaves root devDependencies behind).
+FROM base AS pruned
+ENV DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json turbo.json ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY packages/db/package.json packages/db/package.json
+COPY packages/shared/package.json packages/shared/package.json
+RUN pnpm install --frozen-lockfile --prod
+# Generate the Prisma client into the prod store. The prisma CLI is a
+# devDependency, so fetch it ephemerally instead of shipping it.
+COPY packages/db/prisma packages/db/prisma
+RUN pnpm --package=prisma@6.19.3 dlx prisma generate --schema=packages/db/prisma/schema.prisma
+# Built JS only — no TS sources, no devDependencies.
+COPY --from=builder /app/packages/shared/dist packages/shared/dist
+COPY --from=builder /app/packages/db/dist packages/db/dist
+COPY --from=builder /app/apps/api/dist apps/api/dist
+
+# ---- runner: lean runtime, non-root -------------------------------------------
 FROM base AS runner
 ENV NODE_ENV=production
 ENV API_PORT=3000
-# Bring the built workspace. node_modules keeps pnpm's symlink graph (incl. the
+# Bring the pruned workspace. node_modules keeps pnpm's symlink graph (incl. the
 # generated Prisma client) intact, so it must be copied whole — not a subset.
-COPY --from=builder --chown=node:node /app /app
+COPY --from=pruned --chown=node:node /app /app
 USER node
 WORKDIR /app/apps/api
 EXPOSE 3000
