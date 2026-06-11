@@ -1,35 +1,18 @@
-// Dev-only backend smoke-test shell. NOT the temple product UI.
-// Reachable only via the #/smoke dev route (see app.tsx). The real, design-backed
-// temple UI is being ported from artifacts/claude-design per docs/product/design-ui-map.md.
+// Dev/ops-only backend smoke-test shell. NOT the temple product UI.
+// Reachable only via #/smoke AND only for an authenticated platform owner
+// (app.tsx gates the route on loadPlatformSession). It carries NO seed
+// credentials — the operator types real credentials to log in to a tenant and
+// poke the tenant API directly.
 import { FormEvent, ReactElement, useMemo, useState } from "react";
+import { clearSession, deriveSession, loadSession, saveSession } from "../features/auth/auth";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000";
-
-type TenantRole = "admin" | "finance" | "staff";
-
-interface Session {
-  accessToken: string;
-  refreshToken?: string;
-  user: {
-    email: string;
-    displayName: string;
-    role: TenantRole;
-    tenantId: string;
-  };
-}
 
 interface SmokeResult {
   label: string;
   status: "idle" | "ok" | "fail";
   detail: string;
 }
-
-const seedAccounts = [
-  { email: "admin@wat-arun.example", role: "admin", label: "ผู้ดูแลวัดอรุณ" },
-  { email: "finance@wat-arun.example", role: "finance", label: "การเงินวัดอรุณ" },
-  { email: "staff@wat-arun.example", role: "staff", label: "เจ้าหน้าที่วัดอรุณ" },
-  { email: "admin@wat-pho.example", role: "admin", label: "ผู้ดูแลวัดโพธิ์" },
-] as const;
 
 const modules = [
   { title: "Dashboard", th: "แดชบอร์ดการเงิน", endpoint: "/dashboard", note: "ยอดรับ/จ่าย/คงเหลือ, คิวออกใบ, คิวกระทบยอด" },
@@ -61,13 +44,9 @@ async function parseJson(response: Response): Promise<unknown> {
 }
 
 export function SmokeShell(): ReactElement {
-  const [email, setEmail] = useState<string>(seedAccounts[0].email);
-  const [password, setPassword] = useState("Password123!");
-  const [session, setSession] = useState<Session | null>(() => {
-    if (typeof window === "undefined") return null;
-    const raw = window.localStorage.getItem("wat-session");
-    return raw ? (JSON.parse(raw) as Session) : null;
-  });
+  const [email, setEmail] = useState<string>("");
+  const [password, setPassword] = useState<string>("");
+  const [session, setSession] = useState(() => loadSession());
   const [message, setMessage] = useState<string>("");
   const [activeEndpoint, setActiveEndpoint] = useState<string>("/dashboard");
   const [apiPreview, setApiPreview] = useState<string>("ยังไม่ได้เรียก API");
@@ -75,7 +54,7 @@ export function SmokeShell(): ReactElement {
     modules.slice(0, 8).map((module) => ({ label: module.th, status: "idle", detail: module.endpoint })),
   );
 
-  const currentRole = session?.user.role ?? seedAccounts.find((account) => account.email === email)?.role ?? "admin";
+  const currentRole = session?.user.role ?? "admin";
   const visibleModules = useMemo(() => {
     if (currentRole === "staff") {
       return modules.filter((module) => !["Reports", "Users"].includes(module.title));
@@ -99,27 +78,18 @@ export function SmokeShell(): ReactElement {
       if (!response.ok || !body.accessToken) {
         throw new Error(body.error?.message ?? `login failed (${response.status})`);
       }
-      const selectedAccount = seedAccounts.find((account) => account.email === email);
-      const nextSession: Session = {
-        accessToken: body.accessToken,
-        refreshToken: body.refreshToken,
-        user: {
-          email,
-          displayName: selectedAccount?.label ?? email,
-          role: (selectedAccount?.role ?? "admin") as TenantRole,
-          tenantId: email.includes("wat-pho") ? "wat-pho" : "wat-arun",
-        },
-      };
-      window.localStorage.setItem("wat-session", JSON.stringify(nextSession));
+      // Role/tenant/email come from the server-verified token claims (no seed table).
+      const nextSession = deriveSession(email, { accessToken: body.accessToken, refreshToken: body.refreshToken });
+      saveSession(nextSession);
       setSession(nextSession);
-      setMessage(`เข้าสู่ระบบแล้ว: ${nextSession.user.displayName} (${nextSession.user.role})`);
+      setMessage(`เข้าสู่ระบบแล้ว: ${nextSession.user.email} (${nextSession.user.role})`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "login failed");
     }
   }
 
   function logout(): void {
-    window.localStorage.removeItem("wat-session");
+    clearSession();
     setSession(null);
     setMessage("ออกจากระบบแล้ว");
   }
@@ -175,13 +145,12 @@ export function SmokeShell(): ReactElement {
               <p className="text-sm font-semibold text-[var(--brand)]">Temple Management System · Dev smoke test</p>
               <h1 className="mt-2 text-3xl font-bold tracking-tight text-stone-950">Backend smoke test — ระบบจัดการวัด</h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-stone-600">
-                หน้านี้เป็นเครื่องมือ dev สำหรับยิง API ของ backend โดยตรง (ไม่ใช่ UI จริงตาม Design) — ทดสอบ: ข้อมูลวัด ญาติโยม รับบริจาค ใบอนุโมทนา บัญชี รายงาน บุคลากร งานบุญ คลัง และสิทธิ์ผู้ใช้
+                เครื่องมือสำหรับเจ้าของแพลตฟอร์มยิง API ของ backend โดยตรง (ไม่ใช่ UI จริงตาม Design) — ทดสอบ: ข้อมูลวัด ญาติโยม รับบริจาค ใบอนุโมทนา บัญชี รายงาน บุคลากร งานบุญ คลัง และสิทธิ์ผู้ใช้
               </p>
             </div>
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 lg:max-w-md">
               <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">API</p>
               <p className="mt-2 font-mono text-sm text-stone-800">{API_BASE_URL}</p>
-              <p className="mt-1 text-xs text-stone-600">seed password: Password123!</p>
             </div>
           </div>
         </header>
@@ -190,18 +159,29 @@ export function SmokeShell(): ReactElement {
           <form onSubmit={login} className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
             <h2 className="text-base font-semibold">เข้าสู่ระบบทดสอบ (ฝั่งวัด)</h2>
             <p className="mt-2 text-xs leading-5 text-stone-500">
-              โมเดลสิทธิ์มี 3 กลุ่มหลัก: เจ้าของแพลตฟอร์ม · เจ้าของวัด · คนใช้งานวัด. บัญชี seed ด้านล่างเป็นฝั่งวัด
-              (เจ้าของวัด = admin, คนใช้งานวัด = finance/staff) ผ่าน <code>/auth/login</code>. ส่วนเจ้าของแพลตฟอร์ม
-              เข้าผ่าน <code>/platform/auth</code> คนละ plane — smoke นี้ยังไม่ครอบคลุม (ไม่ทำปลอม)
+              กรอกบัญชีฝั่งวัด (เจ้าของวัด = admin, คนใช้งานวัด = finance/staff) เพื่อรับ token ผ่าน
+              <code> /auth/login</code> แล้วยิง API ของวัดนั้น. เจ้าของแพลตฟอร์มเข้าผ่าน
+              <code> /platform/auth</code> คนละ plane — smoke นี้ไม่ครอบคลุม
             </p>
-            <label className="mt-4 block text-sm font-medium text-stone-700">บัญชี seed</label>
-            <select className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2" value={email} onChange={(event) => setEmail(event.target.value)}>
-              {seedAccounts.map((account) => (
-                <option key={account.email} value={account.email}>{account.label} — {account.email}</option>
-              ))}
-            </select>
-            <label className="mt-4 block text-sm font-medium text-stone-700">รหัสผ่าน</label>
-            <input className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2" value={password} onChange={(event) => setPassword(event.target.value)} type="password" />
+            <label className="mt-4 block text-sm font-medium text-stone-700" htmlFor="smoke-email">อีเมล</label>
+            <input
+              id="smoke-email"
+              className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              type="email"
+              autoComplete="off"
+              placeholder="name@wat.example"
+            />
+            <label className="mt-4 block text-sm font-medium text-stone-700" htmlFor="smoke-password">รหัสผ่าน</label>
+            <input
+              id="smoke-password"
+              className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              type="password"
+              autoComplete="off"
+            />
             <div className="mt-4 flex flex-wrap gap-2">
               <button className="rounded-xl bg-[var(--brand)] px-4 py-2 text-sm font-semibold text-white" type="submit">Login</button>
               <button className="rounded-xl border border-stone-300 px-4 py-2 text-sm font-semibold" type="button" onClick={logout}>Logout</button>
@@ -210,7 +190,7 @@ export function SmokeShell(): ReactElement {
           </form>
 
           <div className="grid gap-4 sm:grid-cols-3">
-            <div className="metric-card"><span>สถานะ</span><strong>{session ? "Online" : "Login"}</strong><small>{session ? session.user.displayName : "ยังไม่ login"}</small></div>
+            <div className="metric-card"><span>สถานะ</span><strong>{session ? "Online" : "Login"}</strong><small>{session ? session.user.email : "ยังไม่ login"}</small></div>
             <div className="metric-card"><span>Role</span><strong>{currentRole}</strong><small>permission smoke</small></div>
             <div className="metric-card"><span>Modules</span><strong>{visibleModules.length}</strong><small>พร้อมตรวจหน้าเว็บ/API</small></div>
           </div>

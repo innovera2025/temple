@@ -1,7 +1,6 @@
 import { FormEvent, ReactElement, useState } from "react";
-import { Badge, Button } from "../../design-system";
+import { Button } from "../../design-system";
 import { Icon } from "../../layout/icons";
-import { ROLE_NAMES } from "../../layout/nav";
 import { RegisterForm } from "./register-view";
 import { ForgotPasswordForm } from "./recovery-view";
 import type { RecoveryApiOptions } from "./recovery";
@@ -9,12 +8,9 @@ import {
   AuthApi,
   AuthError,
   CONFIG_REQUIRED_LABEL,
-  DEMO_PASSWORD,
   deriveSession,
   loginErrorMessage,
   LoginFormErrors,
-  SEED_ACCOUNTS,
-  SeedAccount,
   Session,
   UNAVAILABLE_LABEL,
   validateLoginForm,
@@ -25,11 +21,6 @@ type Mode = "login" | "register";
 export interface LoginScreenProps {
   api: AuthApi;
   onAuthenticated: (session: Session) => void;
-  /**
-   * Quick-login seed accounts (dev convenience). Hidden unless the build sets
-   * VITE_SHOW_DEMO_ACCOUNTS=true — production must never show seed credentials.
-   */
-  accounts?: readonly SeedAccount[];
   /** Social sign-in buttons; default off until the OAuth callback flow exists. */
   showSocial?: boolean;
   /** Enables the ลืมรหัสผ่าน flow (POST /auth/forgot-password). */
@@ -40,11 +31,9 @@ export interface LoginScreenProps {
 const SOCIAL_PROVIDERS = ["Google", "Facebook"] as const;
 const SOCIAL_PROVIDER_IDS = { Google: "google", Facebook: "facebook" } as const;
 
-// Dev-only conveniences — both default OFF so a production build never shows
-// seed credentials, and never shows social buttons while the OAuth flow has no
-// callback (the buttons would dead-end at the provider). Set in dev .env:
-//   VITE_SHOW_DEMO_ACCOUNTS=true / VITE_SHOW_SOCIAL_LOGIN=true
-const SHOW_DEMO_ACCOUNTS = import.meta.env.VITE_SHOW_DEMO_ACCOUNTS === "true";
+// Social buttons stay off until the OAuth callback flow exists (the buttons
+// would otherwise dead-end at the provider). Enable in dev with
+// VITE_SHOW_SOCIAL_LOGIN=true.
 const SHOW_SOCIAL_LOGIN = import.meta.env.VITE_SHOW_SOCIAL_LOGIN === "true";
 
 function BrandPanel(): ReactElement {
@@ -141,13 +130,12 @@ function SocialButtons({ api }: { api: AuthApi }): ReactElement {
 export function LoginScreen({
   api,
   onAuthenticated,
-  accounts = SHOW_DEMO_ACCOUNTS ? SEED_ACCOUNTS : [],
   showSocial = SHOW_SOCIAL_LOGIN,
   recoveryOptions,
 }: LoginScreenProps): ReactElement {
   const [mode, setMode] = useState<Mode>("login");
-  const [email, setEmail] = useState<string>(accounts[0]?.email ?? "");
-  const [password, setPassword] = useState<string>(accounts.length > 0 ? DEMO_PASSWORD : "");
+  const [email, setEmail] = useState<string>("");
+  const [password, setPassword] = useState<string>("");
   const [remember, setRemember] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>("");
@@ -174,12 +162,6 @@ export function LoginScreen({
   function onSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     void submitCredentials(email, password);
-  }
-
-  function quickLogin(account: SeedAccount): void {
-    setEmail(account.email);
-    setPassword(DEMO_PASSWORD);
-    void submitCredentials(account.email, DEMO_PASSWORD);
   }
 
   return (
@@ -305,36 +287,6 @@ export function LoginScreen({
                   {busy ? "กำลังเข้าสู่ระบบ…" : "เข้าสู่ระบบ"}
                 </Button>
               </form>
-
-              {accounts.length > 0 ? (
-                <>
-                  <div className="auth-or">หรือเข้าใช้งานด้วยบัญชีตัวอย่าง (เดโม)</div>
-                  <div className="opt-row">
-                    {accounts.map((account) => (
-                      <button
-                        key={account.email}
-                        type="button"
-                        className="acct"
-                        onClick={() => quickLogin(account)}
-                        disabled={busy}
-                      >
-                        <span className="av-sm">{account.label.charAt(0)}</span>
-                        <span className="acct-meta">
-                          <span className="acct-name">{account.label}</span>
-                          <span className="acct-role">
-                            {ROLE_NAMES[account.role]} · {account.email}
-                          </span>
-                        </span>
-                        <Icon name="chevR" size={16} className="acct-go" />
-                      </button>
-                    ))}
-                  </div>
-
-                  <p className="auth-demo-note">
-                    <Badge kind="neutral">เดโม</Badge> บัญชีตัวอย่างใช้รหัสผ่านชุดทดสอบของฐานข้อมูลสำหรับนักพัฒนา
-                  </p>
-                </>
-              ) : null}
             </>
           )}
         </div>

@@ -4,7 +4,6 @@ import {
   AuthError,
   createAuthApiClient,
   clearSession,
-  DEMO_PASSWORD,
   deriveSession,
   loadSession,
   loginErrorMessage,
@@ -52,39 +51,26 @@ describe("validateLoginForm", () => {
 });
 
 describe("deriveSession", () => {
-  it("resolves the display name / role / tenant for a known seed account", () => {
-    const session = deriveSession("finance@wat-arun.example", { accessToken: "a", refreshToken: "r" });
+  it("derives role / tenant / email purely from the server-verified access-token claims", () => {
+    // A real /auth/login token carries { role, tenant_id, email } in its payload.
+    const token = fakeJwt({ role: "finance", tenant_id: "wat-pho", email: "khun@wat-pho.example" });
+    const session = deriveSession("typed@whatever.example", { accessToken: token, refreshToken: "r" });
     expect(session.user).toEqual({
-      email: "finance@wat-arun.example",
-      displayName: "การเงินวัดอรุณ",
+      email: "khun@wat-pho.example",
+      displayName: "khun@wat-pho.example", // JWT has no display name -> email until profile loads
       role: "finance",
-      tenantId: "wat-arun",
+      tenantId: "wat-pho",
     });
-    expect(session.accessToken).toBe("a");
+    expect(session.accessToken).toBe(token);
     expect(session.refreshToken).toBe("r");
   });
 
-  it("derives the wat-pho tenant from the email domain", () => {
-    expect(deriveSession("admin@wat-pho.example", { accessToken: "a" }).user.tenantId).toBe("wat-pho");
-  });
-
-  it("matches seed accounts case-insensitively", () => {
-    expect(deriveSession("ADMIN@WAT-ARUN.EXAMPLE", { accessToken: "a" }).user.role).toBe("admin");
-  });
-
-  it("falls back to the least-privileged role (staff), not admin, for an unknown account", () => {
-    const session = deriveSession("someone@elsewhere.test", { accessToken: "a" });
-    expect(session.user.role).toBe("staff");
+  it("falls back to the typed email and least-privileged staff when the token has no claims", () => {
+    const session = deriveSession("Someone@Elsewhere.test", { accessToken: "a" });
+    expect(session.user.role).toBe("staff"); // never silently "admin"
+    expect(session.user.email).toBe("someone@elsewhere.test");
     expect(session.user.displayName).toBe("someone@elsewhere.test");
-  });
-
-  it("derives role/tenant/email from the access-token claims for a real (non-seed) user", () => {
-    // A real /auth/login token carries { role, tenant_id, email } in its payload.
-    const token = fakeJwt({ role: "finance", tenant_id: "wat-pho", email: "khun@wat-pho.example" });
-    const session = deriveSession("typed@whatever.example", { accessToken: token });
-    expect(session.user.role).toBe("finance");
-    expect(session.user.tenantId).toBe("wat-pho");
-    expect(session.user.email).toBe("khun@wat-pho.example");
+    expect(session.user.tenantId).toBe("");
   });
 
   it("ignores an invalid role claim and falls back to least-privileged staff", () => {
@@ -231,9 +217,5 @@ describe("session persistence", () => {
   it("returns null for a corrupt stored session", () => {
     window.localStorage.setItem("wat-session", "{not-json");
     expect(loadSession()).toBeNull();
-  });
-
-  it("exposes the demo password used by quick-login", () => {
-    expect(DEMO_PASSWORD).toBe("Password123!");
   });
 });

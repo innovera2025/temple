@@ -69,12 +69,27 @@ describe("SmokeShell (dev-only, separated from the product)", () => {
     expect(html).toContain("Backend smoke test");
   });
 
-  it("is reachable through the App #/smoke route (and the default route is not smoke)", () => {
+  it("gates #/smoke to the platform owner: shows the smoke tool only with a platform session", () => {
     window.location.hash = "#/smoke";
+
+    // No platform session -> the smoke tool is NOT served; the platform console
+    // (login) is shown instead, never the staff product login.
+    const gated = renderToStaticMarkup(<App />);
+    expect(gated).not.toContain("เมนูระบบวัด");
+    expect(gated).not.toContain("ขอเชิญร่วมบุญ");
+
+    // With a platform-owner session, the smoke tool renders.
+    window.localStorage.setItem(
+      "wat-platform-session",
+      JSON.stringify({
+        accessToken: "x",
+        platform: { id: "1", email: "super@innovera.example", platformRole: "super_admin" },
+      }),
+    );
     const smoke = renderToStaticMarkup(<App />);
     expect(smoke).toContain("เมนูระบบวัด");
-    expect(smoke).not.toContain("ขอเชิญร่วมบุญ");
 
+    window.localStorage.clear();
     window.location.hash = "";
     const def = renderToStaticMarkup(<App />);
     expect(def).toContain("ขอเชิญร่วมบุญ");

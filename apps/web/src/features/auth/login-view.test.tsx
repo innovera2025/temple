@@ -3,7 +3,7 @@ import { createRoot, Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LoginScreen } from "./login-view";
-import { AuthApi, AuthError, SEED_ACCOUNTS, Session } from "./auth";
+import { AuthApi, AuthError, Session } from "./auth";
 
 // React's act() requires this flag to be set in a test environment.
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -151,19 +151,22 @@ describe("LoginScreen — register/social flows", () => {
 });
 
 describe("LoginScreen — real login flow", () => {
-  it("logs in with the prefilled seed account and transitions via onAuthenticated", async () => {
+  it("logs in with the typed credentials and transitions via onAuthenticated", async () => {
     const login = vi.fn(async () => ({ accessToken: "tok", refreshToken: "ref" }));
     let session: Session | null = null;
     const container = await mount(
-      <LoginScreen api={testApi({ login })} onAuthenticated={(s) => (session = s)} accounts={SEED_ACCOUNTS} />,
+      <LoginScreen api={testApi({ login })} onAuthenticated={(s) => (session = s)} />,
     );
 
+    // The login form starts empty — no demo prefill.
+    await setInput(container.querySelector("#auth-email"), "admin@wat-arun.example");
+    await setInput(container.querySelector("#auth-password"), "Password123!");
     await submitForm(container.querySelector("form"));
 
     expect(login).toHaveBeenCalledTimes(1);
     expect(login).toHaveBeenCalledWith({ email: "admin@wat-arun.example", password: "Password123!" });
     expect(session).not.toBeNull();
-    expect(session!.user.role).toBe("admin");
+    expect(session!.user.email).toBe("admin@wat-arun.example");
     expect(session!.accessToken).toBe("tok");
   });
 
@@ -173,9 +176,11 @@ describe("LoginScreen — real login flow", () => {
     });
     const onAuthenticated = vi.fn();
     const container = await mount(
-      <LoginScreen api={testApi({ login })} onAuthenticated={onAuthenticated} accounts={SEED_ACCOUNTS} />,
+      <LoginScreen api={testApi({ login })} onAuthenticated={onAuthenticated} />,
     );
 
+    await setInput(container.querySelector("#auth-email"), "admin@wat-arun.example");
+    await setInput(container.querySelector("#auth-password"), "wrong-password");
     await submitForm(container.querySelector("form"));
 
     expect(container.querySelector(".auth-error")?.textContent).toBe("อีเมลหรือรหัสผ่านไม่ถูกต้อง");
@@ -200,9 +205,11 @@ describe("LoginScreen — real login flow", () => {
     );
     const onAuthenticated = vi.fn();
     const container = await mount(
-      <LoginScreen api={testApi({ login })} onAuthenticated={onAuthenticated} accounts={SEED_ACCOUNTS} />,
+      <LoginScreen api={testApi({ login })} onAuthenticated={onAuthenticated} />,
     );
 
+    await setInput(container.querySelector("#auth-email"), "admin@wat-arun.example");
+    await setInput(container.querySelector("#auth-password"), "Password123!");
     await submitForm(container.querySelector("form"));
 
     const submit = Array.from(container.querySelectorAll<HTMLButtonElement>("button.btn-primary")).find(
@@ -210,30 +217,11 @@ describe("LoginScreen — real login flow", () => {
     );
     expect(submit?.disabled).toBe(true);
     expect(container.textContent).toContain("กำลังเข้าสู่ระบบ…");
-    expect(
-      Array.from(container.querySelectorAll<HTMLButtonElement>(".acct")).every((b) => b.disabled),
-    ).toBe(true);
     expect(onAuthenticated).not.toHaveBeenCalled();
 
     await act(async () => {
       resolveLogin({ accessToken: "tok" });
     });
     expect(onAuthenticated).toHaveBeenCalledTimes(1);
-  });
-
-  it("quick-login submits the chosen seed account with the demo password", async () => {
-    const login = vi.fn(async () => ({ accessToken: "tok" }));
-    let session: Session | null = null;
-    const container = await mount(
-      <LoginScreen api={testApi({ login })} onAuthenticated={(s) => (session = s)} accounts={SEED_ACCOUNTS} />,
-    );
-
-    const financeBtn = Array.from(container.querySelectorAll<HTMLButtonElement>(".acct")).find((b) =>
-      b.textContent?.includes("การเงินวัดอรุณ"),
-    );
-    await click(financeBtn ?? null);
-
-    expect(login).toHaveBeenCalledWith({ email: "finance@wat-arun.example", password: "Password123!" });
-    expect(session!.user.role).toBe("finance");
   });
 });

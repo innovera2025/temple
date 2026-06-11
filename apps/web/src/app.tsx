@@ -6,6 +6,7 @@ import { PageContent } from "./features/page-content";
 import { LoginScreen } from "./features/auth/login-view";
 import { DevoteePortal } from "./features/devotee/devotee-portal";
 import { PlatformPortal } from "./features/platform/platform-portal";
+import { loadPlatformSession } from "./features/platform/platform-auth";
 import { PublicDirectory } from "./features/public/public-directory";
 import {
   clearSession,
@@ -121,7 +122,10 @@ function TempleApp(): ReactElement {
 export function App(): ReactElement {
   const route = useRoute();
   if (route === "smoke") {
-    return <SmokeShell />;
+    // Backend smoke tool is for the platform owner only. Without a platform
+    // session, send them to the platform console to sign in first (the API is
+    // the real boundary; this just keeps the dev tool off the public surface).
+    return loadPlatformSession() ? <SmokeShell /> : <PlatformPortal baseUrl={API_BASE_URL} />;
   }
   if (route === "devotee") {
     return <DevoteePortal baseUrl={API_BASE_URL} today={todayIso()} />;

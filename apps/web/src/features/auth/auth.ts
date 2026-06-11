@@ -26,25 +26,6 @@ export interface Session {
   user: SessionUser;
 }
 
-export interface SeedAccount {
-  email: string;
-  role: TenantRole;
-  label: string;
-}
-
-// Real seed accounts provisioned by the dev database (packages/db seed). The login
-// response only returns tokens, so the display name / role / tenant for the session
-// are resolved from this table (and the tenant from the email domain).
-export const SEED_ACCOUNTS: readonly SeedAccount[] = [
-  { email: "admin@wat-arun.example", role: "admin", label: "ผู้ดูแลวัดอรุณ" },
-  { email: "finance@wat-arun.example", role: "finance", label: "การเงินวัดอรุณ" },
-  { email: "staff@wat-arun.example", role: "staff", label: "เจ้าหน้าที่วัดอรุณ" },
-  { email: "admin@wat-pho.example", role: "admin", label: "ผู้ดูแลวัดโพธิ์" },
-] as const;
-
-// Shared password for the seed accounts (dev convenience quick-login).
-export const DEMO_PASSWORD = "Password123!";
-
 const SESSION_STORAGE_KEY = "wat-session";
 
 // Which pre-login flows the product can honestly offer today. Flip to true only when
@@ -210,26 +191,24 @@ export function decodeAccessToken(token: string): AccessTokenClaims {
 }
 
 /**
- * Build the client session from the issued tokens. Role/tenant/email come from the
- * verified-by-server access-token claims; the seed table only supplies a friendly
- * display label for the demo accounts. Unknown users fall back to the LEAST-privileged
- * role ("staff") — never silently "admin" — and to the typed email/domain heuristic.
+ * Build the client session purely from the server-verified access-token claims.
+ * Role / tenant / email come from the JWT payload; an invalid or missing role
+ * falls back to the LEAST-privileged "staff" — never silently "admin". The JWT
+ * carries no display name, so the email is used until the app loads the profile.
  */
 export function deriveSession(email: string, tokens: TokenPair): Session {
   const claims = decodeAccessToken(tokens.accessToken);
   const typedEmail = email.trim().toLowerCase();
-  const resolvedEmail = (claims.email?.trim().toLowerCase() || typedEmail);
-  const account = SEED_ACCOUNTS.find((item) => item.email === resolvedEmail);
-  const role: TenantRole = isTenantRole(claims.role) ? claims.role : account?.role ?? "staff";
-  const tenantId = claims.tenant_id || (resolvedEmail.includes("wat-pho") ? "wat-pho" : "wat-arun");
+  const resolvedEmail = claims.email?.trim().toLowerCase() || typedEmail;
+  const role: TenantRole = isTenantRole(claims.role) ? claims.role : "staff";
   return {
     accessToken: tokens.accessToken,
     refreshToken: tokens.refreshToken,
     user: {
       email: resolvedEmail,
-      displayName: account?.label ?? resolvedEmail,
+      displayName: resolvedEmail,
       role,
-      tenantId,
+      tenantId: claims.tenant_id ?? "",
     },
   };
 }
