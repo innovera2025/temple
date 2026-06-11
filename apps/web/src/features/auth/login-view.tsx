@@ -25,6 +25,8 @@ export interface LoginScreenProps {
   showSocial?: boolean;
   /** Enables the ลืมรหัสผ่าน flow (POST /auth/forgot-password). */
   recoveryOptions?: RecoveryApiOptions;
+  /** Optional banner shown above the form (e.g. after the session expires). */
+  notice?: string;
 }
 
 // Social/OAuth providers from the design's SocialButtons. No backend -> disabled.
@@ -132,6 +134,7 @@ export function LoginScreen({
   onAuthenticated,
   showSocial = SHOW_SOCIAL_LOGIN,
   recoveryOptions,
+  notice,
 }: LoginScreenProps): ReactElement {
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState<string>("");
@@ -170,6 +173,7 @@ export function LoginScreen({
 
       <div className="auth-panel">
         <div className="auth-card">
+          {notice ? <div className="auth-notice" role="status">{notice}</div> : null}
           <div className="auth-tabs" role="tablist">
             <button
               type="button"

@@ -1177,6 +1177,15 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   font-size: 13px;
   color: var(--debit);
 }
+.auth-notice {
+  margin: 0 0 14px;
+  padding: 9px 11px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r);
+  background: var(--accent-tint-2);
+  font-size: 13px;
+  color: var(--ink-2);
+}
 
 .btn-block {
   width: 100%;

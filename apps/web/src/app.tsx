@@ -1,4 +1,4 @@
-import { ReactElement, useEffect, useState } from "react";
+import { ReactElement, useEffect, useMemo, useState } from "react";
 import { SmokeShell } from "./smoke/SmokeShell";
 import { RoleShell } from "./layout/RoleShell";
 import { defaultPageFor, PageId, TempleRole } from "./layout/nav";
@@ -17,6 +17,7 @@ import {
 } from "./features/auth/auth";
 import { createTempleApiClient } from "./features/temple/temple";
 import { ResetPasswordPage, VerifyEmailPage } from "./features/auth/recovery-view";
+import { createAuthedFetch } from "./features/auth/authed-fetch";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000";
 
@@ -66,21 +67,52 @@ function TempleApp(): ReactElement {
     return defaultPageFor(role);
   });
   const [templeName, setTempleName] = useState<string | undefined>(undefined);
+  const [expiredNotice, setExpiredNotice] = useState<string>("");
+
+  // One fetch wrapper for every staff-plane API call: on an expired access
+  // token it silently refreshes (15-min access / 30-day refresh) and retries,
+  // and only logs out when the refresh itself fails. localStorage is the source
+  // of truth so the closures never go stale; stable across renders (deps []).
+  const authedFetch = useMemo(
+    () =>
+      createAuthedFetch({
+        baseUrl: API_BASE_URL,
+        getRefreshToken: () => loadSession()?.refreshToken ?? null,
+        onTokens: (tokens) => {
+          const current = loadSession();
+          if (!current) return;
+          const next: Session = {
+            ...current,
+            accessToken: tokens.accessToken,
+            refreshToken: tokens.refreshToken ?? current.refreshToken,
+          };
+          saveSession(next);
+          setSession(next);
+        },
+        onSessionExpired: () => {
+          clearSession();
+          setSession(null);
+          setExpiredNotice("เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่");
+        },
+      }),
+    [],
+  );
 
   // The sidebar shows the signed-in tenant's real temple name (never a demo
   // placeholder); fetched once per session, non-fatal if it fails.
   useEffect(() => {
     if (!session) { setTempleName(undefined); return; }
     let active = true;
-    createTempleApiClient({ baseUrl: API_BASE_URL, getToken: () => session.accessToken })
+    createTempleApiClient({ baseUrl: API_BASE_URL, getToken: () => session.accessToken, fetchFn: authedFetch })
       .get()
       .then((profile) => { if (active) setTempleName(profile.nameTh); }, () => undefined);
     return () => { active = false; };
-  }, [session]);
+  }, [session, authedFetch]);
 
   function onAuthenticated(next: Session): void {
     saveSession(next);
     setSession(next);
+    setExpiredNotice("");
     setPage(defaultPageFor(next.user.role as TempleRole));
   }
 
@@ -95,6 +127,7 @@ function TempleApp(): ReactElement {
         api={createAuthApiClient({ baseUrl: API_BASE_URL })}
         onAuthenticated={onAuthenticated}
         recoveryOptions={{ baseUrl: API_BASE_URL }}
+        notice={expiredNotice}
       />
     );
   }
@@ -111,6 +144,7 @@ function TempleApp(): ReactElement {
         page={page}
         baseUrl={API_BASE_URL}
         getToken={() => session.accessToken}
+        fetchFn={authedFetch}
         role={session.user.role as TempleRole}
         today={todayIso()}
         onNavigate={setPage}

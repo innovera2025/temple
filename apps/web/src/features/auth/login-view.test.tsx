@@ -81,6 +81,14 @@ describe("LoginScreen — design-backed brand + copy", () => {
     expect(html).not.toContain("บัญชีตัวอย่าง (เดโม)");
     expect(html).not.toContain("soc-btn");
   });
+
+  it("shows the session-expired notice banner when one is passed", () => {
+    const html = renderToStaticMarkup(
+      <LoginScreen api={testApi()} onAuthenticated={noop} notice="เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่" />,
+    );
+    expect(html).toContain("auth-notice");
+    expect(html).toContain("เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่");
+  });
 });
 
 describe("LoginScreen — register/social flows", () => {

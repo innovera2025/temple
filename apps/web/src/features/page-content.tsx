@@ -36,6 +36,8 @@ export interface PageContentProps {
   page: PageId;
   baseUrl: string;
   getToken: () => string | null;
+  /** Refresh-on-401 fetch wrapper shared by every client (see app.tsx). */
+  fetchFn?: typeof fetch;
   role: TempleRole;
   /** Today's date (YYYY-MM-DD) for views that default forms/queries to it. */
   today: string;
@@ -55,8 +57,8 @@ function UnavailablePage({ title, reason }: { title: string; reason: string }): 
   );
 }
 
-export function PageContent({ page, baseUrl, getToken, role, today, onNavigate }: PageContentProps): ReactElement {
-  const opts = { baseUrl, getToken };
+export function PageContent({ page, baseUrl, getToken, fetchFn, role, today, onNavigate }: PageContentProps): ReactElement {
+  const opts = { baseUrl, getToken, fetchFn };
   const writable = (id: PageId): boolean => {
     const level = permOf(role, id);
     return level === "edit" || level === "full";
