@@ -263,6 +263,7 @@ function BorrowItemForm({ api, token, templeId, today, onUnauthorized }: BorrowI
   return (
     <div className="card devotee-donate devotee-borrow">
       <h2 className="devotee-donate-title">ยืมของวัด</h2>
+      <p className="muted">เลือกสิ่งของและส่งคำขอไปยังวัด เมื่อวัดอนุมัติ เจ้าหน้าที่จะถ่ายรูปก่อนส่งมอบ และบันทึกรูปอีกครั้งตอนรับคืน</p>
 
       {doneMsg ? (
         <div className="auth-success" role="status">

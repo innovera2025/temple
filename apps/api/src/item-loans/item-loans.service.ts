@@ -54,6 +54,7 @@ export interface LoanRow {
   status: string;
   returnedAt: Date | null;
   returnedQty: number | null;
+  returnPhotoIds: string[];
   returnNote: string | null;
   shortageQty: number;
   settlement: SettlementRow | null;
@@ -88,6 +89,7 @@ function toLoanRow(loan: LoanWithRelations): LoanRow {
     status: loan.status,
     returnedAt: loan.returnedAt,
     returnedQty: loan.returnedQty,
+    returnPhotoIds: loanPhotoIds(loan.returnPhotoIds, null),
     returnNote: loan.returnNote,
     shortageQty: loan.returnedQty === null ? 0 : loanShortage(loan.quantity, loan.returnedQty),
     settlement: settlement
@@ -189,10 +191,14 @@ export class ItemLoansService {
       if (!item) throw notFound("ไม่พบสิ่งของ");
       if (item.status !== "active") throw conflict("สิ่งของนี้ถูกปิดใช้งานแล้ว ยืมไม่ได้");
 
-      // All photos must already be uploaded for this tenant (ถ่ายรูปก่อนยืม).
+      // All photos must already be uploaded for this tenant AS item_loan photos
+      // of THIS item (ถ่ายรูปก่อนยืม) — binding owner_type/owner_id stops an
+      // arbitrary same-tenant attachment from standing in as hand-over evidence.
       const found = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
         SELECT id FROM attachments
-        WHERE id IN (${Prisma.join(photoIds.map((id) => Prisma.sql`${id}::uuid`))}) AND tenant_id = current_tenant_id()`);
+        WHERE id IN (${Prisma.join(photoIds.map((id) => Prisma.sql`${id}::uuid`))})
+          AND tenant_id = current_tenant_id()
+          AND owner_type = 'item_loan' AND owner_id = ${input.itemId}::uuid`);
       if (found.length !== photoIds.length) throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ไม่พบรูปที่แนบ กรุณาอัปโหลดรูปก่อนยืม");
 
       const outstanding = await this.outstandingFor(tx, input.itemId);
@@ -323,9 +329,12 @@ export class ItemLoansService {
       // FOR UPDATE so a concurrent attachment delete cannot slip between this check
       // and the stock-committing UPDATE below — keeps approval's locking discipline
       // consistent with the loan + item row locks above (no photo-less hand-over).
+      // Bound to owner_type/owner_id so only THIS item's item_loan photos qualify.
       const found = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
         SELECT id FROM attachments
-        WHERE id IN (${Prisma.join(photoIds.map((id) => Prisma.sql`${id}::uuid`))}) AND tenant_id = current_tenant_id() FOR UPDATE`);
+        WHERE id IN (${Prisma.join(photoIds.map((id) => Prisma.sql`${id}::uuid`))})
+          AND tenant_id = current_tenant_id()
+          AND owner_type = 'item_loan' AND owner_id = ${loan.item_id}::uuid FOR UPDATE`);
       if (found.length !== photoIds.length) throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ไม่พบรูปที่แนบ กรุณาอัปโหลดรูปก่อน");
 
       const available = item.total_qty - (await this.outstandingFor(tx, loan.item_id));
@@ -392,9 +401,13 @@ export class ItemLoansService {
   /** Return: closes the loan; a shortage (returnedQty < quantity) requires a settlement. */
   async returnLoan(tenantId: string, actorUserId: string, loanId: string, input: ReturnLoanInput, ip?: string): Promise<LoanRow> {
     if (!isUuid(loanId)) throw notFound("ไม่พบรายการยืม");
+    const returnPhotoIds = [...new Set(input.returnPhotoIds ?? [])];
+    if (returnPhotoIds.length === 0 || !returnPhotoIds.every(isUuid)) {
+      throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ต้องแนบรูปถ่ายตอนรับคืนก่อนบันทึก");
+    }
     return this.prisma.withTenant(tenantId, async (tx) => {
-      const locked = await tx.$queryRaw<Array<{ id: string; quantity: number; status: string }>>`
-        SELECT id, quantity, status FROM item_loans
+      const locked = await tx.$queryRaw<Array<{ id: string; item_id: string; quantity: number; status: string }>>`
+        SELECT id, item_id, quantity, status FROM item_loans
         WHERE id = ${loanId}::uuid AND tenant_id = current_tenant_id() FOR UPDATE`;
       const loan = locked[0];
       if (!loan) throw notFound("ไม่พบรายการยืม");
@@ -402,6 +415,15 @@ export class ItemLoansService {
       if (input.returnedQty > loan.quantity) {
         throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "จำนวนที่คืนมากกว่าที่ยืม");
       }
+
+      // Return photos must be item_loan attachments of THIS loan's item (bound to
+      // owner_type/owner_id, not just any same-tenant attachment).
+      const found = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT id FROM attachments
+        WHERE id IN (${Prisma.join(returnPhotoIds.map((id) => Prisma.sql`${id}::uuid`))})
+          AND tenant_id = current_tenant_id()
+          AND owner_type = 'item_loan' AND owner_id = ${loan.item_id}::uuid FOR UPDATE`);
+      if (found.length !== returnPhotoIds.length) throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ไม่พบรูปที่แนบ กรุณาอัปโหลดรูปตอนรับคืนก่อน");
 
       const shortage = loanShortage(loan.quantity, input.returnedQty);
       if (shortage > 0 && !input.settlement) {
@@ -416,6 +438,7 @@ export class ItemLoansService {
           status: "returned",
           returnedAt: new Date(`${input.returnedAt}T00:00:00.000Z`),
           returnedQty: input.returnedQty,
+          returnPhotoIds: returnPhotoIds as unknown as Prisma.InputJsonValue,
           returnNote: input.returnNote ?? null,
           updatedAt: new Date(),
         },
@@ -457,7 +480,7 @@ export class ItemLoansService {
           action: "item_loan:return",
           entityType: "item_loan",
           entityId: loanId,
-          after: { returnedQty: input.returnedQty, shortageQty: shortage } as Prisma.InputJsonObject,
+          after: { returnedQty: input.returnedQty, shortageQty: shortage, returnPhotoIds } as Prisma.InputJsonObject,
           metadata: {},
           ip,
         },

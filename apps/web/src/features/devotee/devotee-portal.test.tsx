@@ -268,7 +268,7 @@ describe("devotee views (mounted)", () => {
     expect(container.textContent).toContain("วัดอรุณเดโม");
 
     const button = Array.from(container.querySelectorAll("button")).find((b) =>
-      b.textContent?.includes("เลือกวัดนี้"),
+      b.textContent?.includes("ดูบริการของวัด"),
     );
     expect(button).toBeTruthy();
     await act(async () => {

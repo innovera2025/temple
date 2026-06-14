@@ -2,9 +2,10 @@
  * การยืม-คืนสิ่งของวัด (temple item borrowing/returning) — validation + types.
  * Dependency-free; shared by the NestJS item-loans module and the React UI.
  *
- * Money (cash compensation) is integer satang. A loan requires a borrow photo
- * (borrowPhotoId -> an uploaded attachment). On return, if returnedQty < quantity the
- * caller must provide a settlement (replacement = ซื้อมาชดใช้, or cash = จ่ายเงินแทน).
+ * Money (cash compensation) is integer satang. A loan requires borrow photo(s)
+ * before hand-over and return photo(s) when items are brought back. On return,
+ * if returnedQty < quantity the caller must provide a settlement
+ * (replacement = ซื้อมาชดใช้, or cash = จ่ายเงินแทน).
  * See docs/plans/item-loans-build-plan.md.
  */
 
@@ -98,6 +99,8 @@ export interface LoanSettlementInput {
 export interface ReturnLoanInput {
   returnedQty: number;
   returnedAt: string;
+  /** Photos taken when receiving the items back; length >= 1. */
+  returnPhotoIds: string[];
   returnNote?: string | null;
   /** Required (by the API) when returnedQty < quantity. */
   settlement?: LoanSettlementInput;
@@ -150,6 +153,7 @@ export interface ItemLoanView {
   status: LoanStatus;
   returnedAt: string | null;
   returnedQty: number | null;
+  returnPhotoIds: string[];
   returnNote: string | null;
   shortageQty: number;
   settlement: LoanSettlementView | null;
@@ -331,6 +335,13 @@ export function validateReturnLoan(input: unknown): ValidationResult<ReturnLoanI
 
   if (typeof input.returnedAt !== "string" || !isValidIsoDate(input.returnedAt.trim())) errors.push({ field: "returnedAt", message: "วันที่คืนไม่ถูกต้อง (YYYY-MM-DD)" });
   else data.returnedAt = input.returnedAt.trim();
+
+  const returnPhotoIds = (Array.isArray(input.returnPhotoIds) ? input.returnPhotoIds : [])
+    .filter((id): id is string => typeof id === "string" && id.trim() !== "")
+    .map((id) => id.trim());
+  if (returnPhotoIds.length === 0) errors.push({ field: "returnPhotoIds", message: "ต้องแนบรูปถ่ายตอนรับคืน" });
+  else if (returnPhotoIds.length > MAX_LOAN_PHOTOS) errors.push({ field: "returnPhotoIds", message: `แนบรูปได้ไม่เกิน ${MAX_LOAN_PHOTOS} รูป` });
+  else data.returnPhotoIds = returnPhotoIds;
 
   const rn = optString(input.returnNote, "returnNote", LOAN_LIMITS.returnNote, errors);
   if (rn !== undefined) data.returnNote = rn;

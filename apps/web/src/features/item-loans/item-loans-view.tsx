@@ -167,7 +167,7 @@ export function ItemLoansPage({ api, attachmentsApi, today, canWrite, canManageI
       {borrowing && items ? (
         <BorrowModal api={api} attachmentsApi={attachmentsApi} today={today} items={items.filter((i) => i.status === "active")} onClose={() => setBorrowing(false)} onSaved={() => { setBorrowing(false); reload(); }} />
       ) : null}
-      {returning ? <ReturnModal api={api} today={today} loan={returning} onClose={() => setReturning(null)} onSaved={() => { setReturning(null); reload(); }} /> : null}
+      {returning ? <ReturnModal api={api} attachmentsApi={attachmentsApi} today={today} loan={returning} onClose={() => setReturning(null)} onSaved={() => { setReturning(null); reload(); }} /> : null}
       {approving ? <ApproveModal api={api} attachmentsApi={attachmentsApi} today={today} loan={approving} onClose={() => setApproving(null)} onSaved={() => { setApproving(null); reload(); }} /> : null}
       {rejecting ? <RejectModal api={api} loan={rejecting} onClose={() => setRejecting(null)} onSaved={() => { setRejecting(null); reload(); }} /> : null}
     </div>
@@ -222,7 +222,7 @@ function ApproveModal({ api, attachmentsApi, today, loan, onClose, onSaved }: { 
         {previews.length > 0 ? (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
             {previews.map((url, i) => (
-              <div key={url} style={{ position: "relative", width: 64, height: 64 }}>
+              <div key={`${url}-${i}`} style={{ position: "relative", width: 64, height: 64 }}>
                 <img src={url} alt={`รูปการส่งมอบ ${i + 1}`} style={{ width: 64, height: 64, objectFit: "cover", borderRadius: "var(--r)", border: "1px solid var(--border)" }} />
                 <button type="button" aria-label="ลบรูป" onClick={() => removeFile(i)} style={{ position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface)", color: "var(--ink-2)", cursor: "pointer", lineHeight: 1, fontSize: 13, padding: 0 }}>×</button>
               </div>
@@ -360,7 +360,7 @@ function BorrowModal({ api, attachmentsApi, today, items, onClose, onSaved }: { 
         {previews.length > 0 ? (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
             {previews.map((url, i) => (
-              <div key={url} style={{ position: "relative", width: 64, height: 64 }}>
+              <div key={`${url}-${i}`} style={{ position: "relative", width: 64, height: 64 }}>
                 <img src={url} alt={`รูปการยืม ${i + 1}`} style={{ width: 64, height: 64, objectFit: "cover", borderRadius: "var(--r)", border: "1px solid var(--border)" }} />
                 <button type="button" aria-label="ลบรูป" onClick={() => removeFile(i)} style={{ position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface)", color: "var(--ink-2)", cursor: "pointer", lineHeight: 1, fontSize: 13, padding: 0 }}>×</button>
               </div>
@@ -375,10 +375,12 @@ function BorrowModal({ api, attachmentsApi, today, items, onClose, onSaved }: { 
   );
 }
 
-function ReturnModal({ api, today, loan, onClose, onSaved }: { api: ItemLoansApi; today: string; loan: ItemLoanView; onClose: () => void; onSaved: () => void }): ReactElement {
+function ReturnModal({ api, attachmentsApi, today, loan, onClose, onSaved }: { api: ItemLoansApi; attachmentsApi: AttachmentsApi; today: string; loan: ItemLoanView; onClose: () => void; onSaved: () => void }): ReactElement {
   const [returnedQty, setReturnedQty] = useState(String(loan.quantity));
   const [returnedAt, setReturnedAt] = useState(today);
   const [returnNote, setReturnNote] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<string[]>([]);
   const [settlementType, setSettlementType] = useState<"replacement" | "cash">("replacement");
   const [cashBaht, setCashBaht] = useState("");
   const [replacementNote, setReplacementNote] = useState("");
@@ -387,15 +389,42 @@ function ReturnModal({ api, today, loan, onClose, onSaved }: { api: ItemLoansApi
   const qty = Math.max(0, Math.min(loan.quantity, Math.floor(Number(returnedQty) || 0)));
   const shortage = loan.quantity - qty;
 
+  useEffect(() => {
+    const urls = files.map((f) => URL.createObjectURL(f));
+    setPreviews(urls);
+    return () => urls.forEach((u) => URL.revokeObjectURL(u));
+  }, [files]);
+
+  function addFiles(list: FileList | null): void {
+    if (!list) return;
+    const incoming = Array.from(list).filter((f) => f.type.startsWith("image/"));
+    setFiles((prev) => {
+      const merged = [...prev];
+      for (const f of incoming) {
+        if (!merged.some((m) => m.name === f.name && m.size === f.size)) merged.push(f);
+      }
+      return merged.slice(0, MAX_LOAN_PHOTOS);
+    });
+  }
+  const removeFile = (index: number): void => setFiles((prev) => prev.filter((_, i) => i !== index));
+
   async function save(): Promise<void> {
+    if (files.length === 0) { setErr("ต้องแนบรูปถ่ายตอนรับคืนก่อนบันทึก"); return; }
     setBusy(true); setErr(null);
     try {
+      const ids: string[] = [];
+      for (const f of files) {
+        // item_loan photos are owned by the borrowable ITEM (see attachments
+        // ownerExists), not the loan row — must match BorrowModal/ApproveModal.
+        const photo = await attachmentsApi.upload({ ownerType: "item_loan", ownerId: loan.itemId, fileName: f.name, mimeType: f.type || "image/jpeg", contentBase64: await fileToBase64(f) });
+        ids.push(photo.id);
+      }
       const settlement = shortage > 0
         ? settlementType === "cash"
           ? { settlementType: "cash" as const, cashAmountSatang: bahtToSatang(Number(cashBaht) || 0) }
           : { settlementType: "replacement" as const, replacementNote: replacementNote.trim() || undefined }
         : undefined;
-      await api.returnLoan(loan.id, { returnedQty: qty, returnedAt, returnNote: returnNote.trim() || undefined, settlement });
+      await api.returnLoan(loan.id, { returnedQty: qty, returnedAt, returnPhotoIds: ids, returnNote: returnNote.trim() || undefined, settlement });
       onSaved();
     } catch (e) { setErr(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ"); } finally { setBusy(false); }
   }
@@ -407,6 +436,21 @@ function ReturnModal({ api, today, loan, onClose, onSaved }: { api: ItemLoansApi
         <div className="field"><label>วันที่คืน</label><input className="control tnum" value={returnedAt} onChange={(e) => setReturnedAt(e.target.value)} /></div>
       </div>
       <div className="field"><label>หมายเหตุการคืน</label><input className="control" value={returnNote} onChange={(e) => setReturnNote(e.target.value)} /></div>
+      <div className="field">
+        <label>รูปถ่ายตอนรับคืน (บังคับ) — แนบได้หลายรูป</label>
+        {previews.length > 0 ? (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+            {previews.map((url, i) => (
+              <div key={`${url}-${i}`} style={{ position: "relative", width: 64, height: 64 }}>
+                <img src={url} alt={`รูปการรับคืน ${i + 1}`} style={{ width: 64, height: 64, objectFit: "cover", borderRadius: "var(--r)", border: "1px solid var(--border)" }} />
+                <button type="button" aria-label="ลบรูป" onClick={() => removeFile(i)} style={{ position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface)", color: "var(--ink-2)", cursor: "pointer", lineHeight: 1, fontSize: 13, padding: 0 }}>×</button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        <input className="control" type="file" accept="image/*" multiple disabled={files.length >= MAX_LOAN_PHOTOS} onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+        <span className="hint">{files.length}/{MAX_LOAN_PHOTOS} รูป · ถ่ายรูปสภาพสิ่งของตอนรับคืนก่อนปิดรายการ</span>
+      </div>
       {shortage > 0 ? (
         <div style={{ marginTop: 4, padding: "12px 14px", borderRadius: "var(--r)", background: "var(--pending-tint)" }}>
           <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>คืนไม่ครบ (ขาด {shortage}) — ต้องระบุการชดใช้</div>

@@ -36,11 +36,12 @@ async function psql(sql: string): Promise<string> {
   return stdout.trim();
 }
 
-/** Insert an attachment row directly (simulating an already-uploaded borrow photo). */
-async function createPhoto(tenantId: string): Promise<string> {
+/** Insert an item_loan photo attachment owned by `ownerId` (the borrowable item),
+ *  mirroring the real upload path (ownerType=item_loan, ownerId=item id). */
+async function createPhoto(tenantId: string, ownerId: string): Promise<string> {
   return psql(
     `INSERT INTO attachments (tenant_id, owner_type, owner_id, file_name, mime_type, storage_key, byte_size, data)
-     VALUES ('${tenantId}', 'item_loan', '${randomUUID()}', 'borrow.jpg', 'image/jpeg', '${randomUUID()}', 3, '\\x010203')
+     VALUES ('${tenantId}', 'item_loan', '${ownerId}', 'borrow.jpg', 'image/jpeg', '${randomUUID()}', 3, '\\x010203')
      RETURNING id`,
   );
 }
@@ -118,7 +119,7 @@ describe("item-loans (การยืม-คืนสิ่งของวัด
 
   it("records a borrow (LOAN number, photo, audit) and decrements availableQty; lists who borrowed", async () => {
     const item = await makeItem(5);
-    const photo = await createPhoto(templeA);
+    const photo = await createPhoto(templeA, item.id);
     const { loan } = await loans.createLoan(actorA, templeA, ip, { itemId: item.id, borrowerName: "คุณสมชาย", borrowerPhone: "081", quantity: 2, borrowedAt: "2031-08-01", borrowPhotoId: photo });
     expect(loan.loanNo).toMatch(/^LOAN-\d{6}$/);
     expect(loan.status).toBe("borrowed");
@@ -132,8 +133,8 @@ describe("item-loans (การยืม-คืนสิ่งของวัด
 
   it("records multiple borrow photos (borrowPhotoIds) and keeps the first as the primary", async () => {
     const item = await makeItem(5);
-    const p1 = await createPhoto(templeA);
-    const p2 = await createPhoto(templeA);
+    const p1 = await createPhoto(templeA, item.id);
+    const p2 = await createPhoto(templeA, item.id);
     const { loan } = await loans.createLoan(actorA, templeA, ip, { itemId: item.id, borrowerName: "คุณมานี", quantity: 1, borrowedAt: "2031-08-02", borrowPhotoIds: [p1, p2] });
     expect(loan.borrowPhotoIds).toEqual([p1, p2]);
     expect(loan.borrowPhotoId).toBe(p1);
@@ -143,35 +144,39 @@ describe("item-loans (การยืม-คืนสิ่งของวัด
 
   it("rejects a borrow photo id that does not belong to the tenant", async () => {
     const item = await makeItem(5);
-    const valid = await createPhoto(templeA);
+    const valid = await createPhoto(templeA, item.id);
     await expectErr(loans.createLoan(actorA, templeA, ip, { itemId: item.id, borrowerName: "ก", quantity: 1, borrowedAt: "2031-08-01", borrowPhotoIds: [valid, randomUUID()] }), 422, "UNPROCESSABLE_ENTITY");
   });
 
   it("rejects borrowing more than available with 409", async () => {
     const item = await makeItem(3);
-    const photo = await createPhoto(templeA);
+    const photo = await createPhoto(templeA, item.id);
     await expectErr(loans.createLoan(actorA, templeA, ip, { itemId: item.id, borrowerName: "ก", quantity: 5, borrowedAt: "2031-08-01", borrowPhotoId: photo }), 409, "CONFLICT");
   });
 
   it("returns fully: status returned, no shortage, availableQty restored", async () => {
     const item = await makeItem(4);
-    const photo = await createPhoto(templeA);
+    const photo = await createPhoto(templeA, item.id);
     const { loan } = await loans.createLoan(actorA, templeA, ip, { itemId: item.id, borrowerName: "ข", quantity: 4, borrowedAt: "2031-08-01", borrowPhotoId: photo });
-    const { loan: returned } = await loans.returnLoan(actorA, templeA, ip, loan.id, { returnedQty: 4, returnedAt: "2031-08-05" });
+    await expectErr(loans.returnLoan(actorA, templeA, ip, loan.id, { returnedQty: 4, returnedAt: "2031-08-05" } as never), 422, "UNPROCESSABLE_ENTITY");
+    const returnPhoto = await createPhoto(templeA, item.id);
+    const { loan: returned } = await loans.returnLoan(actorA, templeA, ip, loan.id, { returnedQty: 4, returnedAt: "2031-08-05", returnPhotoIds: [returnPhoto] });
     expect(returned.status).toBe("returned");
+    expect(returned.returnPhotoIds).toEqual([returnPhoto]);
     expect(returned.shortageQty).toBe(0);
     expect(returned.settlement).toBeNull();
     expect((await loans.getItem(templeA, item.id)).item.availableQty).toBe(4);
-    await expectErr(loans.returnLoan(actorA, templeA, ip, loan.id, { returnedQty: 1, returnedAt: "2031-08-06" }), 409, "CONFLICT"); // double return
+    await expectErr(loans.returnLoan(actorA, templeA, ip, loan.id, { returnedQty: 1, returnedAt: "2031-08-06", returnPhotoIds: [returnPhoto] }), 409, "CONFLICT"); // double return
   });
 
   it("short return REQUIRES a settlement; records a cash settlement (จ่ายเงิน)", async () => {
     const item = await makeItem(5);
-    const photo = await createPhoto(templeA);
+    const photo = await createPhoto(templeA, item.id);
     const { loan } = await loans.createLoan(actorA, templeA, ip, { itemId: item.id, borrowerName: "ค", quantity: 3, borrowedAt: "2031-08-01", borrowPhotoId: photo });
-    await expectErr(loans.returnLoan(actorA, templeA, ip, loan.id, { returnedQty: 1, returnedAt: "2031-08-05" }), 422, "UNPROCESSABLE_ENTITY");
+    const returnPhoto = await createPhoto(templeA, item.id);
+    await expectErr(loans.returnLoan(actorA, templeA, ip, loan.id, { returnedQty: 1, returnedAt: "2031-08-05", returnPhotoIds: [returnPhoto] }), 422, "UNPROCESSABLE_ENTITY");
     const { loan: settled } = await loans.returnLoan(actorA, templeA, ip, loan.id, {
-      returnedQty: 1, returnedAt: "2031-08-05",
+      returnedQty: 1, returnedAt: "2031-08-05", returnPhotoIds: [returnPhoto],
       settlement: { settlementType: "cash", cashAmountSatang: 50000 },
     });
     expect(settled.shortageQty).toBe(2);
@@ -181,29 +186,57 @@ describe("item-loans (การยืม-คืนสิ่งของวัด
 
   it("records a replacement settlement (ซื้อมาชดใช้)", async () => {
     const item = await makeItem(2);
-    const photo = await createPhoto(templeA);
+    const photo = await createPhoto(templeA, item.id);
     const { loan } = await loans.createLoan(actorA, templeA, ip, { itemId: item.id, borrowerName: "ง", quantity: 2, borrowedAt: "2031-08-01", borrowPhotoId: photo });
+    const returnPhoto = await createPhoto(templeA, item.id);
     const { loan: settled } = await loans.returnLoan(actorA, templeA, ip, loan.id, {
-      returnedQty: 0, returnedAt: "2031-08-05",
+      returnedQty: 0, returnedAt: "2031-08-05", returnPhotoIds: [returnPhoto],
       settlement: { settlementType: "replacement", replacementNote: "ซื้อเต็นท์ใหม่ 2 หลัง" },
     });
     expect(settled.settlement).toMatchObject({ settlementType: "replacement", replacementNote: "ซื้อเต็นท์ใหม่ 2 หลัง" });
     expect(settled.settlement?.cashAmountSatang).toBeNull();
   });
 
+  it("binds borrow/return photos to the loan's item: a photo of another item is rejected (422)", async () => {
+    const item = await makeItem(5);
+    const other = await makeItem(5);
+    // borrow: a photo owned by ANOTHER item cannot stand in as hand-over evidence
+    const wrongBorrow = await createPhoto(templeA, other.id);
+    await expectErr(
+      loans.createLoan(actorA, templeA, ip, { itemId: item.id, borrowerName: "ก", quantity: 1, borrowedAt: "2031-08-01", borrowPhotoId: wrongBorrow }),
+      422,
+      "UNPROCESSABLE_ENTITY",
+    );
+    // a correctly-bound borrow photo works
+    const goodBorrow = await createPhoto(templeA, item.id);
+    const { loan } = await loans.createLoan(actorA, templeA, ip, { itemId: item.id, borrowerName: "ข", quantity: 1, borrowedAt: "2031-08-01", borrowPhotoId: goodBorrow });
+    // return: same binding — a photo of another item is rejected
+    const wrongReturn = await createPhoto(templeA, other.id);
+    await expectErr(
+      loans.returnLoan(actorA, templeA, ip, loan.id, { returnedQty: 1, returnedAt: "2031-08-05", returnPhotoIds: [wrongReturn] }),
+      422,
+      "UNPROCESSABLE_ENTITY",
+    );
+    // a correctly-bound return photo succeeds and closes the loan
+    const goodReturn = await createPhoto(templeA, item.id);
+    const { loan: returned } = await loans.returnLoan(actorA, templeA, ip, loan.id, { returnedQty: 1, returnedAt: "2031-08-05", returnPhotoIds: [goodReturn] });
+    expect(returned.status).toBe("returned");
+    expect(returned.returnPhotoIds).toEqual([goodReturn]);
+  });
+
   it("never exposes/affects another tenant's loans (RLS) and 404s malformed ids", async () => {
     const item = await makeItem(2);
-    const photo = await createPhoto(templeA);
+    const photo = await createPhoto(templeA, item.id);
     const { loan } = await loans.createLoan(actorA, templeA, ip, { itemId: item.id, borrowerName: "จ", quantity: 1, borrowedAt: "2031-08-01", borrowPhotoId: photo });
     await expectErr(loans.getLoan(templeB, loan.id), 404, "NOT_FOUND");
-    await expectErr(loans.returnLoan(actorB, templeB, ip, loan.id, { returnedQty: 1, returnedAt: "2031-08-05" }), 404, "NOT_FOUND");
+    await expectErr(loans.returnLoan(actorB, templeB, ip, loan.id, { returnedQty: 1, returnedAt: "2031-08-05", returnPhotoIds: [photo] }), 404, "NOT_FOUND");
     await expectErr(loans.getItem(templeA, "not-a-uuid"), 404, "NOT_FOUND");
     expect(actorB.tenant_id).toBe(templeB);
   });
 
   it("allocates unique LOAN numbers under concurrent borrows", async () => {
     const item = await makeItem(10);
-    const photos = await Promise.all([createPhoto(templeA), createPhoto(templeA), createPhoto(templeA)]);
+    const photos = await Promise.all([createPhoto(templeA, item.id), createPhoto(templeA, item.id), createPhoto(templeA, item.id)]);
     const results = await Promise.all(
       photos.map((p) => loans.createLoan(actorA, templeA, ip, { itemId: item.id, borrowerName: "ฉ", quantity: 1, borrowedAt: "2031-08-01", borrowPhotoId: p })),
     );
@@ -221,7 +254,7 @@ describe("item-loans (การยืม-คืนสิ่งของวัด
     // A pending request commits no stock yet.
     expect((await loans.getItem(templeA, item.id)).item.availableQty).toBe(5);
 
-    const photo = await createPhoto(templeA);
+    const photo = await createPhoto(templeA, item.id);
     const { loan } = await loans.approveLoan(actorA, templeA, ip, requested.id, { borrowPhotoIds: [photo] });
     expect(loan.status).toBe("borrowed");
     expect(loan.borrowPhotoId).toBe(photo);
@@ -254,11 +287,11 @@ describe("item-loans (การยืม-คืนสิ่งของวัด
     // Request for the full 2 (soft check passes: available = 2).
     const requested = await loansSvc.createDevoteeLoanRequest(templeA, dev, { itemId: item.id, quantity: 2, borrowedAt: "2031-09-03" }, ip);
     // A staff borrow of 1 reduces availability to 1 before approval.
-    const borrowPhoto = await createPhoto(templeA);
+    const borrowPhoto = await createPhoto(templeA, item.id);
     await loans.createLoan(actorA, templeA, ip, { itemId: item.id, borrowerName: "เจ้าหน้าที่", quantity: 1, borrowedAt: "2031-09-03", borrowPhotoId: borrowPhoto });
     expect((await loans.getItem(templeA, item.id)).item.availableQty).toBe(1);
     // Approving the request for 2 now oversells -> 409, request stays pending.
-    const photo = await createPhoto(templeA);
+    const photo = await createPhoto(templeA, item.id);
     await expectErr(loans.approveLoan(actorA, templeA, ip, requested.id, { borrowPhotoIds: [photo] }), 409, "CONFLICT");
     expect(await psql(`SELECT status FROM item_loans WHERE id = '${requested.id}'`)).toBe("requested");
     expect((await loans.getItem(templeA, item.id)).item.availableQty).toBe(1);
@@ -275,7 +308,7 @@ describe("item-loans (การยืม-คืนสิ่งของวัด
     const rejectRow = await psql(`SELECT actor_type || '|' || coalesce(reason,'NULL') FROM audit_logs WHERE action = 'item_loan:reject' AND entity_id = '${loan.id}'`);
     expect(rejectRow).toBe("user|สิ่งของไม่ว่างในช่วงนั้น");
     // A cancelled request cannot be approved afterwards.
-    const photo = await createPhoto(templeA);
+    const photo = await createPhoto(templeA, item.id);
     await expectErr(loans.approveLoan(actorA, templeA, ip, requested.id, { borrowPhotoIds: [photo] }), 409, "CONFLICT");
   });
 
@@ -283,7 +316,7 @@ describe("item-loans (การยืม-คืนสิ่งของวัด
     const item = await makeItem(3);
     const dev = await registerDevotee();
     const requested = await loansSvc.createDevoteeLoanRequest(templeA, dev, { itemId: item.id, quantity: 1, borrowedAt: "2031-09-05" }, ip);
-    const photo = await createPhoto(templeA);
+    const photo = await createPhoto(templeA, item.id);
     await expectErr(loans.approveLoan(actorB, templeB, ip, requested.id, { borrowPhotoIds: [photo] }), 404, "NOT_FOUND");
     await expectErr(loans.rejectLoan(actorB, templeB, ip, requested.id, {}), 404, "NOT_FOUND");
   });

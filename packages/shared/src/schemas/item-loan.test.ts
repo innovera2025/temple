@@ -54,22 +54,29 @@ describe("create loan validation", () => {
 });
 
 describe("return loan validation", () => {
+  const returnPhotoIds = ["rp1"];
+
   it("accepts a full return with no settlement", () => {
-    const r = validateReturnLoan({ returnedQty: 2, returnedAt: "2026-06-05" });
+    const r = validateReturnLoan({ returnedQty: 2, returnedAt: "2026-06-05", returnPhotoIds });
     expect(r.success).toBe(true);
   });
+  it("requires at least one return photo (ถ่ายรูปตอนรับคืน)", () => {
+    const r = validateReturnLoan({ returnedQty: 2, returnedAt: "2026-06-05", returnPhotoIds: [] });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.errors.some((e) => e.field === "returnPhotoIds")).toBe(true);
+  });
   it("validates a cash settlement (requires a positive amount)", () => {
-    expect(validateReturnLoan({ returnedQty: 1, returnedAt: "2026-06-05", settlement: { settlementType: "cash" } }).success).toBe(false);
-    const ok = validateReturnLoan({ returnedQty: 1, returnedAt: "2026-06-05", settlement: { settlementType: "cash", cashAmountSatang: 50000 } });
+    expect(validateReturnLoan({ returnedQty: 1, returnedAt: "2026-06-05", returnPhotoIds, settlement: { settlementType: "cash" } }).success).toBe(false);
+    const ok = validateReturnLoan({ returnedQty: 1, returnedAt: "2026-06-05", returnPhotoIds, settlement: { settlementType: "cash", cashAmountSatang: 50000 } });
     expect(ok.success).toBe(true);
     if (ok.success) expect(ok.data.settlement?.cashAmountSatang).toBe(50000);
   });
   it("accepts a replacement settlement with a note", () => {
-    const ok = validateReturnLoan({ returnedQty: 0, returnedAt: "2026-06-05", settlement: { settlementType: "replacement", replacementNote: "ซื้อเต็นท์ใหม่ 1 หลัง" } });
+    const ok = validateReturnLoan({ returnedQty: 0, returnedAt: "2026-06-05", returnPhotoIds, settlement: { settlementType: "replacement", replacementNote: "ซื้อเต็นท์ใหม่ 1 หลัง" } });
     expect(ok.success).toBe(true);
   });
   it("rejects an unknown settlement type", () => {
-    expect(validateReturnLoan({ returnedQty: 1, returnedAt: "2026-06-05", settlement: { settlementType: "freebie" } }).success).toBe(false);
+    expect(validateReturnLoan({ returnedQty: 1, returnedAt: "2026-06-05", returnPhotoIds, settlement: { settlementType: "freebie" } }).success).toBe(false);
   });
 });
 

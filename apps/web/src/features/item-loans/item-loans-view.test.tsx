@@ -41,9 +41,9 @@ afterEach(() => {
 });
 
 const ITEM: BorrowableItemView = { id: "i1", name: "เต็นท์", category: "equipment", unit: "หลัง", totalQty: 5, availableQty: 3, status: "active", note: null, createdAt: "", updatedAt: "" };
-const LOAN: ItemLoanView = { id: "l1", loanNo: "LOAN-000001", itemId: "i1", itemName: "เต็นท์", borrowerName: "คุณสมชาย", borrowerPhone: null, quantity: 2, borrowedAt: "2026-06-02", dueAt: null, borrowPhotoId: "p1", borrowPhotoIds: ["p1"], status: "borrowed", returnedAt: null, returnedQty: null, returnNote: null, shortageQty: 0, settlement: null, createdAt: "", updatedAt: "" };
+const LOAN: ItemLoanView = { id: "l1", loanNo: "LOAN-000001", itemId: "i1", itemName: "เต็นท์", borrowerName: "คุณสมชาย", borrowerPhone: null, quantity: 2, borrowedAt: "2026-06-02", dueAt: null, borrowPhotoId: "p1", borrowPhotoIds: ["p1"], status: "borrowed", returnedAt: null, returnedQty: null, returnPhotoIds: [], returnNote: null, shortageQty: 0, settlement: null, createdAt: "", updatedAt: "" };
 // A devotee borrow request awaiting staff approval (no photo, no stock committed yet).
-const REQUEST: ItemLoanView = { id: "r1", loanNo: "LOAN-000002", itemId: "i1", itemName: "เต็นท์", borrowerName: "คุณญาติโยม", borrowerPhone: "0801112222", quantity: 1, borrowedAt: "2026-06-10", dueAt: null, borrowPhotoId: null, borrowPhotoIds: [], status: "requested", returnedAt: null, returnedQty: null, returnNote: null, shortageQty: 0, settlement: null, createdAt: "", updatedAt: "" };
+const REQUEST: ItemLoanView = { id: "r1", loanNo: "LOAN-000002", itemId: "i1", itemName: "เต็นท์", borrowerName: "คุณญาติโยม", borrowerPhone: "0801112222", quantity: 1, borrowedAt: "2026-06-10", dueAt: null, borrowPhotoId: null, borrowPhotoIds: [], status: "requested", returnedAt: null, returnedQty: null, returnPhotoIds: [], returnNote: null, shortageQty: 0, settlement: null, createdAt: "", updatedAt: "" };
 
 function makeApi(over: Partial<ItemLoansApi> = {}): ItemLoansApi {
   return {
@@ -79,7 +79,19 @@ describe("ItemLoansPage — wired to /item-loans", () => {
     expect(api.createLoan).not.toHaveBeenCalled();
   });
 
-  it("a short return requires a cash settlement and calls returnLoan with it", async () => {
+  it("returning blocks without a photo (ถ่ายรูปตอนรับคืน)", async () => {
+    const api = makeApi();
+    const c = await mount(<ItemLoansPage api={api} attachmentsApi={attachmentsApi} today="2026-06-02" canWrite />);
+    await click(byText(c, "button", "คืน") ?? null);
+    await click(byText(c, ".modal button", "บันทึกการคืน") ?? null);
+    expect(c.textContent).toContain("ต้องแนบรูปถ่ายตอนรับคืนก่อนบันทึก");
+    expect(api.returnLoan).not.toHaveBeenCalled();
+  });
+
+  it("a short return requires a cash settlement and calls returnLoan with return photos", async () => {
+    globalThis.URL.createObjectURL = vi.fn(() => "blob:preview");
+    globalThis.URL.revokeObjectURL = vi.fn();
+    (attachmentsApi.upload as ReturnType<typeof vi.fn>).mockClear();
     const api = makeApi();
     const c = await mount(<ItemLoansPage api={api} attachmentsApi={attachmentsApi} today="2026-06-02" canWrite />);
     await click(byText(c, "button", "คืน") ?? null);
@@ -88,8 +100,16 @@ describe("ItemLoansPage — wired to /item-loans", () => {
     expect(c.textContent).toContain("คืนไม่ครบ");
     await click(byText(c, ".modal .seg button", "จ่ายเป็นเงิน") ?? null);
     await setValue(c.querySelector('.modal .input-prefix .control'), "150");
+    const fileInput = c.querySelector('.modal input[type="file"]') as HTMLInputElement;
+    const f1 = new File(["return"], "return.jpg", { type: "image/jpeg" });
+    await act(async () => {
+      Object.defineProperty(fileInput, "files", { value: [f1], configurable: true });
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+    });
     await click(byText(c, ".modal button", "บันทึกการคืน") ?? null);
-    expect(api.returnLoan).toHaveBeenCalledWith("l1", expect.objectContaining({ returnedQty: 0, settlement: { settlementType: "cash", cashAmountSatang: 15000 } }));
+    await act(async () => { await new Promise((r) => setTimeout(r, 30)); });
+    expect(attachmentsApi.upload).toHaveBeenCalledTimes(1);
+    expect(api.returnLoan).toHaveBeenCalledWith("l1", expect.objectContaining({ returnedQty: 0, returnPhotoIds: ["att1"], settlement: { settlementType: "cash", cashAmountSatang: 15000 } }));
   });
 
   it("adds a new borrowable item", async () => {

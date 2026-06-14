@@ -64,6 +64,7 @@ interface SerializedLoan {
   status: string;
   returnedAt: string | null;
   returnedQty: number | null;
+  returnPhotoIds: string[];
   returnNote: string | null;
   shortageQty: number;
   settlement: SerializedSettlement | null;
@@ -102,6 +103,7 @@ function serializeLoan(loan: LoanRow): SerializedLoan {
     status: loan.status,
     returnedAt: date(loan.returnedAt),
     returnedQty: loan.returnedQty,
+    returnPhotoIds: loan.returnPhotoIds,
     returnNote: loan.returnNote,
     shortageQty: loan.shortageQty,
     settlement: loan.settlement

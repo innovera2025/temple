@@ -53,8 +53,8 @@ export function TemplePicker({ api, token, onSelect, onUnauthorized }: TemplePic
     <div className="content-wrap">
       <div className="page-head">
         <div>
-          <h1>เลือกวัดที่ต้องการร่วมบุญ</h1>
-          <p className="page-sub">วัดทั้งหมดที่เปิดรับในระบบ — เลือกวัดเพื่อดูข้อมูลและร่วมทำบุญ</p>
+          <h1>เลือกวัดที่ต้องการติดต่อ</h1>
+          <p className="page-sub">เลือกวัดเพื่อร่วมบุญ จองพิธี หรือตรวจรายการสิ่งของที่เปิดให้ยืม</p>
         </div>
       </div>
 
@@ -95,7 +95,7 @@ export function TemplePicker({ api, token, onSelect, onUnauthorized }: TemplePic
               <div className="devotee-temple-place">{placeOf(temple)}</div>
             </div>
             <Button variant="primary" onClick={() => onSelect(temple.id)}>
-              เลือกวัดนี้
+              ดูบริการของวัด
             </Button>
           </div>
         ))}
