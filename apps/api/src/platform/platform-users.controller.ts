@@ -1,4 +1,6 @@
-import { Controller, Get, Inject, Ip, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Ip, Param, Post, UseGuards } from "@nestjs/common";
+import { validatePasswordReset } from "@wat/shared";
+import { projectHttpException } from "../common/errors/project-error";
 import { CurrentPlatformUser } from "./decorators/current-platform-user.decorator";
 import { PlatformRoles } from "./decorators/platform-roles.decorator";
 import { PlatformAuthGuard } from "./guards/platform-auth.guard";
@@ -38,5 +40,21 @@ export class PlatformUsersController {
   ): Promise<{ platformUser: PlatformUserRecord }> {
     assertUuidParam(id);
     return { platformUser: await this.platformUsers.enable(actor.sub, id, ip) };
+  }
+
+  @Post(":id/reset-password")
+  @PlatformRoles("super_admin")
+  async resetPassword(
+    @CurrentPlatformUser() actor: PlatformPrincipal,
+    @Ip() ip: string,
+    @Param("id") id: string,
+    @Body() body: unknown,
+  ): Promise<{ platformUser: PlatformUserRecord }> {
+    assertUuidParam(id);
+    const parsed = validatePasswordReset(body);
+    if (!parsed.success) {
+      throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ข้อมูลไม่ถูกต้อง", parsed.errors);
+    }
+    return { platformUser: await this.platformUsers.resetPassword(actor.sub, id, parsed.data.newPassword, ip) };
   }
 }

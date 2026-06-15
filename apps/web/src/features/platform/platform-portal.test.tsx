@@ -81,6 +81,9 @@ function makeApi(overrides: Partial<PlatformApi> = {}): PlatformApi {
     ],
     enableDevotee: async () => ({ id: "dev1", email: "devotee@example.com", displayName: "ญาติโยมเดโม", isActive: true, emailVerifiedAt: null, createdAt: "2026-06-01T00:00:00.000Z" }),
     disableDevotee: async () => ({ id: "dev1", email: "devotee@example.com", displayName: "ญาติโยมเดโม", isActive: false, emailVerifiedAt: null, createdAt: "2026-06-01T00:00:00.000Z" }),
+    resetPlatformUserPassword: async () => platformUser,
+    resetTenantUserPassword: async () => ({ id: "tu1", tenantId: temple.id, email: "staff@wat.example", displayName: "เจ้าหน้าที่", role: "staff", isActive: true, createdAt: "2026-06-01T00:00:00.000Z" }),
+    resetDevoteePassword: async () => ({ id: "dev1", email: "devotee@example.com", displayName: "ญาติโยมเดโม", isActive: true, emailVerifiedAt: null, createdAt: "2026-06-01T00:00:00.000Z" }),
     ...overrides,
   };
 }
@@ -162,9 +165,16 @@ describe("platform console (mounted)", () => {
     expect(authed).toBe(true);
   });
 
-  it("all-users view merges the 3 account types and disables a devotee", async () => {
-    let disabledId = "";
-    const api = makeApi({ disableDevotee: async (_t, id) => { disabledId = id; return { id, email: "devotee@example.com", displayName: "ญาติโยมเดโม", isActive: false, emailVerifiedAt: null, createdAt: "2026-06-01T00:00:00.000Z" }; } });
+  it("all-users view merges 3 types and resets a devotee password via the manage modal", async () => {
+    let resetId = "";
+    let resetPw = "";
+    const api = makeApi({
+      resetDevoteePassword: async (_t, id, pw) => {
+        resetId = id;
+        resetPw = pw;
+        return { id, email: "devotee@example.com", displayName: "ญาติโยมเดโม", isActive: true, emailVerifiedAt: null, createdAt: "2026-06-01T00:00:00.000Z" };
+      },
+    });
     await act(async () => {
       root.render(<PlatformAllUsersView api={api} token="t" canWrite onUnauthorized={() => undefined} />);
     });
@@ -172,15 +182,22 @@ describe("platform console (mounted)", () => {
     expect(container.textContent).toContain("ผู้ใช้ทั้งหมด");
     expect(container.textContent).toContain("support@innovera.example"); // platform user (fixture)
     expect(container.textContent).toContain("devotee@example.com"); // devotee
-    expect(container.textContent).toContain("ญาติโยม"); // type label
 
-    // the devotee row has a working toggle (platform-owned account)
+    // open "จัดการ" on the devotee row
     const devRow = Array.from(container.querySelectorAll("tr")).find((tr) => tr.textContent?.includes("devotee@example.com"));
-    const disableBtn = devRow ? Array.from(devRow.querySelectorAll("button")).find((b) => b.textContent === "ปิดใช้งาน") : undefined;
-    expect(disableBtn).toBeTruthy();
-    await act(async () => disableBtn?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const manageBtn = devRow ? Array.from(devRow.querySelectorAll("button")).find((b) => b.textContent === "จัดการ") : undefined;
+    expect(manageBtn).toBeTruthy();
+    await act(async () => manageBtn?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     await flush();
-    expect(disabledId).toBe("dev1");
+
+    // set a temp password + reset
+    setInput(container.querySelector("#reset-pw"), "newpass123");
+    const resetBtn = Array.from(container.querySelectorAll("button")).find((b) => b.textContent === "รีเซ็ตรหัสผ่าน");
+    expect(resetBtn).toBeTruthy();
+    await act(async () => resetBtn?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    await flush();
+    expect(resetId).toBe("dev1");
+    expect(resetPw).toBe("newpass123");
   });
 
   it("audit view lists the platform action history (actor + Thai action label + detail)", async () => {

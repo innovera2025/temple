@@ -1,4 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
+import { PasswordService } from "../auth/password.service";
 import { conflict, notFound } from "../common/errors/project-error";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { recordPlatformAudit } from "./platform-audit";
@@ -23,7 +24,34 @@ const DEVOTEE_SELECT = {
 
 @Injectable()
 export class PlatformDevoteesService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(PasswordService) private readonly passwords: PasswordService,
+  ) {}
+
+  /** Admin sets a temporary password; the devotee's sessions are revoked. Audited. */
+  async resetPassword(actorId: string, targetId: string, newPassword: string, ip?: string): Promise<DevoteeAccountRecord> {
+    const passwordHash = await this.passwords.hash(newPassword);
+    return this.prisma.withSystemAccess(async (tx) => {
+      const account = await tx.devoteeAccount.findUnique({ where: { id: targetId }, select: DEVOTEE_SELECT });
+      if (!account) {
+        throw notFound("ไม่พบบัญชีญาติโยม");
+      }
+      await tx.devoteeAccount.update({ where: { id: targetId }, data: { passwordHash, updatedAt: new Date() } });
+      await tx.devoteeRefreshToken.updateMany({
+        where: { devoteeAccountId: targetId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      await recordPlatformAudit(tx, {
+        actorPlatformUserId: actorId,
+        action: "devotee_account.password_reset",
+        entityType: "devotee_account",
+        entityId: targetId,
+        ip,
+      });
+      return account;
+    });
+  }
 
   async list(): Promise<DevoteeAccountRecord[]> {
     // Devotee accounts are global (no tenant); password_hash is never selected.

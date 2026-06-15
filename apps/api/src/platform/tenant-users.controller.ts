@@ -1,5 +1,5 @@
-import { Controller, Get, Inject, Ip, Query, UseGuards } from "@nestjs/common";
-import { isUuid, parseTenantUsersQuery } from "@wat/shared";
+import { Body, Controller, Get, Inject, Ip, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { isUuid, parseTenantUsersQuery, validatePasswordReset } from "@wat/shared";
 import { projectHttpException } from "../common/errors/project-error";
 import { CurrentPlatformUser } from "./decorators/current-platform-user.decorator";
 import { PlatformRoles } from "./decorators/platform-roles.decorator";
@@ -7,6 +7,7 @@ import { PlatformAuthGuard } from "./guards/platform-auth.guard";
 import { PlatformRolesGuard } from "./guards/platform-roles.guard";
 import { TenantUserRecord, TenantUsersService } from "./tenant-users.service";
 import { PlatformPrincipal } from "./types/platform-request";
+import { assertUuidParam } from "./uuid-param";
 
 /** Cross-tenant tenant-user directory (identity/role only — no finance, no PII secrets). */
 @Controller("platform/users")
@@ -29,5 +30,21 @@ export class TenantUsersController {
       ]);
     }
     return { users: await this.tenantUsers.list(actor.sub, parseTenantUsersQuery(query), ip) };
+  }
+
+  @Post(":id/reset-password")
+  @PlatformRoles("super_admin")
+  async resetPassword(
+    @CurrentPlatformUser() actor: PlatformPrincipal,
+    @Ip() ip: string,
+    @Param("id") id: string,
+    @Body() body: unknown,
+  ): Promise<{ user: TenantUserRecord }> {
+    assertUuidParam(id);
+    const parsed = validatePasswordReset(body);
+    if (!parsed.success) {
+      throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ข้อมูลไม่ถูกต้อง", parsed.errors);
+    }
+    return { user: await this.tenantUsers.resetPassword(actor.sub, id, parsed.data.newPassword, ip) };
   }
 }

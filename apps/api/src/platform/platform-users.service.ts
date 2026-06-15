@@ -1,4 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
+import { PasswordService } from "../auth/password.service";
 import { conflict, forbidden, notFound } from "../common/errors/project-error";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { recordPlatformAudit } from "./platform-audit";
@@ -23,7 +24,35 @@ const PLATFORM_USER_SELECT = {
 
 @Injectable()
 export class PlatformUsersService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(PasswordService) private readonly passwords: PasswordService,
+  ) {}
+
+  /** Admin sets a temporary password; all of the user's sessions are revoked so
+   *  they must sign in fresh with the new credential. Audited. */
+  async resetPassword(actorId: string, targetId: string, newPassword: string, ip?: string): Promise<PlatformUserRecord> {
+    const passwordHash = await this.passwords.hash(newPassword);
+    return this.prisma.withSystemAccess(async (tx) => {
+      const user = await tx.platformUser.findUnique({ where: { id: targetId }, select: PLATFORM_USER_SELECT });
+      if (!user) {
+        throw notFound("ไม่พบผู้ใช้แพลตฟอร์ม");
+      }
+      await tx.platformUser.update({ where: { id: targetId }, data: { passwordHash, updatedAt: new Date() } });
+      await tx.platformRefreshToken.updateMany({
+        where: { platformUserId: targetId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      await recordPlatformAudit(tx, {
+        actorPlatformUserId: actorId,
+        action: "platform_user.password_reset",
+        entityType: "platform_user",
+        entityId: targetId,
+        ip,
+      });
+      return user;
+    });
+  }
 
   async list(): Promise<PlatformUserRecord[]> {
     // password_hash is never selected.

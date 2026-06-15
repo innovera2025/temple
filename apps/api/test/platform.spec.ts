@@ -475,6 +475,20 @@ describe("platform admin", () => {
     await expectHttpError(devotees.enable(actorSuper, ip, id), 409, "CONFLICT");
   });
 
+  it("admin resets a temporary password for each account type (audited; short password -> 422)", async () => {
+    // devotee
+    const devEmail = `reset-dev-${randomUUID()}@example.com`;
+    const devId = await returningId(`INSERT INTO devotee_accounts (email, display_name) VALUES (${lit(devEmail)}, 'รีเซ็ต') RETURNING id`);
+    await devotees.resetPassword(actorSuper, ip, devId, { newPassword: "TempPass123!" });
+    expect(await platformAuditCount("devotee_account.password_reset", devId)).toBe(1);
+    await expectHttpError(devotees.resetPassword(actorSuper, ip, devId, { newPassword: "short" }), 422, "UNPROCESSABLE_ENTITY");
+
+    // platform user
+    const puId = await insertPlatformUser(`reset-pu-${randomUUID()}@example.com`, "support", await passwordService.hash("x"), true);
+    await platformUsers.resetPassword(actorSuper, ip, puId, { newPassword: "TempPass123!" });
+    expect(await platformAuditCount("platform_user.password_reset", puId)).toBe(1);
+  });
+
   it("exposes the platform audit trail (read-only) with the actor email resolved", async () => {
     // The suite's logins + approvals/suspensions have written audit rows.
     const { logs } = await audit.list();

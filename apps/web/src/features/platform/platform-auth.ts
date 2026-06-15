@@ -253,6 +253,9 @@ export interface PlatformApi {
   listDevotees(token: string): Promise<DevoteeAccountRecord[]>;
   enableDevotee(token: string, id: string): Promise<DevoteeAccountRecord>;
   disableDevotee(token: string, id: string): Promise<DevoteeAccountRecord>;
+  resetPlatformUserPassword(token: string, id: string, newPassword: string): Promise<PlatformUserRecord>;
+  resetTenantUserPassword(token: string, id: string, newPassword: string): Promise<TenantUserRecord>;
+  resetDevoteePassword(token: string, id: string, newPassword: string): Promise<DevoteeAccountRecord>;
   openBreakGlass(token: string, input: BreakGlassOpenInput): Promise<BreakGlassGrantRecord>;
   listGrants(token: string): Promise<BreakGlassGrantRecord[]>;
   revokeGrant(token: string, id: string): Promise<BreakGlassGrantRecord>;
@@ -353,6 +356,12 @@ export function createPlatformApiClient(options: PlatformApiClientOptions): Plat
       post<DevoteeAccountRecord>(`/platform/devotees/${id}/enable`, token, {}, "devotee", "เปิดใช้งานไม่สำเร็จ"),
     disableDevotee: (token, id) =>
       post<DevoteeAccountRecord>(`/platform/devotees/${id}/disable`, token, {}, "devotee", "ปิดใช้งานไม่สำเร็จ"),
+    resetPlatformUserPassword: (token, id, newPassword) =>
+      post<PlatformUserRecord>(`/platform/platform-users/${id}/reset-password`, token, { newPassword }, "platformUser", "รีเซ็ตรหัสผ่านไม่สำเร็จ"),
+    resetTenantUserPassword: (token, id, newPassword) =>
+      post<TenantUserRecord>(`/platform/users/${id}/reset-password`, token, { newPassword }, "user", "รีเซ็ตรหัสผ่านไม่สำเร็จ"),
+    resetDevoteePassword: (token, id, newPassword) =>
+      post<DevoteeAccountRecord>(`/platform/devotees/${id}/reset-password`, token, { newPassword }, "devotee", "รีเซ็ตรหัสผ่านไม่สำเร็จ"),
     listTenantUsers: (token, filter = {}) =>
       get<TenantUserRecord[]>(
         `/platform/users${qs({

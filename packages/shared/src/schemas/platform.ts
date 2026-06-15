@@ -49,6 +49,17 @@ export const PLATFORM_LIMITS = {
 
 export const MIN_PASSWORD_LENGTH = 8;
 export const BREAK_GLASS_MAX_TTL_MINUTES = 120;
+
+/** Admin-initiated password reset: only the length is enforced (the admin sets a
+ *  temporary password the user changes later). Not trimmed — passwords may contain
+ *  spaces. */
+export function validatePasswordReset(input: unknown): ValidationResult<{ newPassword: string }> {
+  const pw = isPlainObject(input) && typeof input.newPassword === "string" ? input.newPassword : "";
+  if (pw.length < MIN_PASSWORD_LENGTH) {
+    return { success: false, errors: [{ field: "newPassword", message: `รหัสผ่านต้องมีอย่างน้อย ${MIN_PASSWORD_LENGTH} ตัวอักษร` }] };
+  }
+  return { success: true, data: { newPassword: pw } };
+}
 export const BREAK_GLASS_DEFAULT_TTL_MINUTES = 60;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
