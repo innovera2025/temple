@@ -117,7 +117,7 @@ export function PlatformAllUsersView({ api, token, canWrite, onUnauthorized }: P
 
       <Card>
         <div className="card-head">
-          <div className="auth-tabs" role="tablist">
+          <div className="seg" role="tablist" aria-label="กรองประเภทผู้ใช้">
             {FILTERS.map((f) => (
               <button key={f.value || "all"} type="button" role="tab" aria-selected={kind === f.value} className={kind === f.value ? "active" : ""} onClick={() => setKind(f.value)}>
                 {f.label}
