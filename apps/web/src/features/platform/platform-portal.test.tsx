@@ -2,6 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ApplicationsView } from "./applications-view";
+import { PlatformDashboard } from "./platform-dashboard";
 import { PlatformLoginView } from "./platform-login-view";
 import { PlatformShell } from "./platform-shell";
 import { PlatformUsersView } from "./platform-users-view";
@@ -149,6 +150,22 @@ describe("platform console (mounted)", () => {
     });
     await flush();
     expect(authed).toBe(true);
+  });
+
+  it("dashboard shows KPIs + the pending-application queue and links to applications", async () => {
+    let navTo = "";
+    await act(async () => {
+      root.render(<PlatformDashboard api={makeApi()} token="t" canWrite onUnauthorized={() => undefined} onGoto={(p) => (navTo = p)} />);
+    });
+    await flush();
+    expect(container.textContent).toContain("แดชบอร์ดแพลตฟอร์ม");
+    expect(container.textContent).toContain("วัดทั้งหมด");
+    expect(container.textContent).toContain("ใบสมัครรอตรวจสอบ");
+    expect(container.textContent).toContain("สัดส่วนสถานะวัด");
+    expect(container.textContent).toContain("วัดขอสมัครเดโม"); // pending application in the queue
+    const seeAll = Array.from(container.querySelectorAll("button")).find((b) => b.textContent === "ดูทั้งหมด");
+    await act(async () => seeAll?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(navTo).toBe("applications");
   });
 
   it("applications view lists a pending application and approving calls approveApplication with slug+password", async () => {

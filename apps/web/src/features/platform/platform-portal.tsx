@@ -2,6 +2,7 @@ import { ReactElement, useMemo, useState } from "react";
 import { PLATFORM_ROLE_LABELS_TH } from "@wat/shared";
 import { ApplicationsView } from "./applications-view";
 import { BreakGlassView } from "./break-glass-view";
+import { PlatformDashboard } from "./platform-dashboard";
 import { PlatformLoginView } from "./platform-login-view";
 import { PlatformPage, PlatformShell } from "./platform-shell";
 import { PlatformUsersView } from "./platform-users-view";
@@ -24,19 +25,19 @@ export interface PlatformPortalProps {
 export function PlatformPortal({ baseUrl }: PlatformPortalProps): ReactElement {
   const api = useMemo(() => createPlatformApiClient({ baseUrl }), [baseUrl]);
   const [session, setSession] = useState<PlatformSession | null>(() => loadPlatformSession());
-  const [page, setPage] = useState<PlatformPage>("applications");
+  const [page, setPage] = useState<PlatformPage>("dashboard");
 
   function onAuthenticated(next: PlatformSession): void {
     savePlatformSession(next);
     setSession(next);
-    setPage("applications");
+    setPage("dashboard");
   }
 
   function logout(): void {
     if (session?.refreshToken) void api.logout(session.accessToken, session.refreshToken);
     clearPlatformSession();
     setSession(null);
-    setPage("applications");
+    setPage("dashboard");
   }
 
   if (!session) {
@@ -50,6 +51,7 @@ export function PlatformPortal({ baseUrl }: PlatformPortalProps): ReactElement {
 
   return (
     <PlatformShell userName={session.platform.email} roleLabel={roleLabel} page={page} onNavigate={setPage} onLogout={logout}>
+      {page === "dashboard" ? <PlatformDashboard {...viewProps} onGoto={setPage} /> : null}
       {page === "applications" ? <ApplicationsView {...viewProps} /> : null}
       {page === "temples" ? <TemplesView {...viewProps} /> : null}
       {page === "tenant-users" ? <TenantUsersView {...viewProps} /> : null}
