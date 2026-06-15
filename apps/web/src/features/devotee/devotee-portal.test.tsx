@@ -7,6 +7,7 @@ import { AccountView } from "./account-view";
 import { DevoteeLoginView } from "./login-view";
 import { DevoteeShell } from "./devotee-shell";
 import { MyCeremonies, MyDonations, MyItemLoans, MyReceipts } from "./my-records";
+import { DevoteeHome } from "./devotee-home";
 import { BookCeremonyForm, BorrowItemForm, DonateForm, TempleEventsList } from "./temple-page";
 import { TemplePicker } from "./temple-picker";
 import {
@@ -343,6 +344,35 @@ describe("devotee views (mounted)", () => {
     await flush();
     expect(container.textContent).toContain("จำนวนเงินสูงเกินไป");
     expect(donateCalled).toBe(false);
+  });
+
+  it("devotee home shows the personal summary (KPIs + recent merit) and quick actions", async () => {
+    let navTo = "";
+    await act(async () => {
+      root.render(
+        <DevoteeHome
+          api={makeApi()}
+          token="t"
+          displayName="คุณโยมดี"
+          activeTempleName="วัดอรุณเดโม"
+          onGoto={(p) => {
+            navTo = p;
+          }}
+          onUnauthorized={() => undefined}
+        />,
+      );
+    });
+    await flush();
+    expect(container.textContent).toContain("สวัสดี คุณโยมดี");
+    expect(container.textContent).toContain("ยอดร่วมบุญรวม");
+    expect(container.textContent).toContain("ร่วมบุญล่าสุด");
+    expect(container.textContent).toContain("วัดอรุณเดโม"); // recent donation row + active-temple banner
+    // quick-action tile navigates to the matching menu
+    const donateTile = Array.from(container.querySelectorAll("button")).find((b) => b.textContent?.includes("ร่วมบริจาค"));
+    await act(async () => {
+      donateTile?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(navTo).toBe("donations");
   });
 
   it("my-records pages each render their own rows (donations / receipts / ceremonies / item-loans)", async () => {

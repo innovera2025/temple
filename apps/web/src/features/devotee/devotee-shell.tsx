@@ -9,7 +9,7 @@ import { Icon, IconName } from "../../layout/icons";
 const MOBILE_MAX_WIDTH = 860;
 const SIDEBAR_ID = "devotee-sidebar";
 
-export type DevoteePage = "picker" | "donations" | "receipts" | "ceremonies" | "loans" | "account";
+export type DevoteePage = "home" | "picker" | "donations" | "receipts" | "ceremonies" | "loans" | "account";
 
 interface DevoteeNavItem {
   id: DevoteePage;
@@ -22,6 +22,7 @@ interface DevoteeNavGroup {
 }
 
 const NAV: DevoteeNavGroup[] = [
+  { group: "ภาพรวม", items: [{ id: "home", label: "หน้าหลักของฉัน", icon: "dashboard" }] },
   { group: "ทำบุญ", items: [{ id: "picker", label: "เลือกวัด", icon: "building" }] },
   {
     group: "ของฉัน",
@@ -36,6 +37,7 @@ const NAV: DevoteeNavGroup[] = [
 ];
 
 export const DEVOTEE_PAGE_TITLES: Record<DevoteePage, string> = {
+  home: "หน้าหลักของฉัน",
   picker: "เลือกวัด",
   donations: "การบริจาคของฉัน",
   receipts: "ใบอนุโมทนาของฉัน",

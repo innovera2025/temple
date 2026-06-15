@@ -3,6 +3,7 @@ import type { PublicTempleSummary } from "@wat/shared";
 import { Button } from "../../design-system";
 import { Icon } from "../../layout/icons";
 import { AccountView } from "./account-view";
+import { DevoteeHome } from "./devotee-home";
 import { DevoteeLoginView } from "./login-view";
 import { DEVOTEE_PAGE_TITLES, DevoteePage, DevoteeShell } from "./devotee-shell";
 import { MyCeremonies, MyDonations, MyItemLoans, MyReceipts } from "./my-records";
@@ -56,7 +57,7 @@ function NoTempleSelected({ action, onGoPick }: { action: string; onGoPick: () =
 export function DevoteePortal({ baseUrl, today }: DevoteePortalProps): ReactElement {
   const api = useMemo(() => createDevoteeApiClient({ baseUrl }), [baseUrl]);
   const [session, setSession] = useState<DevoteeSession | null>(() => loadDevoteeSession());
-  const [page, setPage] = useState<DevoteePage>("picker");
+  const [page, setPage] = useState<DevoteePage>("home");
   // The temple a devotee is currently transacting with — chosen on "เลือกวัด",
   // persisted so it survives reload, and shared by every action page.
   const [activeTemple, setActiveTemple] = useState<ActiveTemple | null>(() => loadActiveTemple());
@@ -64,7 +65,7 @@ export function DevoteePortal({ baseUrl, today }: DevoteePortalProps): ReactElem
   function onAuthenticated(next: DevoteeSession): void {
     saveDevoteeSession(next);
     setSession(next);
-    setPage("picker");
+    setPage("home");
   }
 
   function logout(): void {
@@ -72,7 +73,7 @@ export function DevoteePortal({ baseUrl, today }: DevoteePortalProps): ReactElem
     clearActiveTemple();
     setSession(null);
     setActiveTemple(null);
-    setPage("picker");
+    setPage("home");
   }
 
   if (!session) {
@@ -102,6 +103,17 @@ export function DevoteePortal({ baseUrl, today }: DevoteePortalProps): ReactElem
       onNavigate={setPage}
       onLogout={logout}
     >
+      {page === "home" ? (
+        <DevoteeHome
+          api={api}
+          token={token}
+          displayName={session.devotee.displayName}
+          activeTempleName={activeTemple?.nameTh ?? null}
+          onGoto={setPage}
+          onUnauthorized={logout}
+        />
+      ) : null}
+
       {page === "picker" ? (
         activeTemple ? (
           <TemplePage
@@ -110,6 +122,7 @@ export function DevoteePortal({ baseUrl, today }: DevoteePortalProps): ReactElem
             templeId={activeTemple.id}
             onUnauthorized={logout}
             onChangeTemple={changeTemple}
+            onGoto={setPage}
           />
         ) : (
           <TemplePicker api={api} token={token} onSelect={selectTemple} onUnauthorized={logout} />

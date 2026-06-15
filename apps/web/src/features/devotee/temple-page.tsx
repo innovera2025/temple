@@ -12,7 +12,7 @@ import {
   formatSatang,
 } from "@wat/shared";
 import { Button } from "../../design-system";
-import { Icon } from "../../layout/icons";
+import { Icon, type IconName } from "../../layout/icons";
 import {
   DevoteeApi,
   DevoteeBorrowableItem,
@@ -35,6 +35,41 @@ export interface TemplePageProps {
   onUnauthorized: () => void;
   /** "เปลี่ยนวัด" — clears the active temple and returns to the picker grid. */
   onChangeTemple: () => void;
+  /** Jump to an action menu (การบริจาค/การจองพิธี/การยืมของ) from a quick-action tile. */
+  onGoto: (page: "donations" | "ceremonies" | "loans") => void;
+}
+
+const QUICK_ACTIONS: {
+  page: "donations" | "ceremonies" | "loans";
+  icon: IconName;
+  label: string;
+  sub: string;
+  color: string;
+  bg: string;
+}[] = [
+  { page: "donations", icon: "donation", label: "ร่วมบริจาค", sub: "ทำบุญกับวัดนี้", color: "var(--accent)", bg: "var(--accent-tint)" },
+  { page: "ceremonies", icon: "event", label: "จองพิธี / นิมนต์พระ", sub: "ส่งคำขอจัดงาน", color: "var(--credit)", bg: "var(--credit-tint)" },
+  { page: "loans", icon: "box", label: "ยืมของวัด", sub: "ขอยืมสิ่งของ", color: "var(--pending)", bg: "var(--pending-tint)" },
+];
+
+/** Reusable lay-home style quick-action tiles → jump to an action menu. */
+export function DevoteeQuickActions({ onGoto }: { onGoto: (page: "donations" | "ceremonies" | "loans") => void }): ReactElement {
+  return (
+    <div className="devotee-quick">
+      {QUICK_ACTIONS.map((a) => (
+        <button key={a.page} type="button" className="card devotee-quick-tile" onClick={() => onGoto(a.page)}>
+          <span className="devotee-quick-icon" style={{ background: a.bg, color: a.color }}>
+            <Icon name={a.icon} size={22} />
+          </span>
+          <span className="devotee-quick-body">
+            <span className="devotee-quick-label">{a.label}</span>
+            <span className="devotee-quick-sub">{a.sub}</span>
+          </span>
+          <span className="devotee-quick-go" aria-hidden="true">›</span>
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function profileRows(temple: PublicTempleProfile): { label: string; value: string }[] {
@@ -62,6 +97,7 @@ export function TemplePage({
   templeId,
   onUnauthorized,
   onChangeTemple,
+  onGoto,
 }: TemplePageProps): ReactElement {
   const [temple, setTemple] = useState<PublicTempleProfile | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -100,6 +136,8 @@ export function TemplePage({
 
       {loadError ? <p className="auth-error" role="alert">{loadError}</p> : null}
       {temple === null && !loadError ? <p className="muted">กำลังโหลดข้อมูลวัด…</p> : null}
+
+      {temple ? <DevoteeQuickActions onGoto={onGoto} /> : null}
 
       {temple ? (
         <div className="devotee-temple-detail">

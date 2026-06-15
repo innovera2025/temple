@@ -1419,6 +1419,21 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .devotee-donate { padding: 20px; }
 .devotee-donate-title { margin: 0 0 14px; font-family: var(--font-serif); font-size: 18px; font-weight: 600; color: var(--ink); }
 
+/* Quick-action tiles on the selected-temple page (mirrors the design lay-home). */
+.devotee-quick { display: grid; gap: 14px; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 18px; }
+@media (max-width: 860px) { .devotee-quick { grid-template-columns: 1fr; } }
+.devotee-quick-tile {
+  display: flex; align-items: center; gap: 12px; padding: 16px; text-align: left;
+  cursor: pointer; border: 1px solid var(--border); background: var(--surface);
+  border-radius: var(--r-lg); transition: border-color .12s, box-shadow .12s, transform .12s;
+}
+.devotee-quick-tile:hover { border-color: var(--border-focus); box-shadow: var(--shadow-sm); transform: translateY(-1px); }
+.devotee-quick-icon { width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center; flex-shrink: 0; }
+.devotee-quick-body { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.devotee-quick-label { font-family: var(--font-serif); font-weight: 600; color: var(--ink); }
+.devotee-quick-sub { font-size: 12px; color: var(--ink-3); }
+.devotee-quick-go { color: var(--ink-3); font-size: 22px; line-height: 1; }
+
 /* Action menu pages (การบริจาค/การจองพิธี/การยืมของ): form(s) on top, history below. */
 .devotee-action { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); }
 /* "Active temple" banner shown above each action form. */
