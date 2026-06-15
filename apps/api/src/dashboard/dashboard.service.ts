@@ -1,4 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
+import { ictMonth } from "@wat/shared";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { LedgerEntriesService } from "../ledger/ledger-entries.service";
 
@@ -39,17 +40,11 @@ interface RecentDonationRow {
 const ANONYMOUS_DONOR_TH = "ผู้บริจาคไม่ประสงค์ออกนาม";
 const RECENT_LIMIT = 5;
 
-const ICT_OFFSET_MS = 7 * 60 * 60 * 1000;
-
-/**
- * "This month" must be the ICT (UTC+7) month — the reports module already uses
- * ICT civil days, and UTC here would roll the dashboard over 7 hours late and
- * disagree with the report for the same tenant. Exported for fixed-clock tests.
- */
-export function ictMonth(now: Date): string {
-  const shifted = new Date(now.getTime() + ICT_OFFSET_MS);
-  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}`;
-}
+// "This month" must be the ICT (UTC+7) month — UTC would roll the dashboard over
+// 7 hours late and disagree with the ledger/report for the same tenant. The
+// month boundary lives in @wat/shared (single source of truth); re-exported here
+// for the dashboard's fixed-clock tests.
+export { ictMonth };
 
 /** The instant the ICT month begins (for timestamptz comparisons). */
 export function ictMonthStart(month: string): Date {

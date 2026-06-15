@@ -30,9 +30,13 @@ export function createAuthedFetch(deps: AuthedFetchDeps): typeof fetch {
   const doFetch = deps.fetchFn ?? fetch;
   const refreshPath = deps.refreshPath ?? "/auth/refresh";
   let refreshInFlight: Promise<string | null> | null = null;
-  // A burst of concurrent 401s all await the same failed refresh; fire the
-  // unrecoverable-session callback only ONCE so the app logs out a single time.
-  let sessionExpired = false;
+  // Concurrent 401s share one refresh; when that refresh FAILS they must log out
+  // exactly once for that burst. We track the specific failed-refresh promise we
+  // already handled rather than a permanent flag — the wrapper outlives logout
+  // (it is memo'd once in app.tsx), so a permanent latch would silently swallow
+  // a SECOND genuine expiry after the user re-logs-in. A new burst = a new
+  // promise = a fresh logout.
+  let loggedOutFor: Promise<string | null> | null = null;
 
   async function refreshAccessToken(): Promise<string | null> {
     const refreshToken = deps.getRefreshToken();
@@ -65,11 +69,14 @@ export function createAuthedFetch(deps: AuthedFetchDeps): typeof fetch {
         refreshInFlight = null;
       });
     }
-    const newAccessToken = await refreshInFlight;
+    const refresh = refreshInFlight;
+    const newAccessToken = await refresh;
 
     if (!newAccessToken) {
-      if (!sessionExpired) {
-        sessionExpired = true;
+      // First waiter of THIS failed burst logs out; the rest skip. A later burst
+      // (new promise) can log out again, so re-login + re-expiry still works.
+      if (loggedOutFor !== refresh) {
+        loggedOutFor = refresh;
         deps.onSessionExpired();
       }
       return response; // original 401 — the caller still errors; app routes to login

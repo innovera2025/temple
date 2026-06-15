@@ -132,4 +132,25 @@ describe("createAuthedFetch", () => {
     expect(results.every((r) => r.status === 401)).toBe(true);
     expect(onSessionExpired).toHaveBeenCalledTimes(1); // one logout, not three
   });
+
+  it("logs out AGAIN on a later expiry after re-login (the dedup is per-burst, not permanent)", async () => {
+    // The wrapper is memo'd once in app.tsx and outlives logout/re-login, so a
+    // permanent latch would swallow the second genuine expiry. Two SEPARATE
+    // failed-refresh bursts must each fire onSessionExpired.
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/auth/refresh")) return res(401, { error: { message: "Invalid refresh token" } });
+      return res(401, { error: { message: "Expired token" } });
+    }) as unknown as typeof fetch;
+
+    const { authedFetch, onSessionExpired } = setup(fetchImpl);
+    const first = await authedFetch("http://api.test/dashboard", { headers: { authorization: "Bearer old-1" } });
+    expect(first.status).toBe(401);
+    expect(onSessionExpired).toHaveBeenCalledTimes(1);
+
+    // ...user logs back in (new session), then the new session expires too:
+    const second = await authedFetch("http://api.test/dashboard", { headers: { authorization: "Bearer old-2" } });
+    expect(second.status).toBe(401);
+    expect(onSessionExpired).toHaveBeenCalledTimes(2); // not suppressed by a stale latch
+  });
 });

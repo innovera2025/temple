@@ -4,6 +4,7 @@ import {
   type CreateItemInput,
   type CreateMovementInput,
   type CreateRoomInput,
+  ictDateIso,
   type ImportItemInput,
   isUuid,
   type ItemSearchQuery,
@@ -340,7 +341,9 @@ export class InventoryService {
       const existing = await tx.storageRoom.findMany({ select: { id: true, name: true } });
       const roomByName = new Map(existing.map((r) => [r.name, r.id]));
       let roomsCreated = 0;
-      const movementDate = new Date();
+      // movement_date is a @db.Date — anchor it to the Thai civil day (ICT), or a
+      // late-UTC import lands on the wrong calendar day (matches public/ledger).
+      const movementDate = new Date(`${ictDateIso(new Date())}T00:00:00.000Z`);
 
       for (const row of rows) {
         let roomId: string | null = null;
