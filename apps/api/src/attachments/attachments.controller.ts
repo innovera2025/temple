@@ -12,7 +12,14 @@ import {
   StreamableFile,
   UseGuards,
 } from "@nestjs/common";
-import { isAttachmentOwnerType, isUuid, sanitizeFileName, validateUploadAttachment, type AttachmentOwnerType } from "@wat/shared";
+import {
+  isAttachmentOwnerType,
+  isUuid,
+  sanitizeFileName,
+  validateDeleteAttachment,
+  validateUploadAttachment,
+  type AttachmentOwnerType,
+} from "@wat/shared";
 import { CurrentTenant } from "../common/decorators/current-tenant.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { RateLimit } from "../common/decorators/rate-limit.decorator";
@@ -122,9 +129,14 @@ export class AttachmentsController {
     @CurrentTenant() tenantId: string,
     @Ip() ip: string,
     @Param("id") id: string,
+    @Body() body: unknown,
   ): Promise<{ deleted: true }> {
     assertUuid(id);
-    await this.attachments.remove(tenantId, actor.sub, actor.role, id, ip);
+    const parsed = validateDeleteAttachment(body);
+    if (!parsed.success) {
+      throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ข้อมูลไม่ถูกต้อง", parsed.errors);
+    }
+    await this.attachments.remove(tenantId, actor.sub, actor.role, id, parsed.data.reason, ip);
     return { deleted: true };
   }
 }

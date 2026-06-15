@@ -56,6 +56,19 @@ async function attachmentAuditCount(tenantId: string, action: string, entityId: 
   return Number(stdout.trim());
 }
 
+async function psqlScalar(sql: string): Promise<string> {
+  const { stdout } = await execFileAsync(
+    "docker",
+    [
+      "exec", "-i", process.env.POSTGRES_CONTAINER ?? "wat-dev-db",
+      "psql", "-U", process.env.POSTGRES_USER ?? "wat_dev", "-d", process.env.POSTGRES_DB ?? "wat_dev",
+      "-At", "-c", sql,
+    ],
+    { maxBuffer: 1024 * 1024 },
+  );
+  return stdout.trim();
+}
+
 async function expectProjectHttpError(promise: Promise<unknown>, statusCode: number, code: string): Promise<void> {
   try {
     await promise;
@@ -286,7 +299,7 @@ describe("attachments (แนบหลักฐาน)", () => {
       mimeType: "image/png",
       contentBase64,
     });
-    await attachments.remove(actorA, templeA, ip, attachment.id);
+    await attachments.remove(actorA, templeA, ip, attachment.id, {});
     expect(await attachmentAuditCount(templeA, "attachment:delete", attachment.id)).toBe(1);
     await expectProjectHttpError(
       Promise.resolve().then(() => attachmentsService.download(templeA, attachment.id)),
@@ -325,7 +338,7 @@ describe("attachments (แนบหลักฐาน)", () => {
     });
 
     await expectProjectHttpError(
-      attachments.remove(actorStaff, templeA, ip, attachment.id),
+      attachments.remove(actorStaff, templeA, ip, attachment.id, {}),
       403,
       "FORBIDDEN",
     );
@@ -333,9 +346,17 @@ describe("attachments (แนบหลักฐาน)", () => {
     const file = await attachmentsService.download(templeA, attachment.id);
     expect(file.fileName).toBe("slip.png");
 
-    // admin may remove it (soft delete, audited)
-    await attachments.remove(actorA, templeA, ip, attachment.id);
+    // admin may remove it — but financial evidence requires a reason (no silent removal)
+    await expectProjectHttpError(
+      attachments.remove(actorA, templeA, ip, attachment.id, {}),
+      422,
+      "UNPROCESSABLE_ENTITY",
+    );
+    await attachments.remove(actorA, templeA, ip, attachment.id, { reason: "ลบสลิปที่อัปโหลดผิดใบ" });
     expect(await attachmentAuditCount(templeA, "attachment:delete", attachment.id)).toBe(1);
+    // the reason is persisted on the row AND the audit log
+    expect(await psqlScalar(`SELECT delete_reason FROM attachments WHERE id = '${attachment.id}'`)).toBe("ลบสลิปที่อัปโหลดผิดใบ");
+    expect(await psqlScalar(`SELECT reason FROM audit_logs WHERE action = 'attachment:delete' AND entity_id = '${attachment.id}'`)).toBe("ลบสลิปที่อัปโหลดผิดใบ");
   });
 
   it("forbids staff from deleting item_loan hand-over photos (financial evidence), allows admin", async () => {
@@ -348,21 +369,21 @@ describe("attachments (แนบหลักฐาน)", () => {
     });
 
     await expectProjectHttpError(
-      attachments.remove(actorStaff, templeA, ip, attachment.id),
+      attachments.remove(actorStaff, templeA, ip, attachment.id, {}),
       403,
       "FORBIDDEN",
     );
     // staff attempt must not have removed it
     expect((await attachmentsService.download(templeA, attachment.id)).fileName).toBe("handover-evidence.png");
 
-    // admin may soft-delete it (audited)
-    await attachments.remove(actorA, templeA, ip, attachment.id);
+    // admin may soft-delete it with a reason (audited)
+    await attachments.remove(actorA, templeA, ip, attachment.id, { reason: "ภาพเบลอ ถ่ายใหม่" });
     expect(await attachmentAuditCount(templeA, "attachment:delete", attachment.id)).toBe(1);
   });
 
   it("returns 404 for a malformed id and 422 for a bad list query", async () => {
     await expectProjectHttpError(
-      Promise.resolve().then(() => attachments.remove(actorA, templeA, ip, "not-a-uuid")),
+      Promise.resolve().then(() => attachments.remove(actorA, templeA, ip, "not-a-uuid", {})),
       404,
       "NOT_FOUND",
     );

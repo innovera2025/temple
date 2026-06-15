@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Inject, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { type AttachmentOwnerType, type UploadAttachmentInput } from "@wat/shared";
-import { conflict, forbidden, notFound } from "../common/errors/project-error";
+import { conflict, forbidden, notFound, projectHttpException } from "../common/errors/project-error";
 import { PrismaService } from "../common/prisma/prisma.service";
 
 // Attachments owned by money records are หลักฐาน (financial evidence): only
@@ -187,6 +187,7 @@ export class AttachmentsService {
     actorUserId: string,
     actorRole: string,
     id: string,
+    reason: string,
     ip?: string,
   ): Promise<void> {
     await this.prisma.withTenant(tenantId, async (tx) => {
@@ -197,12 +198,25 @@ export class AttachmentsService {
       if (!before) {
         throw notFound("ไม่พบไฟล์แนบ");
       }
-      if (FINANCIAL_EVIDENCE_OWNER_TYPES.has(before.ownerType) && actorRole === "staff") {
+      const isFinancialEvidence = FINANCIAL_EVIDENCE_OWNER_TYPES.has(before.ownerType);
+      if (isFinancialEvidence && actorRole === "staff") {
         throw forbidden("เฉพาะผู้ดูแลหรือฝ่ายการเงินเท่านั้นที่ลบหลักฐานการเงินได้");
+      }
+      // Deleting หลักฐานการเงิน must record WHY — same accountability as a
+      // donation/ledger void (no silent removal of financial evidence).
+      const trimmedReason = reason.trim();
+      if (isFinancialEvidence && trimmedReason.length === 0) {
+        throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ข้อมูลไม่ถูกต้อง", [
+          { field: "reason", message: "กรุณาระบุเหตุผลในการลบหลักฐาน" },
+        ]);
       }
       await tx.attachment.update({
         where: { id },
-        data: { deletedAt: new Date(), deletedByUserId: actorUserId },
+        data: {
+          deletedAt: new Date(),
+          deletedByUserId: actorUserId,
+          deleteReason: trimmedReason || null,
+        },
       });
       await tx.auditLog.create({
         data: {
@@ -212,6 +226,7 @@ export class AttachmentsService {
           entityType: "attachment",
           entityId: id,
           before: metaSnapshot(before),
+          reason: trimmedReason || null,
           metadata: { softDelete: true },
           ip,
         },

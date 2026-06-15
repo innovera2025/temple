@@ -23,6 +23,7 @@ export type AttachmentMimeType = (typeof ALLOWED_ATTACHMENT_MIME_TYPES)[number];
 
 export const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024; // 5 MB
 export const ATTACHMENT_FILENAME_MAX = 255;
+export const ATTACHMENT_DELETE_REASON_MAX = 500;
 
 const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
 
@@ -121,4 +122,26 @@ export function validateUploadAttachment(input: unknown): ValidationResult<Uploa
     return { success: false, errors };
   }
   return { success: true, data: data as UploadAttachmentInput };
+}
+
+export interface DeleteAttachmentInput {
+  /** Trimmed; "" when omitted. The server REQUIRES it for financial evidence. */
+  reason: string;
+}
+
+/**
+ * Validate the (optional) delete reason shape. The reason is mandatory for
+ * financial-evidence attachments, but that depends on the owner type — which the
+ * server knows only after loading the row — so the requirement is enforced there;
+ * here we only bound the length. Mirrors the void/cancel reason discipline.
+ */
+export function validateDeleteAttachment(input: unknown): ValidationResult<DeleteAttachmentInput> {
+  const reason = isPlainObject(input) && typeof input.reason === "string" ? input.reason.trim() : "";
+  if (reason.length > ATTACHMENT_DELETE_REASON_MAX) {
+    return {
+      success: false,
+      errors: [{ field: "reason", message: `เหตุผลยาวเกิน ${ATTACHMENT_DELETE_REASON_MAX} ตัวอักษร` }],
+    };
+  }
+  return { success: true, data: { reason } };
 }

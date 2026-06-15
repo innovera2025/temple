@@ -61,7 +61,7 @@ export function fileToBase64(file: File): Promise<string> {
 export interface AttachmentsApi {
   list(ownerType: AttachmentOwnerType, ownerId: string): Promise<Attachment[]>;
   upload(input: UploadAttachmentRequest): Promise<Attachment>;
-  remove(id: string): Promise<void>;
+  remove(id: string, reason?: string): Promise<void>;
   download(id: string): Promise<Blob>;
 }
 
@@ -108,10 +108,11 @@ export function createAttachmentsApiClient(options: AttachmentsApiClientOptions)
       }
       return body.attachment as Attachment;
     },
-    async remove(id) {
+    async remove(id, reason) {
       const response = await doFetch(`${options.baseUrl}/attachments/${id}`, {
         method: "DELETE",
-        headers: authHeader(),
+        headers: headers(),
+        body: JSON.stringify({ reason: reason ?? "" }),
       });
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as ApiErrorBody;
