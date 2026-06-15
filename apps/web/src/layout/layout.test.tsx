@@ -17,7 +17,7 @@ describe("nav permission model (design permMatrix)", () => {
     expect(can("finance", "roles")).toBe(false);
   });
 
-  it("matches the design matrix for staff (only dashboard/events/people/reports/designsystem)", () => {
+  it("matches the design matrix for staff (only dashboard/events/people/reports)", () => {
     expect(can("staff", "dashboard")).toBe(true);
     expect(can("staff", "events")).toBe(true);
     expect(can("staff", "people")).toBe(true);

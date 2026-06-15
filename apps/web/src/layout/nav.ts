@@ -26,7 +26,6 @@ export type PageId =
   | "reports"
   | "roles"
   | "audit"
-  | "designsystem"
   // Core Modules (CLAUDE.md) that have backend + views but are NOT in the design
   // NAV (design-ui-map.md open question #13). Surfaced via EXTRA_NAV below.
   | "temple"
@@ -73,7 +72,6 @@ export const NAV: NavGroup[] = [
       { id: "reports", label: "รายงานและส่งออก", icon: "reports" },
       { id: "roles", label: "สิทธิ์ผู้ใช้งาน", icon: "roles" },
       { id: "audit", label: "บันทึกการใช้งาน", icon: "audit" },
-      { id: "designsystem", label: "ระบบออกแบบ", icon: "settings" },
     ],
   },
 ];
@@ -89,7 +87,6 @@ export const PAGE_TITLES: Record<PageId, string> = {
   reports: "รายงานและส่งออก",
   roles: "สิทธิ์ผู้ใช้งาน",
   audit: "บันทึกการใช้งาน",
-  designsystem: "ระบบออกแบบ",
   temple: "ข้อมูลวัด",
   inventory: "คลังของบริจาค/พัสดุ",
   "item-loans": "การยืม-คืนสิ่งของ",
@@ -109,7 +106,7 @@ export const EXTRA_NAV: NavGroup[] = [
   },
 ];
 
-// admin-app.jsx PAGE_PERM: pageId -> permission row id. (designsystem is always view.)
+// admin-app.jsx PAGE_PERM: pageId -> permission row id.
 const PAGE_PERM: Partial<Record<PageId, string>> = {
   dashboard: "dash",
   donations: "don",
@@ -163,7 +160,6 @@ export function accessGroupLabel(role: TempleRole): string {
 
 // admin-app.jsx permOf().
 export function permOf(role: TempleRole, pageId: PageId): PermLevel {
-  if (pageId === "designsystem") return "view";
   const pid = PAGE_PERM[pageId];
   if (!pid) return "view";
   return PERM_MATRIX[pid]?.[role] ?? "none";

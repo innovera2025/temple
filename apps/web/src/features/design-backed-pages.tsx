@@ -1816,20 +1816,3 @@ export function DesignAudit({ api }: { api?: AuditApi }): ReactElement {
     </div>
   );
 }
-
-export function DesignSystemShowcase(): ReactElement {
-  return (
-    <div className="content-wrap">
-      <PageHead eyebrow="ระบบ" title="ระบบออกแบบ" desc="คอมโพเนนต์พื้นฐานที่ port จาก design artifact: btn btn-primary, badge, card, table, form" />
-      <Card pad>
-        <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
-          <button className="btn btn-primary">btn btn-primary</button>
-          <button className="btn btn-secondary">btn btn-secondary</button>
-          <button className="btn btn-tertiary">btn btn-tertiary</button>
-          <Badge kind="credit" dot>รายรับ</Badge>
-          <Badge kind="pending" dot>รอตรวจสอบ</Badge>
-        </div>
-      </Card>
-    </div>
-  );
-}

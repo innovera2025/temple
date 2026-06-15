@@ -62,7 +62,6 @@ describe("PageContent — page → view routing", () => {
       ["reports", ["รายงานและส่งออกข้อมูล", "ตั้งค่ารายงาน", "PDF"]],
       ["roles", ["สิทธิ์ผู้ใช้งาน", "บัญชีผู้ใช้งาน", "บทบาทและสิทธิ์"]],
       ["audit", ["บันทึกการใช้งาน", "ข้อมูลนี้ลบไม่ได้", "กำลังโหลด…"]],
-      ["designsystem", ["ระบบออกแบบ", "btn btn-primary"]],
     ];
     for (const [page, texts] of expectations) {
       const html = render(page);

@@ -29,7 +29,6 @@ import {
   DesignReceipt,
   DesignReports,
   DesignRoles,
-  DesignSystemShowcase,
 } from "./design-backed-pages";
 
 export interface PageContentProps {
@@ -115,9 +114,6 @@ export function PageContent({ page, baseUrl, getToken, fetchFn, role, today, onN
       break;
     case "audit":
       content = <DesignAudit api={createAuditApiClient(opts)} />;
-      break;
-    case "designsystem":
-      content = <DesignSystemShowcase />;
       break;
     default:
       content = <UnavailablePage title="ไม่พบหน้า" reason="ไม่พบหน้าที่ร้องขอ" />;
