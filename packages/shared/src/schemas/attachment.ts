@@ -10,6 +10,17 @@ import { isUuid } from "./platform";
 export const ATTACHMENT_OWNER_TYPES = ["donation", "receipt", "ledger_entry", "donor", "item_loan"] as const;
 export type AttachmentOwnerType = (typeof ATTACHMENT_OWNER_TYPES)[number];
 
+// หลักฐานการเงิน — attachments only admin/finance may delete (with a reason), and
+// never via hard delete. Everything EXCEPT a donor's personal photo. Lives here
+// (next to the canonical owner list) so the classification can't drift from it.
+export const FINANCIAL_EVIDENCE_OWNER_TYPES: ReadonlySet<AttachmentOwnerType> = new Set(
+  ATTACHMENT_OWNER_TYPES.filter((t) => t !== "donor"),
+);
+
+export function isFinancialEvidenceOwnerType(ownerType: string): boolean {
+  return FINANCIAL_EVIDENCE_OWNER_TYPES.has(ownerType as AttachmentOwnerType);
+}
+
 export const ATTACHMENT_OWNER_TYPE_LABELS_TH: Record<AttachmentOwnerType, string> = {
   donation: "การบริจาค",
   receipt: "ใบอนุโมทนา",

@@ -177,6 +177,23 @@ describe("item-loans (การยืม-คืนสิ่งของวัด
     );
   });
 
+  it("serializes a concurrent borrow + return that reuse the same photo (advisory lock) -> one 422", async () => {
+    const item = await makeItem(5);
+    const borrowPhoto = await createPhoto(templeA, item.id);
+    const { loan } = await loans.createLoan(actorA, templeA, ip, { itemId: item.id, borrowerName: "ยืมไว้ก่อน", quantity: 1, borrowedAt: "2031-09-10", borrowPhotoId: borrowPhoto });
+    // One fresh photo that BOTH a new borrow and the return of `loan` try to claim
+    // at the same time — the per-tenant loan lock must let only one succeed.
+    const shared = await createPhoto(templeA, item.id);
+    const results = await Promise.allSettled([
+      loans.createLoan(actorA, templeA, ip, { itemId: item.id, borrowerName: "ยืมใหม่", quantity: 1, borrowedAt: "2031-09-11", borrowPhotoId: shared }),
+      loans.returnLoan(actorA, templeA, ip, loan.id, { returnedQty: 1, returnedAt: "2031-09-11", returnPhotoIds: [shared] }),
+    ]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(rejected).toHaveLength(1);
+    expect(((rejected[0] as PromiseRejectedResult).reason as HttpException).getStatus()).toBe(422);
+  });
+
   it("rejects a borrow photo id that does not belong to the tenant", async () => {
     const item = await makeItem(5);
     const valid = await createPhoto(templeA, item.id);

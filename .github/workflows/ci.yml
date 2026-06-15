@@ -74,3 +74,27 @@ jobs:
           REDIS_PASSWORD: ci-build-only
           BACKUP_PASSPHRASE: ci-build-only
         run: docker compose -f infra/docker/docker-compose.prod.yml build
+
+      - name: Web security headers + cache smoke
+        # Boots just the web image (nginx serves static + defers the /api upstream),
+        # then asserts the cache + hardening headers so a nginx.conf regression
+        # (stale-index after deploy, or a dropped security header) fails CI.
+        run: |
+          set -euo pipefail
+          docker build -f apps/web/Dockerfile -t wat-web-headercheck --build-arg VITE_API_BASE_URL=/api .
+          docker run -d --name webhc -p 8080:80 wat-web-headercheck
+          for i in $(seq 1 15); do curl -fsS http://localhost:8080/ >/dev/null 2>&1 && break || sleep 1; done
+          idx=$(curl -sSI http://localhost:8080/)
+          echo "$idx" | grep -qi '^cache-control: *no-cache' || { echo "FAIL: index.html not no-cache"; echo "$idx"; exit 1; }
+          echo "$idx" | grep -qi '^content-security-policy:' || { echo "FAIL: index.html missing CSP"; exit 1; }
+          echo "$idx" | grep -qi '^x-frame-options: *DENY' || { echo "FAIL: index.html missing X-Frame-Options"; exit 1; }
+          echo "$idx" | grep -qi '^x-content-type-options: *nosniff' || { echo "FAIL: index.html missing nosniff"; exit 1; }
+          asset=$(curl -sS http://localhost:8080/ | grep -oE '/assets/[^"]+\.js' | head -1)
+          ah=$(curl -sSI "http://localhost:8080${asset}")
+          echo "$ah" | grep -qi 'immutable' || { echo "FAIL: asset not immutable"; echo "$ah"; exit 1; }
+          echo "$ah" | grep -qi '^x-content-type-options: *nosniff' || { echo "FAIL: asset missing nosniff"; exit 1; }
+          # deep link must also get the SPA index with no-cache (try_files -> /index.html)
+          dl=$(curl -sSI http://localhost:8080/some/deep/route)
+          echo "$dl" | grep -qi '^cache-control: *no-cache' || { echo "FAIL: deep link not no-cache"; echo "$dl"; exit 1; }
+          docker rm -f webhc
+          echo "web header smoke OK"

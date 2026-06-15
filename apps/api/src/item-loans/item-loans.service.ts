@@ -203,6 +203,18 @@ export class ItemLoansService {
     }
   }
 
+  /**
+   * Serialize a tenant's loan mutations so the single-use photo check is
+   * check-then-act ATOMIC across borrow/approve/return. createLoan locks the item
+   * row and returnLoan locks the loan row — those don't overlap on a shared photo,
+   * so without this a concurrent borrow + return could both pass assertPhotosUnused
+   * and reuse the same photo. Per-tenant advisory xact lock (ledger/ceremonies
+   * pattern), acquired before the row locks; releases at commit/rollback.
+   */
+  private async lockTenantLoans(tx: Prisma.TransactionClient, tenantId: string): Promise<void> {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${tenantId} || ':item_loan')::bigint)`;
+  }
+
   // ---- loans --------------------------------------------------------------
 
   /** Borrow: validates the photo + available qty under a row lock, allocates LOAN-NNNNNN. */
@@ -213,6 +225,7 @@ export class ItemLoansService {
       throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ต้องแนบรูปถ่ายตอนยืมก่อนบันทึก");
     }
     return this.prisma.withTenant(tenantId, async (tx) => {
+      await this.lockTenantLoans(tx, tenantId);
       // Lock the item row so concurrent borrows of the same item serialize.
       const locked = await tx.$queryRaw<Array<{ total_qty: number; status: string }>>`
         SELECT total_qty, status FROM borrowable_items
@@ -344,6 +357,7 @@ export class ItemLoansService {
       throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ต้องแนบรูปถ่ายตอนส่งมอบก่อนอนุมัติ");
     }
     return this.prisma.withTenant(tenantId, async (tx) => {
+      await this.lockTenantLoans(tx, tenantId);
       const lockedLoan = await tx.$queryRaw<Array<{ item_id: string; quantity: number; status: string }>>`
         SELECT item_id, quantity, status FROM item_loans
         WHERE id = ${loanId}::uuid AND tenant_id = current_tenant_id() FOR UPDATE`;
@@ -440,6 +454,7 @@ export class ItemLoansService {
       throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ต้องแนบรูปถ่ายตอนรับคืนก่อนบันทึก");
     }
     return this.prisma.withTenant(tenantId, async (tx) => {
+      await this.lockTenantLoans(tx, tenantId);
       const locked = await tx.$queryRaw<Array<{ id: string; item_id: string; quantity: number; status: string }>>`
         SELECT id, item_id, quantity, status FROM item_loans
         WHERE id = ${loanId}::uuid AND tenant_id = current_tenant_id() FOR UPDATE`;

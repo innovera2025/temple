@@ -1,20 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { Inject, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import { type AttachmentOwnerType, type UploadAttachmentInput } from "@wat/shared";
+import { isFinancialEvidenceOwnerType, type AttachmentOwnerType, type UploadAttachmentInput } from "@wat/shared";
 import { conflict, forbidden, notFound, projectHttpException } from "../common/errors/project-error";
 import { PrismaService } from "../common/prisma/prisma.service";
-
-// Attachments owned by money records are หลักฐาน (financial evidence): only
-// admin/finance may remove them, and removal is always a soft delete.
-// item_loan = the ถ่ายรูปก่อนยืม / รับคืน hand-over photos — they prove who took
-// what and in what condition, so staff must not be able to make them disappear.
-const FINANCIAL_EVIDENCE_OWNER_TYPES: ReadonlySet<string> = new Set([
-  "donation",
-  "receipt",
-  "ledger_entry",
-  "item_loan",
-]);
 
 // Bounds storage growth: per-entity and per-tenant totals (upload rate limiting
 // is enforced separately by RateLimitGuard on the controller).
@@ -198,7 +187,7 @@ export class AttachmentsService {
       if (!before) {
         throw notFound("ไม่พบไฟล์แนบ");
       }
-      const isFinancialEvidence = FINANCIAL_EVIDENCE_OWNER_TYPES.has(before.ownerType);
+      const isFinancialEvidence = isFinancialEvidenceOwnerType(before.ownerType);
       if (isFinancialEvidence && actorRole === "staff") {
         throw forbidden("เฉพาะผู้ดูแลหรือฝ่ายการเงินเท่านั้นที่ลบหลักฐานการเงินได้");
       }
