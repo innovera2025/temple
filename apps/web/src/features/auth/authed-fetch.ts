@@ -30,6 +30,9 @@ export function createAuthedFetch(deps: AuthedFetchDeps): typeof fetch {
   const doFetch = deps.fetchFn ?? fetch;
   const refreshPath = deps.refreshPath ?? "/auth/refresh";
   let refreshInFlight: Promise<string | null> | null = null;
+  // A burst of concurrent 401s all await the same failed refresh; fire the
+  // unrecoverable-session callback only ONCE so the app logs out a single time.
+  let sessionExpired = false;
 
   async function refreshAccessToken(): Promise<string | null> {
     const refreshToken = deps.getRefreshToken();
@@ -65,7 +68,10 @@ export function createAuthedFetch(deps: AuthedFetchDeps): typeof fetch {
     const newAccessToken = await refreshInFlight;
 
     if (!newAccessToken) {
-      deps.onSessionExpired();
+      if (!sessionExpired) {
+        sessionExpired = true;
+        deps.onSessionExpired();
+      }
       return response; // original 401 — the caller still errors; app routes to login
     }
 

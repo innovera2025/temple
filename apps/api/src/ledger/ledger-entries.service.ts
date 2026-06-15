@@ -2,6 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import {
   directionForAccountType,
+  ictMonth,
   monthRange,
   type CreateLedgerEntryInput,
   type LedgerEntrySearchQuery,
@@ -418,9 +419,8 @@ export class LedgerEntriesService {
     if (query.dateFrom || query.dateTo) {
       return { dateFrom: query.dateFrom ?? RANGE_MIN, dateTo: query.dateTo ?? RANGE_MAX };
     }
-    const now = new Date();
-    const month = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
-    return monthRange(month);
+    // Default to the current Thai civil month (ICT), matching the dashboard.
+    return monthRange(ictMonth(new Date()));
   }
 
   /**

@@ -198,7 +198,8 @@ export class ItemLoansService {
         SELECT id FROM attachments
         WHERE id IN (${Prisma.join(photoIds.map((id) => Prisma.sql`${id}::uuid`))})
           AND tenant_id = current_tenant_id()
-          AND owner_type = 'item_loan' AND owner_id = ${input.itemId}::uuid`);
+          AND owner_type = 'item_loan' AND owner_id = ${input.itemId}::uuid
+          AND deleted_at IS NULL`);
       if (found.length !== photoIds.length) throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ไม่พบรูปที่แนบ กรุณาอัปโหลดรูปก่อนยืม");
 
       const outstanding = await this.outstandingFor(tx, input.itemId);
@@ -334,7 +335,8 @@ export class ItemLoansService {
         SELECT id FROM attachments
         WHERE id IN (${Prisma.join(photoIds.map((id) => Prisma.sql`${id}::uuid`))})
           AND tenant_id = current_tenant_id()
-          AND owner_type = 'item_loan' AND owner_id = ${loan.item_id}::uuid FOR UPDATE`);
+          AND owner_type = 'item_loan' AND owner_id = ${loan.item_id}::uuid
+          AND deleted_at IS NULL FOR UPDATE`);
       if (found.length !== photoIds.length) throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ไม่พบรูปที่แนบ กรุณาอัปโหลดรูปก่อน");
 
       const available = item.total_qty - (await this.outstandingFor(tx, loan.item_id));
@@ -422,7 +424,8 @@ export class ItemLoansService {
         SELECT id FROM attachments
         WHERE id IN (${Prisma.join(returnPhotoIds.map((id) => Prisma.sql`${id}::uuid`))})
           AND tenant_id = current_tenant_id()
-          AND owner_type = 'item_loan' AND owner_id = ${loan.item_id}::uuid FOR UPDATE`);
+          AND owner_type = 'item_loan' AND owner_id = ${loan.item_id}::uuid
+          AND deleted_at IS NULL FOR UPDATE`);
       if (found.length !== returnPhotoIds.length) throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ไม่พบรูปที่แนบ กรุณาอัปโหลดรูปตอนรับคืนก่อน");
 
       const shortage = loanShortage(loan.quantity, input.returnedQty);

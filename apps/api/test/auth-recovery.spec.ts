@@ -40,13 +40,31 @@ async function expectHttpError(promise: Promise<unknown>, statusCode: number): P
   throw new Error(`Expected ${statusCode} exception`);
 }
 
-/** The raw token only exists inside the captured email — fish it out. */
-function tokenFromMail(mail: MailService, to: string, pathPart: string): string {
-  const message = [...mail.sent].reverse().find((m) => m.to === to && m.text.includes(pathPart));
-  expect(message, `no captured mail to ${to} containing ${pathPart}`).toBeDefined();
-  const match = /token=([0-9a-f]{64})/.exec(message?.text ?? "");
-  expect(match).toBeTruthy();
-  return match?.[1] ?? "";
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * The raw token only exists inside the captured email. Forgot-password now
+ * delivers OFF the request path (constant-time response, no timing oracle), so
+ * the mail arrives shortly AFTER the call resolves — poll for it.
+ */
+async function waitForToken(
+  mail: MailService,
+  to: string,
+  pathPart: string,
+  sinceIndex = 0,
+): Promise<string> {
+  for (let attempt = 0; attempt < 200; attempt++) {
+    // Only consider mail sent AFTER the baseline so a reused recipient (e.g. the
+    // admin's reset then restore) never picks up the previous, already-used token.
+    const message = [...mail.sent.slice(sinceIndex)].reverse().find((m) => m.to === to && m.text.includes(pathPart));
+    if (message) {
+      const match = /token=([0-9a-f]{64})/.exec(message.text);
+      expect(match, `mail to ${to} contained no token`).toBeTruthy();
+      return match?.[1] ?? "";
+    }
+    await sleep(10);
+  }
+  throw new Error(`no captured mail to ${to} containing ${pathPart} after waiting`);
 }
 
 describe("account recovery (forgot/reset password + devotee email verification)", () => {
@@ -77,8 +95,9 @@ describe("account recovery (forgot/reset password + devotee email verification)"
   it("staff forgot/reset round trip: token mail -> new password works, old sessions revoked, single-use token", async () => {
     const before = await authService.login({ email: adminEmail, password: devPassword });
 
+    const sinceFirst = mail.sent.length;
     await expect(auth.forgotPassword({ email: adminEmail })).resolves.toEqual({ accepted: true });
-    const token = tokenFromMail(mail, adminEmail, "reset-password/staff");
+    const token = await waitForToken(mail, adminEmail, "reset-password/staff", sinceFirst);
 
     const newPassword = `Reset-${randomUUID().slice(0, 8)}!`;
     await expect(auth.resetPassword({ token, newPassword })).resolves.toEqual({ reset: true });
@@ -101,8 +120,9 @@ describe("account recovery (forgot/reset password + devotee email verification)"
     expect(Number(audited)).toBeGreaterThanOrEqual(1);
 
     // restore the seed password for the rest of the suite run
+    const sinceRestore = mail.sent.length;
     await expect(auth.forgotPassword({ email: adminEmail })).resolves.toEqual({ accepted: true });
-    const restoreToken = tokenFromMail(mail, adminEmail, "reset-password/staff");
+    const restoreToken = await waitForToken(mail, adminEmail, "reset-password/staff", sinceRestore);
     await expect(auth.resetPassword({ token: restoreToken, newPassword: devPassword })).resolves.toEqual({ reset: true });
   });
 
@@ -111,6 +131,9 @@ describe("account recovery (forgot/reset password + devotee email verification)"
     await expect(auth.forgotPassword({ email: `nobody-${randomUUID()}@example.com` })).resolves.toEqual({
       accepted: true,
     });
+    // Let the (detached) delivery path run — for an unknown account it must send
+    // nothing, so the count stays put even after the background work has settled.
+    await sleep(100);
     expect(mail.sent.length).toBe(sentBefore);
   });
 
@@ -130,7 +153,7 @@ describe("account recovery (forgot/reset password + devotee email verification)"
     const profileBefore = await devoteeProfile.profile(principal as never);
     expect(profileBefore.profile.emailVerified).toBe(false);
 
-    const token = tokenFromMail(mail, email, "verify-email");
+    const token = await waitForToken(mail, email, "verify-email");
     await expect(devoteeAuth.verifyEmail({ token })).resolves.toEqual({ verified: true });
 
     const profileAfter = await devoteeProfile.profile(principal as never);
@@ -149,7 +172,7 @@ describe("account recovery (forgot/reset password + devotee email verification)"
     const session = await devoteeAuth.register(ip, { email, displayName: "ผู้ลืมรหัส", password: devPassword });
 
     await expect(devoteeAuth.forgotPassword({ email })).resolves.toEqual({ accepted: true });
-    const token = tokenFromMail(mail, email, "reset-password/devotee");
+    const token = await waitForToken(mail, email, "reset-password/devotee");
 
     const newPassword = "NewDevotee123!";
     await expect(devoteeAuth.resetPassword({ token, newPassword })).resolves.toEqual({ reset: true });
@@ -164,7 +187,7 @@ describe("account recovery (forgot/reset password + devotee email verification)"
     const email = `expired-${randomUUID()}@example.com`;
     await devoteeAuth.register(ip, { email, displayName: "หมดอายุ", password: devPassword });
     await devoteeAuth.forgotPassword({ email });
-    const token = tokenFromMail(mail, email, "reset-password/devotee");
+    const token = await waitForToken(mail, email, "reset-password/devotee");
     await psql(
       `UPDATE auth_action_tokens SET expires_at = now() - interval '1 minute' WHERE token_hash = encode(sha256('${token}'::bytea), 'hex')`,
     );

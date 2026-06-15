@@ -112,4 +112,24 @@ describe("createAuthedFetch", () => {
     expect(results.every((r) => r.status === 200)).toBe(true);
     expect(refreshCalls).toBe(1); // exactly one refresh for all three concurrent 401s
   });
+
+  it("calls onSessionExpired ONCE when several concurrent 401s share a failing refresh", async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/auth/refresh")) {
+        await new Promise((resolve) => setTimeout(resolve, 10)); // overlap the 401s
+        return res(401, { error: { message: "Invalid refresh token" } });
+      }
+      return res(401, { error: { message: "Expired token" } });
+    }) as unknown as typeof fetch;
+
+    const { authedFetch, onSessionExpired } = setup(fetchImpl);
+    const reqs = ["/ledger/summary", "/ledger/accounts", "/ledger/entries"].map((p) =>
+      authedFetch(`http://api.test${p}`, { headers: { authorization: "Bearer old-access" } }),
+    );
+    const results = await Promise.all(reqs);
+
+    expect(results.every((r) => r.status === 401)).toBe(true);
+    expect(onSessionExpired).toHaveBeenCalledTimes(1); // one logout, not three
+  });
 });

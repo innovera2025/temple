@@ -96,6 +96,20 @@ export class CeremoniesService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   /**
+   * Serialize a tenant's booking mutations so the hall/monk clash checks are
+   * check-then-act ATOMIC. Without this, two concurrent transactions can both
+   * pass the findFirst clash check and both insert → double-booked hall/monk.
+   * A per-tenant advisory xact lock (same pattern as the ledger) makes the
+   * window single-writer; it releases automatically at commit/rollback.
+   */
+  private async lockTenantBookings(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+  ): Promise<void> {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${tenantId} || ':ceremony')::bigint)`;
+  }
+
+  /**
    * จองศาลา: the hall must exist (this tenant), be active, and be free on the
    * date — one active booking (planned/requested) per hall per day. 409 names
    * the conflicting ceremony so staff can resolve it.
@@ -209,6 +223,11 @@ export class CeremoniesService {
     ip?: string,
   ): Promise<CeremonyRecord> {
     return this.prisma.withTenant(tenantId, async (tx) => {
+      const booksResource =
+        Boolean(input.hallId) || (input.monkPersonnelIds?.length ?? 0) > 0;
+      if (booksResource) {
+        await this.lockTenantBookings(tx, tenantId);
+      }
       if (input.hallId) {
         await this.assertHallBookable(tx, input.hallId, input.ceremonyDate);
       }
@@ -345,14 +364,22 @@ export class CeremoniesService {
       const stillActive = (ACTIVE_BOOKING_STATUSES as readonly string[]).includes(effectiveStatus);
       const bookingChanged =
         patch.hallId !== undefined || patch.ceremonyDate !== undefined || patch.status !== undefined;
+      // Lock before ANY clash check so re-validation is check-then-act atomic.
+      if (stillActive && (bookingChanged || patch.monkPersonnelIds !== undefined)) {
+        await this.lockTenantBookings(tx, tenantId);
+      }
       if (effectiveHall && stillActive && bookingChanged) {
         await this.assertHallBookable(tx, effectiveHall, effectiveDate, id);
       }
 
-      // A date move must re-validate the existing invited monks too — their
-      // schedules clash on the NEW date, not the old one.
+      // Re-validate the existing invited monks whenever the booking changes and
+      // the result is still active — not just on a date move. A re-activation
+      // (cancelled → planned, no date/monk change) must re-check that those
+      // monks are still free on this date; another ceremony may have taken them
+      // while this one sat cancelled. (A hall-only change re-checks the same
+      // monks on the same date — idempotent, self is excluded.)
       let monkIds = patch.monkPersonnelIds;
-      if (monkIds === undefined && patch.ceremonyDate !== undefined) {
+      if (monkIds === undefined && stillActive && bookingChanged) {
         const existing = (await tx.ceremonyMonk.findMany({
           where: { ceremonyId: id },
           select: { personnelId: true },

@@ -117,6 +117,18 @@ describe("item-loans (การยืม-คืนสิ่งของวัด
     await expectErr(loans.createLoan(actorA, templeA, ip, { itemId: item.id, borrowerName: "ก", quantity: 1, borrowedAt: "2031-08-01", borrowPhotoId: randomUUID() }), 422, "UNPROCESSABLE_ENTITY");
   });
 
+  it("a soft-deleted photo no longer counts as borrow evidence (422)", async () => {
+    const item = await makeItem(5);
+    const photo = await createPhoto(templeA, item.id);
+    // Evidence removed AFTER capture must not be reusable as proof of hand-over.
+    await psql(`UPDATE attachments SET deleted_at = now() WHERE id = '${photo}'`);
+    await expectErr(
+      loans.createLoan(actorA, templeA, ip, { itemId: item.id, borrowerName: "ก", quantity: 1, borrowedAt: "2031-08-01", borrowPhotoId: photo }),
+      422,
+      "UNPROCESSABLE_ENTITY",
+    );
+  });
+
   it("records a borrow (LOAN number, photo, audit) and decrements availableQty; lists who borrowed", async () => {
     const item = await makeItem(5);
     const photo = await createPhoto(templeA, item.id);

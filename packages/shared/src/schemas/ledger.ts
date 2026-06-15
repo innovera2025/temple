@@ -165,6 +165,23 @@ export function monthRange(month: string): { dateFrom: string; dateTo: string } 
   };
 }
 
+/**
+ * Thailand civil time is UTC+7 with no DST. Date boundaries (which month / which
+ * day "today" is) must be computed in ICT, not UTC, or anything that runs in the
+ * 17:00–24:00 UTC window (= 00:00–07:00 next-day ICT) lands in the wrong day.
+ */
+export const ICT_OFFSET_MS = 7 * 60 * 60 * 1000;
+
+/** The `YYYY-MM` Thai civil month for an instant. */
+export function ictMonth(now: Date): string {
+  return new Date(now.getTime() + ICT_OFFSET_MS).toISOString().slice(0, 7);
+}
+
+/** The `YYYY-MM-DD` Thai civil date for an instant. */
+export function ictDateIso(now: Date): string {
+  return new Date(now.getTime() + ICT_OFFSET_MS).toISOString().slice(0, 10);
+}
+
 // ---------------------------------------------------------------------------
 // Field validators
 // ---------------------------------------------------------------------------

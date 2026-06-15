@@ -1,5 +1,10 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { type PublicEventSummary, type PublicTempleProfile, type PublicTempleSummary } from "@wat/shared";
+import {
+  ictDateIso,
+  type PublicEventSummary,
+  type PublicTempleProfile,
+  type PublicTempleSummary,
+} from "@wat/shared";
 import { notFound } from "../common/errors/project-error";
 import { PrismaService } from "../common/prisma/prisma.service";
 
@@ -64,7 +69,9 @@ export class PublicService {
    * monk fields, note, or devotee link. Optional templeId only narrows results.
    */
   async listUpcomingEvents(templeId?: string): Promise<PublicEventSummary[]> {
-    const today = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`);
+    // "Upcoming" is measured against the Thai civil day (ICT), not UTC — before
+    // 07:00 ICT a UTC cutoff would still be on yesterday and drop today's events.
+    const today = new Date(`${ictDateIso(new Date())}T00:00:00.000Z`);
     const rows = await this.prisma.withSystemAccess((tx) =>
       tx.ceremony.findMany({
         where: {

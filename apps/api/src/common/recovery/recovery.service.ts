@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Logger } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { projectHttpException } from "../errors/project-error";
 import { PasswordService } from "../../auth/password.service";
@@ -42,16 +42,37 @@ function invalidToken(): never {
  */
 @Injectable()
 export class RecoveryService {
+  private readonly logger = new Logger(RecoveryService.name);
+
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(PasswordService) private readonly passwordService: PasswordService,
     @Inject(MailService) private readonly mail: MailService,
   ) {}
 
+  /**
+   * Run reset/verification delivery OFF the request path. The account lookup,
+   * token creation, and mail send must not extend the HTTP response, or their
+   * cost reveals whether the email belongs to a real account (a timing oracle):
+   * a known account would always answer slower than an unknown one. By detaching
+   * the work, every forgot-password request returns in the same constant time.
+   * Failures are logged, never surfaced (the endpoint already answered 202).
+   */
+  private runInBackground(work: () => Promise<void>): void {
+    void work().catch((err) => {
+      this.logger.error(`recovery delivery failed: ${err instanceof Error ? err.message : String(err)}`);
+    });
+  }
+
   // ---- staff (tenant users) -------------------------------------------------
 
   async requestStaffReset(email: string): Promise<void> {
     const normalized = email.trim().toLowerCase();
+    // Detach: do NOT await — constant-time response regardless of existence.
+    this.runInBackground(() => this.deliverStaffReset(normalized));
+  }
+
+  private async deliverStaffReset(normalized: string): Promise<void> {
     const user = await this.prisma.withSystemAccess((tx) =>
       tx.user.findUnique({
         where: { email: normalized },
@@ -59,7 +80,7 @@ export class RecoveryService {
       }),
     );
     if (!user?.isActive) {
-      return; // same outward behavior as success
+      return; // unknown/disabled account — nothing to send
     }
 
     const token = newToken();
@@ -129,6 +150,11 @@ export class RecoveryService {
 
   async requestDevoteeReset(email: string): Promise<void> {
     const normalized = email.trim().toLowerCase();
+    // Detach: constant-time response (see requestStaffReset / runInBackground).
+    this.runInBackground(() => this.deliverDevoteeReset(normalized));
+  }
+
+  private async deliverDevoteeReset(normalized: string): Promise<void> {
     const account = await this.prisma.withSystemAccess((tx) =>
       tx.devoteeAccount.findUnique({
         where: { email: normalized },
