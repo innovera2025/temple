@@ -160,6 +160,11 @@ export class CeremoniesService {
     ceremonyId: string,
     dateIso: string,
     personnelIds: string[],
+    // Run the same-day double-booking check. Skipped when the ceremony is NOT in
+    // an active state (cancelled/completed): the monk set is still validated and
+    // PERSISTED so the join table never drifts from monkCount/audit, but it holds
+    // no schedule slot, so it can't clash — the clash is re-checked on re-activate.
+    checkClash: boolean,
   ): Promise<void> {
     if (personnelIds.length > 0) {
       const rows = (await tx.personnel.findMany({
@@ -187,7 +192,7 @@ export class CeremoniesService {
       }
 
       // ตารางพระชน: same monk, same date, another active ceremony.
-      const clashes = (await tx.ceremonyMonk.findMany({
+      const clashes = checkClash ? (await tx.ceremonyMonk.findMany({
         where: {
           personnelId: { in: personnelIds },
           ceremonyId: { not: ceremonyId },
@@ -197,7 +202,7 @@ export class CeremoniesService {
           },
         },
         select: { personnelId: true },
-      })) as Array<{ personnelId: string }>;
+      })) as Array<{ personnelId: string }> : [];
       if (clashes.length > 0) {
         const clashed = byId.get(clashes[0]?.personnelId ?? "");
         throw projectHttpException(
@@ -245,7 +250,8 @@ export class CeremoniesService {
       })) as CeremonyRecord;
 
       if (monkIds !== undefined) {
-        await this.syncInvitedMonks(tx, tenantId, created.id, isoDate(created.ceremonyDate), monkIds);
+        // A new ceremony is created active (planned), so the clash check applies.
+        await this.syncInvitedMonks(tx, tenantId, created.id, isoDate(created.ceremonyDate), monkIds, true);
       }
 
       await tx.auditLog.create({
@@ -372,24 +378,23 @@ export class CeremoniesService {
         await this.assertHallBookable(tx, effectiveHall, effectiveDate, id);
       }
 
-      // Re-validate the existing invited monks whenever the booking changes and
-      // the result is still active — not just on a date move. A re-activation
-      // (cancelled → planned, no date/monk change) must re-check that those
-      // monks are still free on this date; another ceremony may have taken them
-      // while this one sat cancelled. (A hall-only change re-checks the same
-      // monks on the same date — idempotent, self is excluded.)
-      let monkIds = patch.monkPersonnelIds;
-      if (monkIds === undefined && stillActive && bookingChanged) {
+      if (patch.monkPersonnelIds !== undefined) {
+        // The user explicitly set the monk list — ALWAYS validate + persist it
+        // (so the join table never drifts from monkCount/audit, even while the
+        // ceremony is cancelled/completed). Run the clash check only when the
+        // result is active; an inactive ceremony holds no schedule slot.
+        await this.syncInvitedMonks(tx, tenantId, id, effectiveDate, patch.monkPersonnelIds, stillActive);
+      } else if (stillActive && bookingChanged) {
+        // Re-activation / date / hall change with no monk change: re-check the
+        // already-persisted set on the effective date (another ceremony may have
+        // taken those monks while this one sat cancelled). Self is excluded.
         const existing = (await tx.ceremonyMonk.findMany({
           where: { ceremonyId: id },
           select: { personnelId: true },
         })) as Array<{ personnelId: string }>;
         if (existing.length > 0) {
-          monkIds = existing.map((row) => row.personnelId);
+          await this.syncInvitedMonks(tx, tenantId, id, effectiveDate, existing.map((row) => row.personnelId), true);
         }
-      }
-      if (monkIds !== undefined && stillActive) {
-        await this.syncInvitedMonks(tx, tenantId, id, effectiveDate, monkIds);
       }
 
       const data = toPrismaData(patch);
