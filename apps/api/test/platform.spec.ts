@@ -15,6 +15,7 @@ import { PLATFORM_ROLES_KEY } from "../src/platform/decorators/platform-roles.de
 import { PlatformAuthGuard } from "../src/platform/guards/platform-auth.guard";
 import { PlatformRolesGuard } from "../src/platform/guards/platform-roles.guard";
 import { PlatformAuthService } from "../src/platform/platform-auth.service";
+import { PlatformAuditController } from "../src/platform/platform-audit.controller";
 import { PlatformUsersController } from "../src/platform/platform-users.controller";
 import { TemplesController } from "../src/platform/temples.controller";
 import { TenantUsersController } from "../src/platform/tenant-users.controller";
@@ -132,6 +133,7 @@ describe("platform admin", () => {
   let platformUsers: PlatformUsersController;
   let tenantUsers: TenantUsersController;
   let breakGlass: BreakGlassController;
+  let audit: PlatformAuditController;
   let reflector: Reflector;
   let platformAuthGuard: PlatformAuthGuard;
   let tenantAuthGuard: AuthGuard;
@@ -153,6 +155,7 @@ describe("platform admin", () => {
     platformUsers = app.get(PlatformUsersController);
     tenantUsers = app.get(TenantUsersController);
     breakGlass = app.get(BreakGlassController);
+    audit = app.get(PlatformAuditController);
     reflector = app.get(Reflector);
     platformAuthGuard = app.get(PlatformAuthGuard);
     tenantAuthGuard = app.get(AuthGuard);
@@ -447,5 +450,17 @@ describe("platform admin", () => {
   it("returns the project error envelope for not-found and malformed ids (never a raw 500)", async () => {
     await expectHttpError(applications.approve(actorSuper, ip, randomUUID(), { slug: `wat-${randomUUID()}`, adminPassword: devPassword }), 404, "NOT_FOUND");
     await expectHttpError(temples.suspend(actorSuper, ip, "not-a-uuid", { reason: "x" }), 404, "NOT_FOUND");
+  });
+
+  it("exposes the platform audit trail (read-only) with the actor email resolved", async () => {
+    // The suite's logins + approvals/suspensions have written audit rows.
+    const { logs } = await audit.list();
+    expect(logs.length).toBeGreaterThan(0);
+    const login = logs.find((l) => l.action === "platform_auth.login");
+    expect(login).toBeTruthy();
+    expect(login?.actorEmail).toBeTruthy(); // joined from platform_users, not just the id
+    // action filter narrows the result
+    const approvals = await audit.list("application.approved");
+    expect(approvals.logs.every((l) => l.action === "application.approved")).toBe(true);
   });
 });

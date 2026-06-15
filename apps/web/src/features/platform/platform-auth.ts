@@ -215,6 +215,17 @@ export function derivePlatformSession(
   };
 }
 
+export interface AuditLogRecord {
+  id: string;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  /** Platform user who did it (null for system rows). */
+  actorEmail: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
 // --- API client ---
 
 export interface PlatformApi {
@@ -234,6 +245,7 @@ export interface PlatformApi {
   listGrants(token: string): Promise<BreakGlassGrantRecord[]>;
   revokeGrant(token: string, id: string): Promise<BreakGlassGrantRecord>;
   tenantSnapshot(token: string, grantId: string): Promise<TenantSnapshot>;
+  listAuditLogs(token: string, action?: string): Promise<AuditLogRecord[]>;
 }
 
 export interface PlatformApiClientOptions {
@@ -338,6 +350,7 @@ export function createPlatformApiClient(options: PlatformApiClientOptions): Plat
     openBreakGlass: (token, input) =>
       post<BreakGlassGrantRecord>(`/platform/break-glass`, token, input, "grant", "เปิดสิทธิ์เข้าถึงไม่สำเร็จ"),
     listGrants: (token) => get<BreakGlassGrantRecord[]>(`/platform/break-glass`, token, "grants", "โหลดสิทธิ์เข้าถึงไม่สำเร็จ"),
+    listAuditLogs: (token, action) => get<AuditLogRecord[]>(`/platform/audit${qs({ action })}`, token, "logs", "โหลดประวัติการใช้งานไม่สำเร็จ"),
     async revokeGrant(token, id) {
       const res = await doFetch(url(`/platform/break-glass/${id}`), { method: "DELETE", headers: auth(token) });
       const body = await readJson<{ grant: BreakGlassGrantRecord }>(res, "ยกเลิกสิทธิ์ไม่สำเร็จ");

@@ -2,6 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ApplicationsView } from "./applications-view";
+import { PlatformAuditView } from "./platform-audit-view";
 import { PlatformDashboard } from "./platform-dashboard";
 import { PlatformLoginView } from "./platform-login-view";
 import { PlatformShell } from "./platform-shell";
@@ -71,6 +72,9 @@ function makeApi(overrides: Partial<PlatformApi> = {}): PlatformApi {
     listGrants: async () => [],
     revokeGrant: async () => ({ id: "g1", platformUserId: "u1", tenantId: temple.id, reason: "x", expiresAt: "2026-06-02T01:00:00.000Z", revokedAt: "2026-06-02T00:30:00.000Z", createdAt: "2026-06-02T00:00:00.000Z" }),
     tenantSnapshot: async () => ({ tenant: { id: temple.id, slug: temple.slug, nameTh: temple.nameTh, status: "active" }, counts: { donors: 0, donations: 0, receipts: 0, ledgerEntries: 0 }, donationTotalSatang: "0", recentReceipts: [] }),
+    listAuditLogs: async () => [
+      { id: "al1", action: "application.approved", entityType: "application", entityId: pendingApp.id, actorEmail: "super@innovera.example", metadata: { reason: "ผ่านเกณฑ์" }, createdAt: "2026-06-03T00:00:00.000Z" },
+    ],
     ...overrides,
   };
 }
@@ -150,6 +154,17 @@ describe("platform console (mounted)", () => {
     });
     await flush();
     expect(authed).toBe(true);
+  });
+
+  it("audit view lists the platform action history (actor + Thai action label + detail)", async () => {
+    await act(async () => {
+      root.render(<PlatformAuditView api={makeApi()} token="t" canWrite onUnauthorized={() => undefined} />);
+    });
+    await flush();
+    expect(container.textContent).toContain("ประวัติการใช้งาน");
+    expect(container.textContent).toContain("อนุมัติใบสมัครวัด"); // Thai label for application.approved
+    expect(container.textContent).toContain("super@innovera.example"); // actor
+    expect(container.textContent).toContain("ผ่านเกณฑ์"); // reason from metadata
   });
 
   it("dashboard shows KPIs + the pending-application queue and links to applications", async () => {
