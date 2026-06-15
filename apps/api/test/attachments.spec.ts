@@ -338,6 +338,28 @@ describe("attachments (แนบหลักฐาน)", () => {
     expect(await attachmentAuditCount(templeA, "attachment:delete", attachment.id)).toBe(1);
   });
 
+  it("forbids staff from deleting item_loan hand-over photos (financial evidence), allows admin", async () => {
+    const { attachment } = await attachments.upload(actorA, templeA, ip, {
+      ownerType: "item_loan",
+      ownerId: itemAId,
+      fileName: "handover-evidence.png",
+      mimeType: "image/png",
+      contentBase64,
+    });
+
+    await expectProjectHttpError(
+      attachments.remove(actorStaff, templeA, ip, attachment.id),
+      403,
+      "FORBIDDEN",
+    );
+    // staff attempt must not have removed it
+    expect((await attachmentsService.download(templeA, attachment.id)).fileName).toBe("handover-evidence.png");
+
+    // admin may soft-delete it (audited)
+    await attachments.remove(actorA, templeA, ip, attachment.id);
+    expect(await attachmentAuditCount(templeA, "attachment:delete", attachment.id)).toBe(1);
+  });
+
   it("returns 404 for a malformed id and 422 for a bad list query", async () => {
     await expectProjectHttpError(
       Promise.resolve().then(() => attachments.remove(actorA, templeA, ip, "not-a-uuid")),

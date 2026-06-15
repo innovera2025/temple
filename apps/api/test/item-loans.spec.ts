@@ -154,6 +154,29 @@ describe("item-loans (การยืม-คืนสิ่งของวัด
     expect(list.find((l) => l.id === loan.id)?.borrowPhotoIds).toEqual([p1, p2]);
   });
 
+  it("rejects reusing a photo already used as evidence by another loan (no cross-loan replay)", async () => {
+    const item = await makeItem(5);
+    const photo = await createPhoto(templeA, item.id);
+    await loans.createLoan(actorA, templeA, ip, { itemId: item.id, borrowerName: "ยืมครั้งแรก", quantity: 1, borrowedAt: "2031-09-01", borrowPhotoId: photo });
+    // the SAME photo (same item, so the owner check passes) cannot stand in for a second loan
+    await expectErr(
+      loans.createLoan(actorA, templeA, ip, { itemId: item.id, borrowerName: "ยืมซ้ำรูป", quantity: 1, borrowedAt: "2031-09-02", borrowPhotoId: photo }),
+      422,
+      "UNPROCESSABLE_ENTITY",
+    );
+  });
+
+  it("rejects reusing the borrow photo as the return photo (borrow != return evidence)", async () => {
+    const item = await makeItem(5);
+    const borrowPhoto = await createPhoto(templeA, item.id);
+    const { loan } = await loans.createLoan(actorA, templeA, ip, { itemId: item.id, borrowerName: "คืนรูปเดิม", quantity: 1, borrowedAt: "2031-09-03", borrowPhotoId: borrowPhoto });
+    await expectErr(
+      loans.returnLoan(actorA, templeA, ip, loan.id, { returnedQty: 1, returnedAt: "2031-09-04", returnPhotoIds: [borrowPhoto] }),
+      422,
+      "UNPROCESSABLE_ENTITY",
+    );
+  });
+
   it("rejects a borrow photo id that does not belong to the tenant", async () => {
     const item = await makeItem(5);
     const valid = await createPhoto(templeA, item.id);

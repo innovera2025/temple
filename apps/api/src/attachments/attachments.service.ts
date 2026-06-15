@@ -7,10 +7,13 @@ import { PrismaService } from "../common/prisma/prisma.service";
 
 // Attachments owned by money records are หลักฐาน (financial evidence): only
 // admin/finance may remove them, and removal is always a soft delete.
+// item_loan = the ถ่ายรูปก่อนยืม / รับคืน hand-over photos — they prove who took
+// what and in what condition, so staff must not be able to make them disappear.
 const FINANCIAL_EVIDENCE_OWNER_TYPES: ReadonlySet<string> = new Set([
   "donation",
   "receipt",
   "ledger_entry",
+  "item_loan",
 ]);
 
 // Bounds storage growth: per-entity and per-tenant totals (upload rate limiting

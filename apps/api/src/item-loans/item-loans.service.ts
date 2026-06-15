@@ -173,6 +173,36 @@ export class ItemLoansService {
     return rows[0]?.outstanding ?? 0;
   }
 
+  /**
+   * Each hand-over photo is single-use evidence: it must not already be recorded
+   * as the borrow OR return proof of ANY loan (this tenant). This stops a photo
+   * being replayed across loans of the same item, or a borrow photo being reused
+   * as the return photo — both of which would let staff fake a hand-over without
+   * actually ถ่ายรูป for THIS event. RLS scopes the scan to the caller's tenant.
+   */
+  private async assertPhotosUnused(tx: Prisma.TransactionClient, photoIds: string[]): Promise<void> {
+    const ids = Prisma.join(photoIds.map((id) => Prisma.sql`${id}`));
+    const clash = await tx.$queryRaw<Array<{ one: number }>>(Prisma.sql`
+      SELECT 1 AS one FROM item_loans il
+      WHERE EXISTS (
+              SELECT 1 FROM jsonb_array_elements_text(COALESCE(il.borrow_photo_ids, '[]'::jsonb)) e(pid)
+              WHERE e.pid IN (${ids})
+            )
+         OR EXISTS (
+              SELECT 1 FROM jsonb_array_elements_text(COALESCE(il.return_photo_ids, '[]'::jsonb)) e(pid)
+              WHERE e.pid IN (${ids})
+            )
+         OR il.borrow_photo_id::text IN (${ids})
+      LIMIT 1`);
+    if (clash.length > 0) {
+      throw projectHttpException(
+        422,
+        "UNPROCESSABLE_ENTITY",
+        "รูปนี้ถูกใช้เป็นหลักฐานของรายการยืม-คืนอื่นแล้ว กรุณาถ่ายรูปใหม่สำหรับรายการนี้",
+      );
+    }
+  }
+
   // ---- loans --------------------------------------------------------------
 
   /** Borrow: validates the photo + available qty under a row lock, allocates LOAN-NNNNNN. */
@@ -201,6 +231,7 @@ export class ItemLoansService {
           AND owner_type = 'item_loan' AND owner_id = ${input.itemId}::uuid
           AND deleted_at IS NULL`);
       if (found.length !== photoIds.length) throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ไม่พบรูปที่แนบ กรุณาอัปโหลดรูปก่อนยืม");
+      await this.assertPhotosUnused(tx, photoIds);
 
       const outstanding = await this.outstandingFor(tx, input.itemId);
       const available = item.total_qty - outstanding;
@@ -338,6 +369,7 @@ export class ItemLoansService {
           AND owner_type = 'item_loan' AND owner_id = ${loan.item_id}::uuid
           AND deleted_at IS NULL FOR UPDATE`);
       if (found.length !== photoIds.length) throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ไม่พบรูปที่แนบ กรุณาอัปโหลดรูปก่อน");
+      await this.assertPhotosUnused(tx, photoIds);
 
       const available = item.total_qty - (await this.outstandingFor(tx, loan.item_id));
       if (loan.quantity > available) throw conflict(`อนุมัติได้ไม่เกินจำนวนคงเหลือ (คงเหลือ ${available})`);
@@ -427,6 +459,7 @@ export class ItemLoansService {
           AND owner_type = 'item_loan' AND owner_id = ${loan.item_id}::uuid
           AND deleted_at IS NULL FOR UPDATE`);
       if (found.length !== returnPhotoIds.length) throw projectHttpException(422, "UNPROCESSABLE_ENTITY", "ไม่พบรูปที่แนบ กรุณาอัปโหลดรูปตอนรับคืนก่อน");
+      await this.assertPhotosUnused(tx, returnPhotoIds);
 
       const shortage = loanShortage(loan.quantity, input.returnedQty);
       if (shortage > 0 && !input.settlement) {
