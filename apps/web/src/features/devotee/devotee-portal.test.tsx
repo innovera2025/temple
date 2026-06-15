@@ -7,7 +7,7 @@ import { AccountView } from "./account-view";
 import { DevoteeLoginView } from "./login-view";
 import { DevoteeShell } from "./devotee-shell";
 import { MyCeremonies, MyDonations, MyItemLoans, MyReceipts } from "./my-records";
-import { TemplePage } from "./temple-page";
+import { BookCeremonyForm, BorrowItemForm, DonateForm, TempleEventsList } from "./temple-page";
 import { TemplePicker } from "./temple-picker";
 import {
   DevoteeApi,
@@ -17,8 +17,11 @@ import {
   DevoteeItemLoanRecord,
   DevoteeReceiptRecord,
   bahtStringToSatang,
+  clearActiveTemple,
   deriveDevoteeSession,
   hasLoginErrors,
+  loadActiveTemple,
+  saveActiveTemple,
   validateDevoteeItemLoanForm,
   validateDevoteeLoginForm,
   validateDevoteeRegisterForm,
@@ -257,8 +260,8 @@ describe("devotee views (mounted)", () => {
         <TemplePicker
           api={makeApi()}
           token="t"
-          onSelect={(id) => {
-            selected = id;
+          onSelect={(t) => {
+            selected = t.id;
           }}
           onUnauthorized={() => undefined}
         />,
@@ -268,7 +271,7 @@ describe("devotee views (mounted)", () => {
     expect(container.textContent).toContain("วัดอรุณเดโม");
 
     const button = Array.from(container.querySelectorAll("button")).find((b) =>
-      b.textContent?.includes("ดูบริการของวัด"),
+      b.textContent?.includes("เลือกวัดนี้"),
     );
     expect(button).toBeTruthy();
     await act(async () => {
@@ -277,22 +280,14 @@ describe("devotee views (mounted)", () => {
     expect(selected).toBe(templeId);
   });
 
-  it("temple page donate flow posts the donation and shows the success entry no", async () => {
+  it("donate form posts the donation and shows the success entry no", async () => {
     await act(async () => {
       root.render(
-        <TemplePage
-          api={makeApi()}
-          token="t"
-          templeId={templeId}
-          today="2026-06-04"
-          onBack={() => undefined}
-          onUnauthorized={() => undefined}
-        />,
+        <DonateForm api={makeApi()} token="t" templeId={templeId} today="2026-06-04" onUnauthorized={() => undefined} />,
       );
     });
     await flush();
     expect(container.textContent).toContain("ร่วมทำบุญ");
-    expect(container.textContent).toContain("พระเดโม");
 
     const amount = container.querySelector<HTMLInputElement>("#devotee-amount");
     expect(amount).toBeTruthy();
@@ -329,14 +324,7 @@ describe("devotee views (mounted)", () => {
     });
     await act(async () => {
       root.render(
-        <TemplePage
-          api={api}
-          token="t"
-          templeId={templeId}
-          today="2026-06-04"
-          onBack={() => undefined}
-          onUnauthorized={() => undefined}
-        />,
+        <DonateForm api={api} token="t" templeId={templeId} today="2026-06-04" onUnauthorized={() => undefined} />,
       );
     });
     await flush();
@@ -432,17 +420,10 @@ describe("devotee views (mounted)", () => {
     expect(loggedOut).toBe(true);
   });
 
-  it("temple page ceremony booking posts the request and shows the pending message", async () => {
+  it("ceremony booking form posts the request and shows the pending message", async () => {
     await act(async () => {
       root.render(
-        <TemplePage
-          api={makeApi()}
-          token="t"
-          templeId={templeId}
-          today="2026-06-04"
-          onBack={() => undefined}
-          onUnauthorized={() => undefined}
-        />,
+        <BookCeremonyForm api={makeApi()} token="t" templeId={templeId} today="2026-06-04" onUnauthorized={() => undefined} />,
       );
     });
     await flush();
@@ -457,7 +438,6 @@ describe("devotee views (mounted)", () => {
         title.dispatchEvent(new Event("input", { bubbles: true }));
       }
     });
-    // Submit the ceremony form specifically (the page also has donate + borrow forms).
     const ceremonyForm = title?.closest("form");
     await act(async () => {
       ceremonyForm?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
@@ -467,18 +447,9 @@ describe("devotee views (mounted)", () => {
     expect(container.textContent).toContain("รอวัดยืนยัน");
   });
 
-  it("temple page lists upcoming temple events", async () => {
+  it("temple events list shows upcoming temple events", async () => {
     await act(async () => {
-      root.render(
-        <TemplePage
-          api={makeApi()}
-          token="t"
-          templeId={templeId}
-          today="2026-06-04"
-          onBack={() => undefined}
-          onUnauthorized={() => undefined}
-        />,
-      );
+      root.render(<TempleEventsList api={makeApi()} token="t" templeId={templeId} onUnauthorized={() => undefined} />);
     });
     await flush();
     expect(container.textContent).toContain("กิจกรรมของวัด");
@@ -486,7 +457,7 @@ describe("devotee views (mounted)", () => {
     expect(container.textContent).toContain("ศาลาการเปรียญ");
   });
 
-  it("temple page borrow flow posts the request and shows the pending message", async () => {
+  it("borrow form posts the request and shows the pending message", async () => {
     let requested: { itemId: string; quantity: string } | null = null;
     const api = makeApi({
       requestItemLoan: async (_t, _id, values) => {
@@ -498,14 +469,7 @@ describe("devotee views (mounted)", () => {
     });
     await act(async () => {
       root.render(
-        <TemplePage
-          api={api}
-          token="t"
-          templeId={templeId}
-          today="2026-06-04"
-          onBack={() => undefined}
-          onUnauthorized={() => undefined}
-        />,
+        <BorrowItemForm api={api} token="t" templeId={templeId} today="2026-06-04" onUnauthorized={() => undefined} />,
       );
     });
     await flush();
@@ -610,5 +574,16 @@ describe("devotee views (mounted)", () => {
     });
     await flush();
     expect(unauthorized).toBe(true);
+  });
+
+  it("persists the active temple across reloads and clears it on logout", () => {
+    clearActiveTemple();
+    expect(loadActiveTemple()).toBeNull();
+
+    saveActiveTemple({ id: templeId, nameTh: "วัดอรุณเดโม" });
+    expect(loadActiveTemple()).toEqual({ id: templeId, nameTh: "วัดอรุณเดโม" });
+
+    clearActiveTemple();
+    expect(loadActiveTemple()).toBeNull();
   });
 });

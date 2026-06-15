@@ -32,11 +32,9 @@ export interface TemplePageProps {
   api: DevoteeApi;
   token: string;
   templeId: string;
-  today: string;
-  onBack: () => void;
   onUnauthorized: () => void;
-  /** Reports the loaded temple's Thai name up to the shell (for the breadcrumb). */
-  onTitle?: (name: string) => void;
+  /** "เปลี่ยนวัด" — clears the active temple and returns to the picker grid. */
+  onChangeTemple: () => void;
 }
 
 function profileRows(temple: PublicTempleProfile): { label: string; value: string }[] {
@@ -52,14 +50,18 @@ function profileRows(temple: PublicTempleProfile): { label: string; value: strin
   ];
 }
 
+/**
+ * The "selected temple" detail shown on the เลือกวัด page once a temple is the
+ * active one: its profile + upcoming events, and a "เปลี่ยนวัด" action. The
+ * actual donate / book-ceremony / borrow FORMS now live in their own sidebar
+ * menus (การบริจาค / การจองพิธี / การยืมของ) — see DevoteePortal.
+ */
 export function TemplePage({
   api,
   token,
   templeId,
-  today,
-  onBack,
   onUnauthorized,
-  onTitle,
+  onChangeTemple,
 }: TemplePageProps): ReactElement {
   const [temple, setTemple] = useState<PublicTempleProfile | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -69,10 +71,7 @@ export function TemplePage({
     api
       .getTemple(token, templeId)
       .then((data) => {
-        if (!cancelled) {
-          setTemple(data);
-          onTitle?.(data.nameTh);
-        }
+        if (!cancelled) setTemple(data);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -85,14 +84,14 @@ export function TemplePage({
     return () => {
       cancelled = true;
     };
-  }, [api, token, templeId, onUnauthorized, onTitle]);
+  }, [api, token, templeId, onUnauthorized]);
 
   return (
     <div className="content-wrap">
       <div className="page-head">
         <div>
-          <button type="button" className="link-btn" onClick={onBack}>
-            ← กลับไปเลือกวัด
+          <button type="button" className="link-btn" onClick={onChangeTemple}>
+            ← เปลี่ยนวัด
           </button>
           <h1>{temple?.nameTh ?? "ข้อมูลวัด"}</h1>
           {temple?.nameEn ? <p className="page-sub">{temple.nameEn}</p> : null}
@@ -118,24 +117,21 @@ export function TemplePage({
             </dl>
           </div>
 
-          <DonateForm api={api} token={token} templeId={templeId} today={today} onUnauthorized={onUnauthorized} />
-          <BookCeremonyForm api={api} token={token} templeId={templeId} today={today} onUnauthorized={onUnauthorized} />
           <TempleEventsList api={api} token={token} templeId={templeId} onUnauthorized={onUnauthorized} />
-          <BorrowItemForm api={api} token={token} templeId={templeId} today={today} onUnauthorized={onUnauthorized} />
         </div>
       ) : null}
     </div>
   );
 }
 
-interface TempleEventsListProps {
+export interface TempleEventsListProps {
   api: DevoteeApi;
   token: string;
   templeId: string;
   onUnauthorized: () => void;
 }
 
-function TempleEventsList({ api, token, templeId, onUnauthorized }: TempleEventsListProps): ReactElement {
+export function TempleEventsList({ api, token, templeId, onUnauthorized }: TempleEventsListProps): ReactElement {
   const [events, setEvents] = useState<PublicEventSummary[] | null>(null);
   const [error, setError] = useState("");
 
@@ -188,7 +184,7 @@ function TempleEventsList({ api, token, templeId, onUnauthorized }: TempleEvents
   );
 }
 
-interface BorrowItemFormProps {
+export interface BorrowItemFormProps {
   api: DevoteeApi;
   token: string;
   templeId: string;
@@ -196,7 +192,7 @@ interface BorrowItemFormProps {
   onUnauthorized: () => void;
 }
 
-function BorrowItemForm({ api, token, templeId, today, onUnauthorized }: BorrowItemFormProps): ReactElement {
+export function BorrowItemForm({ api, token, templeId, today, onUnauthorized }: BorrowItemFormProps): ReactElement {
   const [items, setItems] = useState<DevoteeBorrowableItem[] | null>(null);
   const [values, setValues] = useState<DevoteeItemLoanValues>({
     itemId: "",
@@ -366,7 +362,7 @@ function BorrowItemForm({ api, token, templeId, today, onUnauthorized }: BorrowI
   );
 }
 
-interface DonateFormProps {
+export interface DonateFormProps {
   api: DevoteeApi;
   token: string;
   templeId: string;
@@ -374,7 +370,7 @@ interface DonateFormProps {
   onUnauthorized: () => void;
 }
 
-function DonateForm({ api, token, templeId, today, onUnauthorized }: DonateFormProps): ReactElement {
+export function DonateForm({ api, token, templeId, today, onUnauthorized }: DonateFormProps): ReactElement {
   const [values, setValues] = useState<DevoteeDonationValues>({
     amountBaht: "",
     method: "cash",
@@ -495,7 +491,7 @@ function DonateForm({ api, token, templeId, today, onUnauthorized }: DonateFormP
   );
 }
 
-interface BookCeremonyFormProps {
+export interface BookCeremonyFormProps {
   api: DevoteeApi;
   token: string;
   templeId: string;
@@ -503,7 +499,7 @@ interface BookCeremonyFormProps {
   onUnauthorized: () => void;
 }
 
-function BookCeremonyForm({ api, token, templeId, today, onUnauthorized }: BookCeremonyFormProps): ReactElement {
+export function BookCeremonyForm({ api, token, templeId, today, onUnauthorized }: BookCeremonyFormProps): ReactElement {
   const [values, setValues] = useState<DevoteeCeremonyValues>({
     ceremonyType: "merit",
     title: "",

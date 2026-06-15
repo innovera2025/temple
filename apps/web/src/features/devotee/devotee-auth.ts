@@ -219,6 +219,7 @@ export interface DevoteePasswordErrors {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD = 8;
 const SESSION_STORAGE_KEY = "wat-devotee-session";
+const ACTIVE_TEMPLE_STORAGE_KEY = "wat-devotee-active-temple";
 
 export class DevoteeApiError extends Error {
   readonly status: number;
@@ -617,4 +618,35 @@ export function saveDevoteeSession(session: DevoteeSession): void {
 export function clearDevoteeSession(): void {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(SESSION_STORAGE_KEY);
+}
+
+// --- active temple (the one a devotee is currently transacting with) ---
+// Persisted so the chosen temple survives a reload; cleared on logout so the
+// next devotee on a shared device never inherits the previous one's temple.
+
+export interface ActiveTemple {
+  id: string;
+  nameTh: string;
+}
+
+export function loadActiveTemple(): ActiveTemple | null {
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem(ACTIVE_TEMPLE_STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as ActiveTemple;
+    return parsed && typeof parsed.id === "string" && typeof parsed.nameTh === "string" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveActiveTemple(temple: ActiveTemple): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(ACTIVE_TEMPLE_STORAGE_KEY, JSON.stringify(temple));
+}
+
+export function clearActiveTemple(): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(ACTIVE_TEMPLE_STORAGE_KEY);
 }

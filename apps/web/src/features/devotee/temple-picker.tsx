@@ -7,7 +7,8 @@ import { DevoteeApi, devoteeErrorMessage } from "./devotee-auth";
 export interface TemplePickerProps {
   api: DevoteeApi;
   token: string;
-  onSelect: (templeId: string) => void;
+  /** Receives the full summary so the portal can remember the temple's name without a refetch. */
+  onSelect: (temple: PublicTempleSummary) => void;
   onUnauthorized: () => void;
 }
 
@@ -94,8 +95,8 @@ export function TemplePicker({ api, token, onSelect, onUnauthorized }: TemplePic
               {temple.nameEn ? <div className="devotee-temple-en">{temple.nameEn}</div> : null}
               <div className="devotee-temple-place">{placeOf(temple)}</div>
             </div>
-            <Button variant="primary" onClick={() => onSelect(temple.id)}>
-              ดูบริการของวัด
+            <Button variant="primary" onClick={() => onSelect(temple)}>
+              เลือกวัดนี้
             </Button>
           </div>
         ))}

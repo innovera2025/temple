@@ -1,15 +1,22 @@
 import { ReactElement, useMemo, useState } from "react";
+import type { PublicTempleSummary } from "@wat/shared";
+import { Button } from "../../design-system";
+import { Icon } from "../../layout/icons";
 import { AccountView } from "./account-view";
 import { DevoteeLoginView } from "./login-view";
 import { DEVOTEE_PAGE_TITLES, DevoteePage, DevoteeShell } from "./devotee-shell";
 import { MyCeremonies, MyDonations, MyItemLoans, MyReceipts } from "./my-records";
-import { TemplePage } from "./temple-page";
+import { BookCeremonyForm, BorrowItemForm, DonateForm, TempleEventsList, TemplePage } from "./temple-page";
 import { TemplePicker } from "./temple-picker";
 import {
+  ActiveTemple,
   DevoteeSession,
+  clearActiveTemple,
   clearDevoteeSession,
   createDevoteeApiClient,
+  loadActiveTemple,
   loadDevoteeSession,
+  saveActiveTemple,
   saveDevoteeSession,
 } from "./devotee-auth";
 
@@ -18,37 +25,54 @@ export interface DevoteePortalProps {
   today: string;
 }
 
-type View =
-  | { name: "picker" }
-  | { name: "temple"; templeId: string }
-  | { name: "donations" }
-  | { name: "receipts" }
-  | { name: "ceremonies" }
-  | { name: "loans" }
-  | { name: "account" };
+/** Shows which temple the action forms will transact with, plus a "เปลี่ยนวัด" escape. */
+function ActiveTempleBanner({ name, onChange }: { name: string; onChange: () => void }): ReactElement {
+  return (
+    <div className="card devotee-active-temple">
+      <Icon name="building" size={18} />
+      <span className="devotee-active-temple-text">
+        กำลังทำบุญกับ: <b>{name}</b>
+      </span>
+      <button type="button" className="link-btn" onClick={onChange}>
+        เปลี่ยนวัด
+      </button>
+    </div>
+  );
+}
 
-/** The active sidebar page for a view (the temple page lives under "เลือกวัด"). */
-function viewToPage(view: View): DevoteePage {
-  return view.name === "temple" ? "picker" : view.name;
+/** Empty state on an action page when no temple has been chosen yet. */
+function NoTempleSelected({ action, onGoPick }: { action: string; onGoPick: () => void }): ReactElement {
+  return (
+    <div className="empty-state card">
+      <Icon name="building" size={28} />
+      <p>ยังไม่ได้เลือกวัด — เลือกวัดก่อนเพื่อ{action}</p>
+      <Button variant="primary" onClick={onGoPick}>
+        ไปเลือกวัด
+      </Button>
+    </div>
+  );
 }
 
 export function DevoteePortal({ baseUrl, today }: DevoteePortalProps): ReactElement {
   const api = useMemo(() => createDevoteeApiClient({ baseUrl }), [baseUrl]);
   const [session, setSession] = useState<DevoteeSession | null>(() => loadDevoteeSession());
-  const [view, setView] = useState<View>({ name: "picker" });
-  const [templeName, setTempleName] = useState("");
+  const [page, setPage] = useState<DevoteePage>("picker");
+  // The temple a devotee is currently transacting with — chosen on "เลือกวัด",
+  // persisted so it survives reload, and shared by every action page.
+  const [activeTemple, setActiveTemple] = useState<ActiveTemple | null>(() => loadActiveTemple());
 
   function onAuthenticated(next: DevoteeSession): void {
     saveDevoteeSession(next);
     setSession(next);
-    setView({ name: "picker" });
+    setPage("picker");
   }
 
   function logout(): void {
     clearDevoteeSession();
+    clearActiveTemple();
     setSession(null);
-    setTempleName("");
-    setView({ name: "picker" });
+    setActiveTemple(null);
+    setPage("picker");
   }
 
   if (!session) {
@@ -56,44 +80,93 @@ export function DevoteePortal({ baseUrl, today }: DevoteePortalProps): ReactElem
   }
 
   const token = session.accessToken;
-  const page = viewToPage(view);
-  const crumb = view.name === "temple" ? templeName || "ข้อมูลวัด" : DEVOTEE_PAGE_TITLES[page];
+  const crumb = DEVOTEE_PAGE_TITLES[page];
 
-  function navigate(id: DevoteePage): void {
-    // Every DevoteePage maps 1:1 to a no-payload View variant (the temple view is only
-    // ever entered via TemplePicker.onSelect, never the sidebar).
-    setView({ name: id } as View);
+  function selectTemple(temple: PublicTempleSummary): void {
+    const next: ActiveTemple = { id: temple.id, nameTh: temple.nameTh };
+    setActiveTemple(next);
+    saveActiveTemple(next);
+  }
+
+  function changeTemple(): void {
+    clearActiveTemple();
+    setActiveTemple(null);
+    setPage("picker");
   }
 
   return (
-    <DevoteeShell userName={session.devotee.displayName} page={page} crumb={crumb} onNavigate={navigate} onLogout={logout}>
-      {view.name === "picker" ? (
-        <TemplePicker
-          api={api}
-          token={token}
-          onSelect={(templeId) => {
-            setTempleName("");
-            setView({ name: "temple", templeId });
-          }}
-          onUnauthorized={logout}
-        />
+    <DevoteeShell
+      userName={session.devotee.displayName}
+      page={page}
+      crumb={crumb}
+      onNavigate={setPage}
+      onLogout={logout}
+    >
+      {page === "picker" ? (
+        activeTemple ? (
+          <TemplePage
+            api={api}
+            token={token}
+            templeId={activeTemple.id}
+            onUnauthorized={logout}
+            onChangeTemple={changeTemple}
+          />
+        ) : (
+          <TemplePicker api={api} token={token} onSelect={selectTemple} onUnauthorized={logout} />
+        )
       ) : null}
-      {view.name === "temple" ? (
-        <TemplePage
-          api={api}
-          token={token}
-          templeId={view.templeId}
-          today={today}
-          onBack={() => setView({ name: "picker" })}
-          onUnauthorized={logout}
-          onTitle={setTempleName}
-        />
+
+      {page === "donations" ? (
+        <div className="content-wrap">
+          <div className="devotee-action">
+            {activeTemple ? (
+              <>
+                <ActiveTempleBanner name={activeTemple.nameTh} onChange={changeTemple} />
+                <DonateForm api={api} token={token} templeId={activeTemple.id} today={today} onUnauthorized={logout} />
+              </>
+            ) : (
+              <NoTempleSelected action="ร่วมบริจาค" onGoPick={() => setPage("picker")} />
+            )}
+            <MyDonations api={api} token={token} onUnauthorized={logout} />
+          </div>
+        </div>
       ) : null}
-      {view.name === "donations" ? <MyDonations api={api} token={token} onUnauthorized={logout} /> : null}
-      {view.name === "receipts" ? <MyReceipts api={api} token={token} onUnauthorized={logout} /> : null}
-      {view.name === "ceremonies" ? <MyCeremonies api={api} token={token} onUnauthorized={logout} /> : null}
-      {view.name === "loans" ? <MyItemLoans api={api} token={token} onUnauthorized={logout} /> : null}
-      {view.name === "account" ? <AccountView api={api} token={token} onUnauthorized={logout} /> : null}
+
+      {page === "ceremonies" ? (
+        <div className="content-wrap">
+          <div className="devotee-action">
+            {activeTemple ? (
+              <>
+                <ActiveTempleBanner name={activeTemple.nameTh} onChange={changeTemple} />
+                <BookCeremonyForm api={api} token={token} templeId={activeTemple.id} today={today} onUnauthorized={logout} />
+                <TempleEventsList api={api} token={token} templeId={activeTemple.id} onUnauthorized={logout} />
+              </>
+            ) : (
+              <NoTempleSelected action="จองพิธี / นิมนต์พระ" onGoPick={() => setPage("picker")} />
+            )}
+            <MyCeremonies api={api} token={token} onUnauthorized={logout} />
+          </div>
+        </div>
+      ) : null}
+
+      {page === "loans" ? (
+        <div className="content-wrap">
+          <div className="devotee-action">
+            {activeTemple ? (
+              <>
+                <ActiveTempleBanner name={activeTemple.nameTh} onChange={changeTemple} />
+                <BorrowItemForm api={api} token={token} templeId={activeTemple.id} today={today} onUnauthorized={logout} />
+              </>
+            ) : (
+              <NoTempleSelected action="ยืมของวัด" onGoPick={() => setPage("picker")} />
+            )}
+            <MyItemLoans api={api} token={token} onUnauthorized={logout} />
+          </div>
+        </div>
+      ) : null}
+
+      {page === "receipts" ? <MyReceipts api={api} token={token} onUnauthorized={logout} /> : null}
+      {page === "account" ? <AccountView api={api} token={token} onUnauthorized={logout} /> : null}
     </DevoteeShell>
   );
 }

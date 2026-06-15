@@ -1419,6 +1419,13 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .devotee-donate { padding: 20px; }
 .devotee-donate-title { margin: 0 0 14px; font-family: var(--font-serif); font-size: 18px; font-weight: 600; color: var(--ink); }
 
+/* Action menu pages (การบริจาค/การจองพิธี/การยืมของ): form(s) on top, history below. */
+.devotee-action { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); }
+/* "Active temple" banner shown above each action form. */
+.devotee-active-temple { display: flex; align-items: center; gap: 10px; padding: 12px 16px; }
+.devotee-active-temple .devotee-active-temple-text { flex: 1; font-size: 14px; color: var(--ink); }
+.devotee-active-temple svg { color: var(--accent); flex-shrink: 0; }
+
 /* My records */
 .devotee-records-section { margin-top: 26px; }
 .devotee-records-section h2 { margin: 0 0 12px; font-size: 16px; font-weight: 600; color: var(--ink); }
@@ -1442,3 +1449,192 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   .devotee-receipt-doc, .devotee-receipt-doc * { visibility: visible !important; }
   .devotee-receipt-doc { position: absolute; left: 0; top: 0; width: 100%; padding: 24px; }
 }
+
+/* ── break-glass (เข้าถึงข้อมูลวัด) — danger-forward redesign ── */
+/* ===========================================================================
+ * Break-glass security console (platform/break-glass-view.tsx)
+ * Direction A: "Security console, danger-forward"
+ * ======================================================================== */
+
+/* Top-of-page caution banner — danger-tinted, prominent but not alarming */
+.bg-caution-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 18px;
+  margin-bottom: 22px;
+  border: 1px solid var(--danger);
+  border-radius: var(--r-lg);
+  background: var(--danger-tint);
+  color: var(--danger);
+}
+.bg-caution-banner .bg-caution-icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.bg-caution-banner .bg-caution-body {
+  flex: 1;
+  min-width: 0;
+}
+.bg-caution-banner .bg-caution-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--danger);
+  margin: 0 0 3px;
+}
+.bg-caution-banner .bg-caution-text {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--danger);
+  opacity: 0.85;
+  margin: 0;
+}
+.bg-caution-pills {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.bg-caution-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px 2px 6px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--danger);
+  background: rgba(176, 57, 44, 0.10);
+  border: 1px solid rgba(176, 57, 44, 0.22);
+  border-radius: var(--r-pill);
+}
+
+/* Open-grant card — left border accent in danger colour */
+.bg-open-card {
+  border-left: 3px solid var(--danger) !important;
+}
+.bg-open-card .card-head {
+  background: var(--danger-tint);
+  border-radius: calc(var(--r-lg) - 1px) 0 0 0;
+}
+.bg-open-card .card-head h3 {
+  color: var(--danger);
+}
+
+/* Hint below the form — small audit note */
+.bg-hint {
+  font-size: 12px;
+  color: var(--ink-3);
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Time-remaining chip on active rows */
+.bg-ttl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--pending);
+  background: var(--pending-tint);
+  border-radius: var(--r-pill);
+  white-space: nowrap;
+}
+
+/* Expiry datetime cell — dimmed for non-active rows */
+.bg-exp-cell {
+  white-space: nowrap;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Row action cluster */
+.bg-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+/* Snapshot modal detail list */
+.bg-snapshot-dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+.bg-snapshot-dl dt {
+  padding: 9px 14px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.bg-snapshot-dl dd {
+  padding: 9px 14px;
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 500;
+  border-bottom: 1px solid var(--border);
+}
+.bg-snapshot-dl dt:last-of-type,
+.bg-snapshot-dl dd:last-of-type {
+  border-bottom: none;
+}
+.bg-snapshot-receipts-head {
+  margin: 16px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.bg-snapshot-receipt-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.bg-snapshot-receipt-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  padding: 6px 10px;
+  background: var(--surface-2);
+  border-radius: var(--r-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Show/hide password toggle inside auth inputs */
+.pw-toggle {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.pw-toggle:hover { color: var(--accent); background: var(--accent-tint); }
+.pw-toggle:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 1px; }
+.pw-toggle[aria-pressed="true"] { color: var(--accent); }

@@ -139,6 +139,7 @@ export function LoginScreen({
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState<string>("");
   const [password, setPassword] = useState<string>("");
+  const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>("");
@@ -238,15 +239,28 @@ export function LoginScreen({
 
                 <div className="field">
                   <label htmlFor="auth-password">รหัสผ่าน</label>
-                  <input
-                    id="auth-password"
-                    className="control"
-                    type="password"
-                    autoComplete="current-password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    aria-invalid={fieldErrors.password ? true : undefined}
-                  />
+                  <div style={{ position: "relative" }}>
+                    <input
+                      id="auth-password"
+                      className="control"
+                      style={{ paddingRight: 44, width: "100%" }}
+                      type={showPassword ? "text" : "password"}
+                      autoComplete="current-password"
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      aria-invalid={fieldErrors.password ? true : undefined}
+                    />
+                    <button
+                      type="button"
+                      className="pw-toggle"
+                      onClick={() => setShowPassword((v) => !v)}
+                      aria-label={showPassword ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน"}
+                      aria-pressed={showPassword}
+                      title={showPassword ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน"}
+                    >
+                      <Icon name="eye" size={16} />
+                    </button>
+                  </div>
                   {fieldErrors.password ? <p className="error-text">{fieldErrors.password}</p> : null}
                 </div>
 
