@@ -1,5 +1,5 @@
 import { ReactElement, useEffect, useState } from "react";
-import { formatSatang } from "@wat/shared";
+import { DONATION_STATUS_LABELS_TH, formatSatang, type DonationStatus } from "@wat/shared";
 import { Icon, type IconName } from "../../layout/icons";
 import { DevoteePage } from "./devotee-shell";
 import { DevoteeQuickActions } from "./temple-page";
@@ -68,8 +68,12 @@ export function DevoteeHome({ api, token, displayName, activeTempleName, onGoto,
   }, [api, token, onUnauthorized]);
 
   const loading = data === null && !error;
-  const totalDonated =
-    data?.donations.reduce((sum, d) => sum + BigInt(d.amountSatang || "0"), 0n) ?? 0n;
+  // Merit total counts only CONFIRMED donations — pledged amounts are not yet
+  // verified by staff (no ledger income) and cancelled ones don't count. This
+  // matches the staff dashboard's confirmed-only rule (no overstated total).
+  const confirmedDonations = data?.donations.filter((d) => d.status === "confirmed") ?? [];
+  const confirmedTotal = confirmedDonations.reduce((sum, d) => sum + BigInt(d.amountSatang || "0"), 0n);
+  const pendingDonations = data?.donations.filter((d) => d.status === "pledged").length ?? 0;
   const pendingCeremonies = data?.ceremonies.filter((c) => c.status === "requested").length ?? 0;
   const activeLoans = data?.loans.filter((l) => l.status === "borrowed").length ?? 0;
   const recent = (data?.donations ?? []).slice(0, 5);
@@ -88,7 +92,12 @@ export function DevoteeHome({ api, token, displayName, activeTempleName, onGoto,
       {error ? <p className="auth-error" role="alert">{error}</p> : null}
 
       <div className="grid g-4" style={{ marginBottom: 18 }}>
-        <Kpi label="ยอดร่วมบุญรวม" icon="donation" value={loading ? "…" : `${formatSatang(totalDonated.toString())} บาท`} foot={`${v(data?.donations.length ?? 0)} ครั้ง`} />
+        <Kpi
+          label="ยอดร่วมบุญที่ยืนยันแล้ว"
+          icon="donation"
+          value={loading ? "…" : `${formatSatang(confirmedTotal.toString())} บาท`}
+          foot={loading ? "…" : `${confirmedDonations.length} ครั้ง${pendingDonations ? ` · รอยืนยัน ${pendingDonations}` : ""}`}
+        />
         <Kpi label="ใบอนุโมทนา" icon="receipt" value={v(data?.receipts.length ?? 0)} foot="ใบ" />
         <Kpi label="คำขอจองพิธี" icon="event" value={v(data?.ceremonies.length ?? 0)} foot={`รอยืนยัน ${v(pendingCeremonies)}`} />
         <Kpi label="รายการยืมของ" icon="box" value={v(data?.loans.length ?? 0)} foot={`กำลังยืม ${v(activeLoans)}`} />
@@ -113,18 +122,19 @@ export function DevoteeHome({ api, token, displayName, activeTempleName, onGoto,
         </div>
         <div className="t-scroll">
           <table className="tbl">
-            <thead><tr><th>วันที่</th><th>วัด</th><th className="num">จำนวน (บาท)</th></tr></thead>
+            <thead><tr><th>วันที่</th><th>วัด</th><th className="num">จำนวน (บาท)</th><th>สถานะ</th></tr></thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={3} className="muted" style={{ textAlign: "center", padding: 20 }}>กำลังโหลด…</td></tr>
+                <tr><td colSpan={4} className="muted" style={{ textAlign: "center", padding: 20 }}>กำลังโหลด…</td></tr>
               ) : recent.length === 0 ? (
-                <tr><td colSpan={3} className="muted" style={{ textAlign: "center", padding: 20 }}>ยังไม่มีรายการร่วมบุญ</td></tr>
+                <tr><td colSpan={4} className="muted" style={{ textAlign: "center", padding: 20 }}>ยังไม่มีรายการร่วมบุญ</td></tr>
               ) : (
                 recent.map((d) => (
                   <tr key={d.id}>
                     <td style={{ whiteSpace: "nowrap" }}>{d.donationDate}</td>
                     <td>{d.templeNameTh}</td>
                     <td className="num tnum">{formatSatang(d.amountSatang)}</td>
+                    <td className="muted" style={{ fontSize: 12 }}>{DONATION_STATUS_LABELS_TH[d.status as DonationStatus] ?? d.status}</td>
                   </tr>
                 ))
               )}

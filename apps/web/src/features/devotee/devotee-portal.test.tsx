@@ -364,7 +364,7 @@ describe("devotee views (mounted)", () => {
     });
     await flush();
     expect(container.textContent).toContain("สวัสดี คุณโยมดี");
-    expect(container.textContent).toContain("ยอดร่วมบุญรวม");
+    expect(container.textContent).toContain("ยอดร่วมบุญที่ยืนยันแล้ว");
     expect(container.textContent).toContain("ร่วมบุญล่าสุด");
     expect(container.textContent).toContain("วัดอรุณเดโม"); // recent donation row + active-temple banner
     // quick-action tile navigates to the matching menu

@@ -65,6 +65,10 @@ export function DevoteePortal({ baseUrl, today }: DevoteePortalProps): ReactElem
   function onAuthenticated(next: DevoteeSession): void {
     saveDevoteeSession(next);
     setSession(next);
+    // A fresh login starts with no active temple — never inherit the previous
+    // devotee's selection on a shared device (a reload keeps it; a login resets it).
+    clearActiveTemple();
+    setActiveTemple(null);
     setPage("home");
   }
 
