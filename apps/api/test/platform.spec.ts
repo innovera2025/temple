@@ -16,6 +16,7 @@ import { PlatformAuthGuard } from "../src/platform/guards/platform-auth.guard";
 import { PlatformRolesGuard } from "../src/platform/guards/platform-roles.guard";
 import { PlatformAuthService } from "../src/platform/platform-auth.service";
 import { PlatformAuditController } from "../src/platform/platform-audit.controller";
+import { PlatformDevoteesController } from "../src/platform/platform-devotees.controller";
 import { PlatformUsersController } from "../src/platform/platform-users.controller";
 import { TemplesController } from "../src/platform/temples.controller";
 import { TenantUsersController } from "../src/platform/tenant-users.controller";
@@ -134,6 +135,7 @@ describe("platform admin", () => {
   let tenantUsers: TenantUsersController;
   let breakGlass: BreakGlassController;
   let audit: PlatformAuditController;
+  let devotees: PlatformDevoteesController;
   let reflector: Reflector;
   let platformAuthGuard: PlatformAuthGuard;
   let tenantAuthGuard: AuthGuard;
@@ -156,6 +158,7 @@ describe("platform admin", () => {
     tenantUsers = app.get(TenantUsersController);
     breakGlass = app.get(BreakGlassController);
     audit = app.get(PlatformAuditController);
+    devotees = app.get(PlatformDevoteesController);
     reflector = app.get(Reflector);
     platformAuthGuard = app.get(PlatformAuthGuard);
     tenantAuthGuard = app.get(AuthGuard);
@@ -450,6 +453,26 @@ describe("platform admin", () => {
   it("returns the project error envelope for not-found and malformed ids (never a raw 500)", async () => {
     await expectHttpError(applications.approve(actorSuper, ip, randomUUID(), { slug: `wat-${randomUUID()}`, adminPassword: devPassword }), 404, "NOT_FOUND");
     await expectHttpError(temples.suspend(actorSuper, ip, "not-a-uuid", { reason: "x" }), 404, "NOT_FOUND");
+  });
+
+  it("manages devotee accounts: list + disable/enable (audited), no password leak", async () => {
+    const email = `plat-dev-${randomUUID()}@example.com`;
+    const id = await returningId(
+      `INSERT INTO devotee_accounts (email, display_name) VALUES (${lit(email)}, 'ทดสอบจัดการ') RETURNING id`,
+    );
+    const { devotees: list } = await devotees.list();
+    const row = list.find((d) => d.id === id);
+    expect(row).toBeTruthy();
+    expect((row as unknown as Record<string, unknown>).passwordHash).toBeUndefined();
+
+    const { devotee: disabled } = await devotees.disable(actorSuper, ip, id);
+    expect(disabled.isActive).toBe(false);
+    expect(await platformAuditCount("devotee_account.disabled", id)).toBe(1);
+
+    const { devotee: enabled } = await devotees.enable(actorSuper, ip, id);
+    expect(enabled.isActive).toBe(true);
+    // enabling an already-enabled (or disabling a disabled) account -> 409
+    await expectHttpError(devotees.enable(actorSuper, ip, id), 409, "CONFLICT");
   });
 
   it("exposes the platform audit trail (read-only) with the actor email resolved", async () => {

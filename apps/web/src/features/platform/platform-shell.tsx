@@ -9,7 +9,7 @@ import { Icon, IconName } from "../../layout/icons";
 const MOBILE_MAX_WIDTH = 860;
 const SIDEBAR_ID = "platform-sidebar";
 
-export type PlatformPage = "dashboard" | "applications" | "temples" | "tenant-users" | "platform-users" | "audit" | "break-glass";
+export type PlatformPage = "dashboard" | "applications" | "temples" | "all-users" | "tenant-users" | "platform-users" | "audit" | "break-glass";
 
 interface PlatformNavItem {
   id: PlatformPage;
@@ -28,6 +28,7 @@ const NAV: PlatformNavGroup[] = [
     group: "จัดการ",
     items: [
       { id: "temples", label: "จัดการวัด", icon: "building" },
+      { id: "all-users", label: "ผู้ใช้ทั้งหมด", icon: "user" },
       { id: "tenant-users", label: "ผู้ใช้วัด", icon: "donors" },
       { id: "platform-users", label: "ผู้ใช้แพลตฟอร์ม", icon: "roles" },
     ],
@@ -40,6 +41,7 @@ export const PLATFORM_PAGE_TITLES: Record<PlatformPage, string> = {
   dashboard: "แดชบอร์ด",
   applications: "ใบสมัครวัด",
   temples: "จัดการวัด",
+  "all-users": "ผู้ใช้ทั้งหมด",
   "tenant-users": "ผู้ใช้วัดทั้งหมด",
   "platform-users": "ผู้ใช้แพลตฟอร์ม",
   audit: "ประวัติการใช้งาน",

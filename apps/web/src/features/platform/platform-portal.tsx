@@ -2,6 +2,7 @@ import { ReactElement, useMemo, useState } from "react";
 import { PLATFORM_ROLE_LABELS_TH } from "@wat/shared";
 import { ApplicationsView } from "./applications-view";
 import { BreakGlassView } from "./break-glass-view";
+import { PlatformAllUsersView } from "./platform-all-users-view";
 import { PlatformAuditView } from "./platform-audit-view";
 import { PlatformDashboard } from "./platform-dashboard";
 import { PlatformLoginView } from "./platform-login-view";
@@ -55,6 +56,7 @@ export function PlatformPortal({ baseUrl }: PlatformPortalProps): ReactElement {
       {page === "dashboard" ? <PlatformDashboard {...viewProps} onGoto={setPage} /> : null}
       {page === "applications" ? <ApplicationsView {...viewProps} /> : null}
       {page === "temples" ? <TemplesView {...viewProps} /> : null}
+      {page === "all-users" ? <PlatformAllUsersView {...viewProps} /> : null}
       {page === "tenant-users" ? <TenantUsersView {...viewProps} /> : null}
       {page === "platform-users" ? <PlatformUsersView {...viewProps} /> : null}
       {page === "audit" ? <PlatformAuditView {...viewProps} /> : null}

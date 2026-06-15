@@ -2,6 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ApplicationsView } from "./applications-view";
+import { PlatformAllUsersView } from "./platform-all-users-view";
 import { PlatformAuditView } from "./platform-audit-view";
 import { PlatformDashboard } from "./platform-dashboard";
 import { PlatformLoginView } from "./platform-login-view";
@@ -75,6 +76,11 @@ function makeApi(overrides: Partial<PlatformApi> = {}): PlatformApi {
     listAuditLogs: async () => [
       { id: "al1", action: "application.approved", entityType: "application", entityId: pendingApp.id, actorEmail: "super@innovera.example", metadata: { reason: "ผ่านเกณฑ์" }, createdAt: "2026-06-03T00:00:00.000Z" },
     ],
+    listDevotees: async () => [
+      { id: "dev1", email: "devotee@example.com", displayName: "ญาติโยมเดโม", isActive: true, emailVerifiedAt: null, createdAt: "2026-06-01T00:00:00.000Z" },
+    ],
+    enableDevotee: async () => ({ id: "dev1", email: "devotee@example.com", displayName: "ญาติโยมเดโม", isActive: true, emailVerifiedAt: null, createdAt: "2026-06-01T00:00:00.000Z" }),
+    disableDevotee: async () => ({ id: "dev1", email: "devotee@example.com", displayName: "ญาติโยมเดโม", isActive: false, emailVerifiedAt: null, createdAt: "2026-06-01T00:00:00.000Z" }),
     ...overrides,
   };
 }
@@ -154,6 +160,27 @@ describe("platform console (mounted)", () => {
     });
     await flush();
     expect(authed).toBe(true);
+  });
+
+  it("all-users view merges the 3 account types and disables a devotee", async () => {
+    let disabledId = "";
+    const api = makeApi({ disableDevotee: async (_t, id) => { disabledId = id; return { id, email: "devotee@example.com", displayName: "ญาติโยมเดโม", isActive: false, emailVerifiedAt: null, createdAt: "2026-06-01T00:00:00.000Z" }; } });
+    await act(async () => {
+      root.render(<PlatformAllUsersView api={api} token="t" canWrite onUnauthorized={() => undefined} />);
+    });
+    await flush();
+    expect(container.textContent).toContain("ผู้ใช้ทั้งหมด");
+    expect(container.textContent).toContain("support@innovera.example"); // platform user (fixture)
+    expect(container.textContent).toContain("devotee@example.com"); // devotee
+    expect(container.textContent).toContain("ญาติโยม"); // type label
+
+    // the devotee row has a working toggle (platform-owned account)
+    const devRow = Array.from(container.querySelectorAll("tr")).find((tr) => tr.textContent?.includes("devotee@example.com"));
+    const disableBtn = devRow ? Array.from(devRow.querySelectorAll("button")).find((b) => b.textContent === "ปิดใช้งาน") : undefined;
+    expect(disableBtn).toBeTruthy();
+    await act(async () => disableBtn?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    await flush();
+    expect(disabledId).toBe("dev1");
   });
 
   it("audit view lists the platform action history (actor + Thai action label + detail)", async () => {

@@ -97,6 +97,15 @@ export interface TenantUserRecord {
   createdAt: string;
 }
 
+export interface DevoteeAccountRecord {
+  id: string;
+  email: string;
+  displayName: string;
+  isActive: boolean;
+  emailVerifiedAt: string | null;
+  createdAt: string;
+}
+
 export interface BreakGlassGrantRecord {
   id: string;
   platformUserId: string;
@@ -241,6 +250,9 @@ export interface PlatformApi {
   enablePlatformUser(token: string, id: string): Promise<PlatformUserRecord>;
   disablePlatformUser(token: string, id: string): Promise<PlatformUserRecord>;
   listTenantUsers(token: string, filter?: TenantUsersFilter): Promise<TenantUserRecord[]>;
+  listDevotees(token: string): Promise<DevoteeAccountRecord[]>;
+  enableDevotee(token: string, id: string): Promise<DevoteeAccountRecord>;
+  disableDevotee(token: string, id: string): Promise<DevoteeAccountRecord>;
   openBreakGlass(token: string, input: BreakGlassOpenInput): Promise<BreakGlassGrantRecord>;
   listGrants(token: string): Promise<BreakGlassGrantRecord[]>;
   revokeGrant(token: string, id: string): Promise<BreakGlassGrantRecord>;
@@ -335,6 +347,12 @@ export function createPlatformApiClient(options: PlatformApiClientOptions): Plat
       post<PlatformUserRecord>(`/platform/platform-users/${id}/enable`, token, {}, "platformUser", "เปิดใช้งานไม่สำเร็จ"),
     disablePlatformUser: (token, id) =>
       post<PlatformUserRecord>(`/platform/platform-users/${id}/disable`, token, {}, "platformUser", "ปิดใช้งานไม่สำเร็จ"),
+    listDevotees: (token) =>
+      get<DevoteeAccountRecord[]>(`/platform/devotees`, token, "devotees", "โหลดบัญชีญาติโยมไม่สำเร็จ"),
+    enableDevotee: (token, id) =>
+      post<DevoteeAccountRecord>(`/platform/devotees/${id}/enable`, token, {}, "devotee", "เปิดใช้งานไม่สำเร็จ"),
+    disableDevotee: (token, id) =>
+      post<DevoteeAccountRecord>(`/platform/devotees/${id}/disable`, token, {}, "devotee", "ปิดใช้งานไม่สำเร็จ"),
     listTenantUsers: (token, filter = {}) =>
       get<TenantUserRecord[]>(
         `/platform/users${qs({

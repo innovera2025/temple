@@ -7,6 +7,8 @@ import { BreakGlassController } from "./break-glass.controller";
 import { BreakGlassService } from "./break-glass.service";
 import { PlatformAuditController } from "./platform-audit.controller";
 import { PlatformAuditService } from "./platform-audit.service";
+import { PlatformDevoteesController } from "./platform-devotees.controller";
+import { PlatformDevoteesService } from "./platform-devotees.service";
 import { PlatformAuthController } from "./platform-auth.controller";
 import { PlatformAuthService } from "./platform-auth.service";
 import { PlatformTokenService } from "./platform-token.service";
@@ -31,6 +33,7 @@ import { TenantUsersService } from "./tenant-users.service";
     TenantUsersController,
     BreakGlassController,
     PlatformAuditController,
+    PlatformDevoteesController,
   ],
   providers: [
     PlatformTokenService,
@@ -41,6 +44,7 @@ import { TenantUsersService } from "./tenant-users.service";
     TenantUsersService,
     BreakGlassService,
     PlatformAuditService,
+    PlatformDevoteesService,
     PlatformAuthGuard,
     PlatformRolesGuard,
     RateLimitGuard,
