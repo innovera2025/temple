@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { Inject, Injectable, Logger } from "@nestjs/common";
+import { Inject, Injectable, Logger, type OnModuleDestroy } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { projectHttpException } from "../errors/project-error";
 import { PasswordService } from "../../auth/password.service";
@@ -41,8 +41,11 @@ function invalidToken(): never {
  * A successful reset revokes every refresh token of the account.
  */
 @Injectable()
-export class RecoveryService {
+export class RecoveryService implements OnModuleDestroy {
   private readonly logger = new Logger(RecoveryService.name);
+  // Detached deliveries in flight — awaited on shutdown so a forgot-password
+  // issued moments before the process stops isn't dropped mid-send.
+  private readonly inFlight = new Set<Promise<void>>();
 
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
@@ -59,9 +62,22 @@ export class RecoveryService {
    * Failures are logged, never surfaced (the endpoint already answered 202).
    */
   private runInBackground(work: () => Promise<void>): void {
-    void work().catch((err) => {
-      this.logger.error(`recovery delivery failed: ${err instanceof Error ? err.message : String(err)}`);
-    });
+    const task = work()
+      .catch((err) => {
+        this.logger.error(`recovery delivery failed: ${err instanceof Error ? err.message : String(err)}`);
+      })
+      .finally(() => {
+        this.inFlight.delete(task);
+      });
+    this.inFlight.add(task);
+  }
+
+  /** Let in-flight deliveries finish (best-effort) before the DI container — and
+   *  the DB connection they use — tears down. */
+  async onModuleDestroy(): Promise<void> {
+    if (this.inFlight.size > 0) {
+      await Promise.allSettled([...this.inFlight]);
+    }
   }
 
   // ---- staff (tenant users) -------------------------------------------------
