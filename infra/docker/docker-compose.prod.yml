@@ -114,7 +114,9 @@ services:
         # URL only if you serve the API on a different origin (then enable CORS).
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
     ports:
-      - "${WEB_PUBLIC_PORT:-8080}:80"
+      # Default to the standard HTTP port (80); override with WEB_PUBLIC_PORT
+      # (the smoke stack uses 8088, leaving the temple landing on its own port).
+      - "${WEB_PUBLIC_PORT:-80}:80"
     depends_on:
       api:
         condition: service_healthy

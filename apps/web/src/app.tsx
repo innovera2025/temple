@@ -21,34 +21,45 @@ import { createAuthedFetch } from "./features/auth/authed-fetch";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000";
 
-// --- minimal hand-rolled hash router (no external dependency, matches the
-// project's dependency-light ethos). The design-backed router/shell lands in a
-// later slice; for now the default route is the temple product and #/smoke is a
-// dev-only escape hatch to the backend smoke shell. The Agent Control Tower is a
-// separate dev artifact and is never rendered here.
+// --- minimal hand-rolled router (no external dependency, matches the project's
+// dependency-light ethos). Top-level planes are PATH-based so the root (/) can be
+// a public landing page: / = public directory, /temple = staff product, /devotee =
+// ญาติโยม portal, /platform = Innovera console. Auxiliary flows stay hash-based
+// because they arrive via emailed links or the dev tool (#/reset-password,
+// #/verify-email, #/smoke). Legacy #/devotee|#/platform|#/public links still work.
 type Route = "app" | "smoke" | "devotee" | "public" | "platform" | "reset-password" | "verify-email";
 
 function readRoute(): Route {
-  if (typeof window === "undefined") return "app";
-  // The devotee (ญาติโยม) portal and the public directory are separate top-level
-  // planes — never the staff RoleShell/back-office. #/public needs no auth at all.
+  if (typeof window === "undefined") return "public";
+  // Auxiliary flows (emailed links + dev tool) are hash-based — checked first so
+  // they work regardless of which path the link lands on.
   const hash = window.location.hash.replace(/^#\/?/, "");
   if (hash === "smoke") return "smoke";
-  if (hash === "devotee" || hash.startsWith("devotee/")) return "devotee";
-  if (hash === "public" || hash.startsWith("public/")) return "public";
-  if (hash === "platform" || hash.startsWith("platform/")) return "platform";
-  // Landing pages for emailed links (work pre-auth on any plane).
   if (hash.startsWith("reset-password")) return "reset-password";
   if (hash.startsWith("verify-email")) return "verify-email";
-  return "app";
+  // Legacy hash links for the planes (pre-landing-page bookmarks).
+  if (hash === "devotee" || hash.startsWith("devotee/")) return "devotee";
+  if (hash === "platform" || hash.startsWith("platform/")) return "platform";
+  if (hash === "public" || hash.startsWith("public/")) return "public";
+  // Path-based top-level planes.
+  const path = window.location.pathname.replace(/\/+$/, "");
+  if (path === "/temple" || path.startsWith("/temple/")) return "app";
+  if (path === "/devotee" || path.startsWith("/devotee/")) return "devotee";
+  if (path === "/platform" || path.startsWith("/platform/")) return "platform";
+  // Root (/) — and any unknown path — is the public landing directory.
+  return "public";
 }
 
 function useRoute(): Route {
   const [route, setRoute] = useState<Route>(() => readRoute());
   useEffect(() => {
-    const onHashChange = (): void => setRoute(readRoute());
-    window.addEventListener("hashchange", onHashChange);
-    return () => window.removeEventListener("hashchange", onHashChange);
+    const onChange = (): void => setRoute(readRoute());
+    window.addEventListener("hashchange", onChange);
+    window.addEventListener("popstate", onChange);
+    return () => {
+      window.removeEventListener("hashchange", onChange);
+      window.removeEventListener("popstate", onChange);
+    };
   }, []);
   return route;
 }

@@ -26,7 +26,12 @@ function ceremonyTypeLabel(type: string): string {
 
 /** Send the visitor into the devotee portal (login / register / donate / book). */
 function goDevotee(): void {
-  if (typeof window !== "undefined") window.location.hash = "#/devotee";
+  if (typeof window !== "undefined") window.location.assign("/devotee");
+}
+
+/** Send temple staff into the management product (login / back-office). */
+function goStaff(): void {
+  if (typeof window !== "undefined") window.location.assign("/temple");
 }
 
 export function PublicDirectory({ baseUrl, api: apiProp }: PublicDirectoryProps): ReactElement {
@@ -67,6 +72,7 @@ export function PublicDirectory({ baseUrl, api: apiProp }: PublicDirectoryProps)
           <button type="button" className="active" onClick={() => undefined}>วัดและกิจกรรม</button>
         </nav>
         <div className="devotee-account">
+          <button type="button" className="link-btn" onClick={goStaff}>เข้าระบบจัดการวัด</button>
           <Button variant="primary" onClick={goDevotee}>เข้าสู่ระบบ / ร่วมบุญ</Button>
         </div>
       </header>

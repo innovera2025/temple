@@ -3,24 +3,40 @@ import { afterEach, describe, expect, it } from "vitest";
 import { App } from "./app";
 import { SmokeShell } from "./smoke/SmokeShell";
 
+function setPath(path: string): void {
+  window.history.pushState({}, "", path);
+}
+
 afterEach(() => {
   window.localStorage.clear();
   window.location.hash = "";
+  window.history.pushState({}, "", "/");
 });
 
-describe("App (default temple product)", () => {
-  it("renders the design-backed temple login screen as the default route", () => {
+describe("App (routing + planes)", () => {
+  it("renders the public directory as the landing page at root (/)", () => {
     const html = renderToStaticMarkup(<App />);
 
-    // Design-backed brand + Thai copy (admin-app.jsx LoginScreen). Pre-login
-    // branding is the generic product name — the tenant is unknown until login.
+    // The root is now a public landing: product brand + the directory headline,
+    // NOT the staff login (which moved to /temple).
     expect(html).toContain("ระบบจัดการวัด");
+    expect(html).toContain("วัดและกิจกรรมงานบุญ");
+    expect(html).not.toContain("ยินดีต้อนรับกลับ");
+  });
+
+  it("renders the temple staff login at /temple", () => {
+    setPath("/temple");
+    const html = renderToStaticMarkup(<App />);
+
+    // Design-backed brand + Thai copy (LoginScreen). Pre-login branding is the
+    // generic product name — the tenant is unknown until login.
     expect(html).toContain("ยินดีต้อนรับกลับ");
-    expect(html).toContain("เข้าสู่ระบบ");
+    expect(html).toContain("ระบบจัดการวัด");
     expect(html).not.toContain("วัดธรรมสถิตวนาราม");
   });
 
   it("is the temple product, not the Agent Control Tower", () => {
+    setPath("/temple");
     const html = renderToStaticMarkup(<App />);
 
     expect(html).not.toContain("Agent Control Tower");
@@ -28,7 +44,7 @@ describe("App (default temple product)", () => {
     expect(html).not.toContain("orchestrator");
   });
 
-  it("does not show the dev smoke shell by default", () => {
+  it("does not show the dev smoke shell on the landing", () => {
     const html = renderToStaticMarkup(<App />);
 
     expect(html).not.toContain("เมนูระบบวัด");
@@ -36,7 +52,8 @@ describe("App (default temple product)", () => {
     expect(html).not.toContain("Run quick smoke");
   });
 
-  it("renders the RoleShell product (not the login screen) once a session exists", () => {
+  it("renders the RoleShell product at /temple once a session exists", () => {
+    setPath("/temple");
     window.localStorage.setItem(
       "wat-session",
       JSON.stringify({
@@ -89,10 +106,11 @@ describe("SmokeShell (dev-only, separated from the product)", () => {
     const smoke = renderToStaticMarkup(<App />);
     expect(smoke).toContain("เมนูระบบวัด");
 
+    // Back to the default (no hash, no session, root path) — the public landing.
     window.localStorage.clear();
     window.location.hash = "";
     const def = renderToStaticMarkup(<App />);
-    expect(def).toContain("ยินดีต้อนรับกลับ");
+    expect(def).toContain("วัดและกิจกรรมงานบุญ");
     expect(def).not.toContain("เมนูระบบวัด");
   });
 });
