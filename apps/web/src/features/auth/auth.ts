@@ -32,7 +32,10 @@ const SESSION_STORAGE_KEY = "wat-session";
 // the matching backend endpoint ships — the UI reads these to disable/hide affordances.
 export const AUTH_FLOW_AVAILABILITY = {
   register: true,
-  socialLogin: true,
+  // Google/Facebook buttons render per the design but the OAuth flow is not wired
+  // end-to-end (no /oauth/callback) — the UI reports "coming soon" on click. Not an
+  // honestly-offerable flow yet; flip to true when callback + token exchange ship.
+  socialLogin: false,
   passwordReset: false,
 } as const;
 

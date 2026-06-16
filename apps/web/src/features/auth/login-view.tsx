@@ -1,13 +1,12 @@
 import { FormEvent, ReactElement, useState } from "react";
 import { Button } from "../../design-system";
 import { Icon } from "../../layout/icons";
+import { AuthShell } from "./auth-shell";
 import { RegisterForm } from "./register-view";
 import { ForgotPasswordForm } from "./recovery-view";
 import type { RecoveryApiOptions } from "./recovery";
 import {
   AuthApi,
-  AuthError,
-  CONFIG_REQUIRED_LABEL,
   deriveSession,
   loginErrorMessage,
   LoginFormErrors,
@@ -21,7 +20,8 @@ type Mode = "login" | "register";
 export interface LoginScreenProps {
   api: AuthApi;
   onAuthenticated: (session: Session) => void;
-  /** Social sign-in buttons; default off until the OAuth callback flow exists. */
+  /** Social sign-in buttons (shown by default per the design; render a
+   *  "coming soon" notice on click until the OAuth callback flow ships). */
   showSocial?: boolean;
   /** Enables the ลืมรหัสผ่าน flow (POST /auth/forgot-password). */
   recoveryOptions?: RecoveryApiOptions;
@@ -29,102 +29,63 @@ export interface LoginScreenProps {
   notice?: string;
 }
 
-// Social/OAuth providers from the design's SocialButtons. No backend -> disabled.
-const SOCIAL_PROVIDERS = ["Google", "Facebook"] as const;
-const SOCIAL_PROVIDER_IDS = { Google: "google", Facebook: "facebook" } as const;
-
-// Social buttons stay off until the OAuth callback flow exists (the buttons
-// would otherwise dead-end at the provider). Enable in dev with
-// VITE_SHOW_SOCIAL_LOGIN=true.
-const SHOW_SOCIAL_LOGIN = import.meta.env.VITE_SHOW_SOCIAL_LOGIN === "true";
-
-function BrandPanel(): ReactElement {
+// Brand logos for the social sign-in buttons (rendered per the design). Kept as
+// small inline SVGs so there is no extra asset dependency.
+function GoogleLogo(): ReactElement {
   return (
-    <div className="auth-art" data-design-source="user-zip-auth.jsx">
-      <svg className="auth-temple" viewBox="0 0 200 200" fill="none" aria-hidden="true">
-        <path
-          d="M100 20l8 14 8-8-6 16 18-4-12 12 20 4-18 8 14 12-18-2 6 16-14-10-2 16-10-12-10 12-2-16-14 10 6-16-18 2 14-12-18-8 20-4-12-12 18 4-6-16 8 8z"
-          fill="currentColor"
-        />
-        <path
-          d="M30 180h140M50 180V130l50-40 50 40v50M75 180v-30h50v30M100 90V60M85 60h30"
-          stroke="currentColor"
-          strokeWidth="1.5"
-        />
-      </svg>
-
-      <div className="a-brand">
-        <div className="a-seal">
-          <Icon name="lotus" size={30} />
-        </div>
-        <div>
-          <div className="a-brand-name">ระบบจัดการวัด</div>
-          <div className="a-brand-sub">WAT MANAGEMENT SYSTEM</div>
-        </div>
-      </div>
-
-      <div className="a-lead">
-        <div className="a-line" />
-        <h1>ระบบจัดการวัด</h1>
-        <p className="a-sub">
-          ระบบจัดการวัดออนไลน์ สำหรับเจ้าหน้าที่และญาติโยม จองศาลา จองกุฏิ แจ้งบวช ฌาปนกิจ
-          และร่วมบุญออนไลน์
-        </p>
-      </div>
-
-      <div className="a-foot">© ๒๕๖๙ ระบบจัดการวัด · เพื่อความสะดวกของพุทธศาสนิกชน</div>
-    </div>
+    <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+    </svg>
   );
 }
 
-function socialErrorMessage(error: unknown): string {
-  if (error instanceof AuthError) {
-    if (error.status === 503) return CONFIG_REQUIRED_LABEL;
-    if (error.status === 429) return "เริ่มเข้าสู่ระบบด้วยบัญชีภายนอกบ่อยเกินไป กรุณารอสักครู่";
-    return error.message || "เริ่มเข้าสู่ระบบด้วยบัญชีภายนอกไม่สำเร็จ";
-  }
-  if (error instanceof TypeError) return "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบการเชื่อมต่อ";
-  return "เริ่มเข้าสู่ระบบด้วยบัญชีภายนอกไม่สำเร็จ";
+function FacebookLogo(): ReactElement {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="#1877F2" d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.68.24 2.68.24v2.97h-1.51c-1.49 0-1.95.93-1.95 1.88v2.26h3.32l-.53 3.49h-2.79V24C19.61 23.1 24 18.1 24 12.07z" />
+    </svg>
+  );
 }
 
-function SocialButtons({ api }: { api: AuthApi }): ReactElement {
-  const [busyProvider, setBusyProvider] = useState<string>("");
-  const [error, setError] = useState<string>("");
+// Social/OAuth providers from the design's SocialButtons.
+const SOCIAL_PROVIDERS = [
+  { id: "google", label: "Google", Logo: GoogleLogo },
+  { id: "facebook", label: "Facebook", Logo: FacebookLogo },
+] as const;
 
-  async function start(providerLabel: keyof typeof SOCIAL_PROVIDER_IDS): Promise<void> {
-    const provider = SOCIAL_PROVIDER_IDS[providerLabel];
-    setBusyProvider(provider);
-    setError("");
-    try {
-      const redirectUri = `${window.location.origin}/oauth/callback`;
-      const result = await api.startSocialSignup(provider, redirectUri);
-      window.location.assign(result.authUrl);
-    } catch (err) {
-      setError(socialErrorMessage(err));
-    } finally {
-      setBusyProvider("");
-    }
-  }
+// Shown by default per the temple login design. The OAuth flow is not wired
+// end-to-end yet (no /oauth/callback handler), so the buttons render but report
+// "coming soon" on click instead of dead-ending at the provider. Hide entirely
+// with VITE_SHOW_SOCIAL_LOGIN=false.
+const SHOW_SOCIAL_LOGIN = import.meta.env.VITE_SHOW_SOCIAL_LOGIN !== "false";
+
+function SocialButtons(): ReactElement {
+  const [comingSoon, setComingSoon] = useState(false);
 
   return (
     <div className="auth-social">
       <div className="soc-row">
         {SOCIAL_PROVIDERS.map((provider) => (
           <button
-            key={provider}
+            key={provider.id}
             type="button"
             className="soc-btn"
-            disabled={busyProvider !== ""}
-            title={CONFIG_REQUIRED_LABEL}
-            aria-label={`เข้าสู่ระบบด้วย ${provider}`}
-            onClick={() => void start(provider)}
+            aria-label={`เข้าสู่ระบบด้วย ${provider.label}`}
+            onClick={() => setComingSoon(true)}
           >
-            {busyProvider === SOCIAL_PROVIDER_IDS[provider] ? "กำลังเชื่อมต่อ…" : provider}
+            <provider.Logo />
+            {provider.label}
           </button>
         ))}
       </div>
-      <p className="auth-social-note">Google/Facebook จะใช้งานได้เมื่อ backend ตั้งค่า OAuth provider แล้ว</p>
-      {error ? <p className="auth-error" role="alert">{error}</p> : null}
+      {comingSoon ? (
+        <p className="auth-social-note" role="status">
+          เข้าสู่ระบบด้วย Google หรือ Facebook — เปิดให้บริการเร็วๆ นี้
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -169,146 +130,139 @@ export function LoginScreen({
   }
 
   return (
-    <main className="auth">
-      <BrandPanel />
-
-      <div className="auth-panel">
-        <div className="auth-card">
-          {notice ? <div className="auth-notice" role="status">{notice}</div> : null}
-          <div className="auth-tabs" role="tablist">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mode === "login"}
-              className={mode === "login" ? "active" : ""}
-              onClick={() => setMode("login")}
-            >
-              เข้าสู่ระบบ
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mode === "register"}
-              className={mode === "register" ? "active" : ""}
-              onClick={() => setMode("register")}
-            >
-              สมัครสมาชิก
-            </button>
-          </div>
-
-          {mode === "register" ? (
-            <RegisterForm api={api} />
-          ) : forgotOpen && recoveryOptions ? (
-            <>
-              <div className="auth-kicker">ลืมรหัสผ่าน</div>
-              <h2>ตั้งรหัสผ่านใหม่</h2>
-              <ForgotPasswordForm
-                options={recoveryOptions}
-                plane="staff"
-                onClose={() => setForgotOpen(false)}
-              />
-            </>
-          ) : (
-            <>
-              <div className="auth-kicker">เข้าสู่ระบบ</div>
-              <h2>ขอเชิญร่วมบุญ</h2>
-              <p className="a-hint">เข้าสู่ระบบเพื่อจองบริการของวัด ร่วมบุญ หรือจัดการงานวัด</p>
-
-              {showSocial ? (
-                <>
-                  <SocialButtons api={api} />
-                  <div className="auth-or">หรือใช้อีเมล</div>
-                </>
-              ) : null}
-
-              <form onSubmit={onSubmit} noValidate>
-                <div className="field">
-                  <label htmlFor="auth-email">อีเมล</label>
-                  <input
-                    id="auth-email"
-                    className="control"
-                    type="email"
-                    autoComplete="username"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                    placeholder="name@wat.local"
-                    aria-invalid={fieldErrors.email ? true : undefined}
-                  />
-                  {fieldErrors.email ? <p className="error-text">{fieldErrors.email}</p> : null}
-                </div>
-
-                <div className="field">
-                  <label htmlFor="auth-password">รหัสผ่าน</label>
-                  <div style={{ position: "relative" }}>
-                    <input
-                      id="auth-password"
-                      className="control"
-                      style={{ paddingRight: 44, width: "100%" }}
-                      type={showPassword ? "text" : "password"}
-                      autoComplete="current-password"
-                      value={password}
-                      onChange={(event) => setPassword(event.target.value)}
-                      aria-invalid={fieldErrors.password ? true : undefined}
-                    />
-                    <button
-                      type="button"
-                      className="pw-toggle"
-                      onClick={() => setShowPassword((v) => !v)}
-                      aria-label={showPassword ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน"}
-                      aria-pressed={showPassword}
-                      title={showPassword ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน"}
-                    >
-                      <Icon name="eye" size={16} />
-                    </button>
-                  </div>
-                  {fieldErrors.password ? <p className="error-text">{fieldErrors.password}</p> : null}
-                </div>
-
-                <div className="between">
-                  <label className="auth-remember">
-                    <input
-                      type="checkbox"
-                      checked={remember}
-                      onChange={(event) => setRemember(event.target.checked)}
-                    />
-                    จดจำการเข้าใช้
-                  </label>
-                  {recoveryOptions ? (
-                    <button
-                      type="button"
-                      className="auth-link"
-                      onClick={() => setForgotOpen(true)}
-                      aria-label="ลืมรหัสผ่าน"
-                    >
-                      ลืมรหัสผ่าน?
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      className="auth-link"
-                      disabled
-                      title={UNAVAILABLE_LABEL}
-                      aria-label={`ลืมรหัสผ่าน (${UNAVAILABLE_LABEL})`}
-                    >
-                      ลืมรหัสผ่าน?
-                    </button>
-                  )}
-                </div>
-
-                {error ? (
-                  <p className="auth-error" role="alert">
-                    {error}
-                  </p>
-                ) : null}
-
-                <Button type="submit" variant="primary" className="btn-block" disabled={busy}>
-                  {busy ? "กำลังเข้าสู่ระบบ…" : "เข้าสู่ระบบ"}
-                </Button>
-              </form>
-            </>
-          )}
-        </div>
+    <AuthShell>
+      {notice ? <div className="auth-notice" role="status">{notice}</div> : null}
+      <div className="auth-tabs" role="tablist" aria-label="เข้าสู่ระบบหรือสมัครสมาชิก">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "login"}
+          className={mode === "login" ? "active" : ""}
+          onClick={() => setMode("login")}
+        >
+          เข้าสู่ระบบ
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "register"}
+          className={mode === "register" ? "active" : ""}
+          onClick={() => setMode("register")}
+        >
+          สมัครสมาชิก
+        </button>
       </div>
-    </main>
+
+      {mode === "register" ? (
+        <RegisterForm api={api} />
+      ) : forgotOpen && recoveryOptions ? (
+        <>
+          <div className="auth-kicker">ลืมรหัสผ่าน</div>
+          <h2>ตั้งรหัสผ่านใหม่</h2>
+          <ForgotPasswordForm
+            options={recoveryOptions}
+            plane="staff"
+            onClose={() => setForgotOpen(false)}
+          />
+        </>
+      ) : (
+        <>
+          <h2>ยินดีต้อนรับกลับ</h2>
+          <p className="a-hint">ลงชื่อเข้าใช้เพื่อจัดการงานของวัด</p>
+
+          {showSocial ? (
+            <>
+              <SocialButtons />
+              <div className="auth-or">หรือใช้อีเมล</div>
+            </>
+          ) : null}
+
+          <form onSubmit={onSubmit} noValidate aria-busy={busy}>
+            <div className="field">
+              <label htmlFor="auth-email">อีเมล</label>
+              <input
+                id="auth-email"
+                className="control"
+                type="email"
+                autoComplete="username"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="name@wat.local"
+                aria-invalid={fieldErrors.email ? true : undefined}
+              />
+              {fieldErrors.email ? <p className="error-text">{fieldErrors.email}</p> : null}
+            </div>
+
+            <div className="field">
+              <label htmlFor="auth-password">รหัสผ่าน</label>
+              <div style={{ position: "relative" }}>
+                <input
+                  id="auth-password"
+                  className="control"
+                  style={{ paddingRight: 44, width: "100%" }}
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  aria-invalid={fieldErrors.password ? true : undefined}
+                />
+                <button
+                  type="button"
+                  className="pw-toggle"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน"}
+                  aria-pressed={showPassword}
+                  title={showPassword ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน"}
+                >
+                  <Icon name="eye" size={16} />
+                </button>
+              </div>
+              {fieldErrors.password ? <p className="error-text">{fieldErrors.password}</p> : null}
+            </div>
+
+            <div className="between">
+              <label className="auth-remember">
+                <input
+                  type="checkbox"
+                  checked={remember}
+                  onChange={(event) => setRemember(event.target.checked)}
+                />
+                จดจำการเข้าใช้
+              </label>
+              {recoveryOptions ? (
+                <button
+                  type="button"
+                  className="auth-link"
+                  onClick={() => setForgotOpen(true)}
+                  aria-label="ลืมรหัสผ่าน"
+                >
+                  ลืมรหัสผ่าน?
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="auth-link"
+                  disabled
+                  title={UNAVAILABLE_LABEL}
+                  aria-label={`ลืมรหัสผ่าน (${UNAVAILABLE_LABEL})`}
+                >
+                  ลืมรหัสผ่าน?
+                </button>
+              )}
+            </div>
+
+            {error ? (
+              <p className="auth-error" role="alert">
+                {error}
+              </p>
+            ) : null}
+
+            <Button type="submit" variant="primary" className="btn-block" icon={<Icon name="arrowR" size={16} />} disabled={busy}>
+              {busy ? "กำลังเข้าสู่ระบบ…" : "เข้าสู่ระบบ"}
+            </Button>
+          </form>
+        </>
+      )}
+    </AuthShell>
   );
 }

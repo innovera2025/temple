@@ -15,7 +15,7 @@ describe("App (default temple product)", () => {
     // Design-backed brand + Thai copy (admin-app.jsx LoginScreen). Pre-login
     // branding is the generic product name — the tenant is unknown until login.
     expect(html).toContain("ระบบจัดการวัด");
-    expect(html).toContain("ขอเชิญร่วมบุญ");
+    expect(html).toContain("ยินดีต้อนรับกลับ");
     expect(html).toContain("เข้าสู่ระบบ");
     expect(html).not.toContain("วัดธรรมสถิตวนาราม");
   });
@@ -56,7 +56,7 @@ describe("App (default temple product)", () => {
     expect(html).toContain("การเงินและบริจาค");
     expect(html).toContain("ผู้ดูแลวัดอรุณ");
     // The login welcome is gone — we transitioned to the product shell.
-    expect(html).not.toContain("ขอเชิญร่วมบุญ");
+    expect(html).not.toContain("ยินดีต้อนรับกลับ");
   });
 });
 
@@ -76,7 +76,7 @@ describe("SmokeShell (dev-only, separated from the product)", () => {
     // (login) is shown instead, never the staff product login.
     const gated = renderToStaticMarkup(<App />);
     expect(gated).not.toContain("เมนูระบบวัด");
-    expect(gated).not.toContain("ขอเชิญร่วมบุญ");
+    expect(gated).not.toContain("ยินดีต้อนรับกลับ");
 
     // With a platform-owner session, the smoke tool renders.
     window.localStorage.setItem(
@@ -92,7 +92,7 @@ describe("SmokeShell (dev-only, separated from the product)", () => {
     window.localStorage.clear();
     window.location.hash = "";
     const def = renderToStaticMarkup(<App />);
-    expect(def).toContain("ขอเชิญร่วมบุญ");
+    expect(def).toContain("ยินดีต้อนรับกลับ");
     expect(def).not.toContain("เมนูระบบวัด");
   });
 });

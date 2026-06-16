@@ -198,9 +198,12 @@ describe("loginErrorMessage", () => {
 });
 
 describe("unavailable flows are honestly flagged", () => {
-  it("enables register/social when backed by real endpoints but keeps password-reset disabled", () => {
+  it("enables register, but flags social-login and password-reset as not yet offerable", () => {
     expect(AUTH_FLOW_AVAILABILITY.register).toBe(true);
-    expect(AUTH_FLOW_AVAILABILITY.socialLogin).toBe(true);
+    // Social buttons render per the design but the OAuth flow is not wired
+    // end-to-end (no callback) — the UI shows "coming soon", so the flow is
+    // honestly flagged unavailable.
+    expect(AUTH_FLOW_AVAILABILITY.socialLogin).toBe(false);
     expect(AUTH_FLOW_AVAILABILITY.passwordReset).toBe(false);
   });
 });

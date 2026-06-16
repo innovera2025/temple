@@ -1,6 +1,7 @@
 import { FormEvent, ReactElement, useState } from "react";
 import { Button } from "../../design-system";
 import { Icon } from "../../layout/icons";
+import { AuthShell } from "../auth/auth-shell";
 import { ForgotPasswordForm } from "../auth/recovery-view";
 import type { RecoveryApiOptions } from "../auth/recovery";
 import {
@@ -41,63 +42,63 @@ export function DevoteeLoginView({ api, onAuthenticated, recoveryOptions }: Devo
   const [forgotOpen, setForgotOpen] = useState(false);
 
   return (
-    <div className="devotee-auth">
-      <div className="devotee-auth-card card">
-        <div className="devotee-auth-brand">
-          <div className="a-seal">
-            <Icon name="lotus" size={26} />
-          </div>
-          <div>
-            <div className="devotee-auth-title">ร่วมบุญออนไลน์</div>
-            <div className="devotee-auth-sub">สำหรับญาติโยม · เลือกวัดและร่วมทำบุญได้ทุกวัดในระบบ</div>
-          </div>
-        </div>
-
-        <div className="seg" role="tablist" aria-label="เข้าสู่ระบบหรือสมัครสมาชิก">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === "login"}
-            className={mode === "login" ? "active" : ""}
-            onClick={() => setMode("login")}
-          >
-            เข้าสู่ระบบ
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === "register"}
-            className={mode === "register" ? "active" : ""}
-            onClick={() => setMode("register")}
-          >
-            สมัครสมาชิก
-          </button>
-        </div>
-
-        {mode === "login" ? (
-          forgotOpen && recoveryOptions ? (
-            <ForgotPasswordForm options={recoveryOptions} plane="devotee" onClose={() => setForgotOpen(false)} />
-          ) : (
-            <>
-              <LoginForm api={api} onAuthenticated={onAuthenticated} />
-              {recoveryOptions ? (
-                <button type="button" className="auth-link" onClick={() => setForgotOpen(true)}>
-                  ลืมรหัสผ่าน?
-                </button>
-              ) : null}
-            </>
-          )
-        ) : (
-          <RegisterForm api={api} onAuthenticated={onAuthenticated} />
-        )}
+    <AuthShell>
+      <div className="auth-tabs" role="tablist" aria-label="เข้าสู่ระบบหรือสมัครสมาชิก">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "login"}
+          className={mode === "login" ? "active" : ""}
+          onClick={() => setMode("login")}
+        >
+          เข้าสู่ระบบ
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "register"}
+          className={mode === "register" ? "active" : ""}
+          onClick={() => setMode("register")}
+        >
+          สมัครสมาชิก
+        </button>
       </div>
-    </div>
+
+      {mode === "login" ? (
+        forgotOpen && recoveryOptions ? (
+          <>
+            <div className="auth-kicker">ลืมรหัสผ่าน</div>
+            <h2>ตั้งรหัสผ่านใหม่</h2>
+            <ForgotPasswordForm options={recoveryOptions} plane="devotee" onClose={() => setForgotOpen(false)} />
+          </>
+        ) : (
+          <>
+            <div className="auth-kicker">ญาติโยม</div>
+            <h2>ร่วมบุญออนไลน์</h2>
+            <p className="a-hint">เลือกวัดและร่วมทำบุญได้ทุกวัดในระบบ · เก็บใบอนุโมทนาไว้ในที่เดียว</p>
+            <LoginForm
+              api={api}
+              onAuthenticated={onAuthenticated}
+              onForgot={recoveryOptions ? () => setForgotOpen(true) : undefined}
+            />
+          </>
+        )
+      ) : (
+        <>
+          <div className="auth-kicker">สมัครสมาชิก</div>
+          <h2>สร้างบัญชีญาติโยม</h2>
+          <p className="a-hint">ร่วมบุญ จองพิธี และติดตามรายการของคุณกับทุกวัดในระบบ</p>
+          <RegisterForm api={api} onAuthenticated={onAuthenticated} />
+        </>
+      )}
+    </AuthShell>
   );
 }
 
-function LoginForm({ api, onAuthenticated }: DevoteeLoginViewProps): ReactElement {
+function LoginForm({ api, onAuthenticated, onForgot }: DevoteeLoginViewProps & { onForgot?: () => void }): ReactElement {
   const [values, setValues] = useState<DevoteeLoginValues>(emptyLogin);
   const [errors, setErrors] = useState<DevoteeLoginErrors>({});
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -136,17 +137,38 @@ function LoginForm({ api, onAuthenticated }: DevoteeLoginViewProps): ReactElemen
       </div>
       <div className="field">
         <label htmlFor="devotee-login-password">รหัสผ่าน</label>
-        <input
-          id="devotee-login-password"
-          className="control"
-          type="password"
-          autoComplete="current-password"
-          value={values.password}
-          onChange={(event) => setValues((v) => ({ ...v, password: event.target.value }))}
-          aria-invalid={errors.password ? true : undefined}
-        />
+        <div style={{ position: "relative" }}>
+          <input
+            id="devotee-login-password"
+            className="control"
+            style={{ paddingRight: 44, width: "100%" }}
+            type={showPassword ? "text" : "password"}
+            autoComplete="current-password"
+            value={values.password}
+            onChange={(event) => setValues((v) => ({ ...v, password: event.target.value }))}
+            aria-invalid={errors.password ? true : undefined}
+          />
+          <button
+            type="button"
+            className="pw-toggle"
+            onClick={() => setShowPassword((v) => !v)}
+            aria-label={showPassword ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน"}
+            aria-pressed={showPassword}
+            title={showPassword ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน"}
+          >
+            <Icon name="eye" size={16} />
+          </button>
+        </div>
         {errors.password ? <p className="error-text">{errors.password}</p> : null}
       </div>
+      {onForgot ? (
+        <div className="between">
+          <span />
+          <button type="button" className="auth-link" onClick={onForgot}>
+            ลืมรหัสผ่าน?
+          </button>
+        </div>
+      ) : null}
       {error ? <p className="auth-error" role="alert">{error}</p> : null}
       <Button type="submit" variant="primary" className="btn-block" disabled={busy}>
         {busy ? "กำลังเข้าสู่ระบบ…" : "เข้าสู่ระบบ"}

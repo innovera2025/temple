@@ -70,16 +70,19 @@ describe("LoginScreen — design-backed brand + copy", () => {
     expect(html).toContain("ระบบจัดการวัด");
     expect(html).toContain("ระบบจัดการวัดออนไลน์ สำหรับเจ้าหน้าที่และญาติโยม");
     expect(html).toContain("จองศาลา จองกุฏิ แจ้งบวช ฌาปนกิจ และร่วมบุญออนไลน์");
-    expect(html).toContain("ขอเชิญร่วมบุญ");
-    expect(html).toContain("เข้าสู่ระบบเพื่อจองบริการของวัด ร่วมบุญ หรือจัดการงานวัด");
+    expect(html).toContain("ยินดีต้อนรับกลับ");
+    expect(html).toContain("ลงชื่อเข้าใช้เพื่อจัดการงานของวัด");
     expect(html).toContain("auth-temple");
     // The submit/tab call-to-action.
     expect(html).toContain("เข้าสู่ระบบ");
-    // No specific temple is branded pre-login (the tenant is unknown), and
-    // production defaults hide both demo accounts and the social buttons.
+    // Social sign-in (Google/Facebook) is shown by default per the design.
+    expect(html).toContain("soc-btn");
+    expect(html).toContain("Google");
+    expect(html).toContain("Facebook");
+    expect(html).toContain("หรือใช้อีเมล");
+    // No specific temple is branded pre-login (the tenant is unknown).
     expect(html).not.toContain("วัดธรรมสถิตวนาราม");
     expect(html).not.toContain("บัญชีตัวอย่าง (เดโม)");
-    expect(html).not.toContain("soc-btn");
   });
 
   it("shows the session-expired notice banner when one is passed", () => {
@@ -92,14 +95,19 @@ describe("LoginScreen — design-backed brand + copy", () => {
 });
 
 describe("LoginScreen — register/social flows", () => {
-  it("renders social sign-in enabled (when opted in) while forgot-password remains disabled", async () => {
+  it("renders social sign-in with brand logos and reports 'coming soon' on click", async () => {
     const container = await mount(
-      <LoginScreen api={testApi()} onAuthenticated={noop} showSocial />,
+      <LoginScreen api={testApi()} onAuthenticated={noop} />,
     );
     const social = Array.from(container.querySelectorAll<HTMLButtonElement>(".soc-btn"));
     expect(social.length).toBe(2);
     expect(social.every((b) => b.disabled)).toBe(false);
-    expect(container.textContent).toContain("Google/Facebook จะใช้งานได้เมื่อ backend ตั้งค่า OAuth provider แล้ว");
+    // Brand logos render as inline SVGs.
+    expect(social[0]?.querySelector("svg")).not.toBeNull();
+    // No dead-end: the OAuth flow is not wired yet, so clicking shows a
+    // coming-soon notice instead of navigating to the provider.
+    await click(social[0] ?? null);
+    expect(container.textContent).toContain("เปิดให้บริการเร็วๆ นี้");
 
     const forgot = container.querySelector<HTMLButtonElement>(".auth-link");
     expect(forgot?.disabled).toBe(true);
