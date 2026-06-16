@@ -156,7 +156,22 @@ export interface CeremoniesApiClientOptions {
 }
 
 interface ApiErrorBody {
-  error?: { message?: string };
+  error?: { message?: string; details?: Array<{ field?: string; message?: string }> };
+}
+
+/**
+ * Build a human-readable error from an API error body. Validation failures (422)
+ * return the generic "ข้อมูลไม่ถูกต้อง" with per-field `details`; surface those so
+ * temple staff see exactly which field is wrong (e.g. "ต้องระบุชื่องาน") instead of a
+ * vague message they cannot act on. Falls back to the top-level message.
+ */
+function apiErrorMessage(body: ApiErrorBody, fallback = "เกิดข้อผิดพลาดในการเชื่อมต่อระบบ"): string {
+  const details = body.error?.details;
+  if (Array.isArray(details) && details.length > 0) {
+    const lines = details.map((d) => d?.message).filter((m): m is string => typeof m === "string" && m.trim() !== "");
+    if (lines.length > 0) return lines.join(" • ");
+  }
+  return body.error?.message ?? fallback;
 }
 
 export function createCeremoniesApiClient(options: CeremoniesApiClientOptions): CeremoniesApi {
@@ -169,7 +184,7 @@ export function createCeremoniesApiClient(options: CeremoniesApiClientOptions): 
   const one = async (response: Response): Promise<Ceremony> => {
     const body = (await response.json().catch(() => ({}))) as Record<string, unknown> & ApiErrorBody;
     if (!response.ok) {
-      throw new Error(body.error?.message ?? "เกิดข้อผิดพลาดในการเชื่อมต่อระบบ");
+      throw new Error(apiErrorMessage(body));
     }
     return body.ceremony as Ceremony;
   };
@@ -181,7 +196,7 @@ export function createCeremoniesApiClient(options: CeremoniesApiClientOptions): 
       });
       const body = (await response.json().catch(() => ({}))) as Record<string, unknown> & ApiErrorBody;
       if (!response.ok) {
-        throw new Error(body.error?.message ?? "เกิดข้อผิดพลาดในการเชื่อมต่อระบบ");
+        throw new Error(apiErrorMessage(body));
       }
       return (body.ceremonies ?? []) as Ceremony[];
     },
@@ -213,7 +228,7 @@ export function createCeremoniesApiClient(options: CeremoniesApiClientOptions): 
       );
       const body = (await response.json().catch(() => ({}))) as Record<string, unknown> & ApiErrorBody;
       if (!response.ok) {
-        throw new Error(body.error?.message ?? "เกิดข้อผิดพลาดในการเชื่อมต่อระบบ");
+        throw new Error(apiErrorMessage(body));
       }
       return (body.halls ?? []) as HallView[];
     },
@@ -225,7 +240,7 @@ export function createCeremoniesApiClient(options: CeremoniesApiClientOptions): 
       });
       const body = (await response.json().catch(() => ({}))) as Record<string, unknown> & ApiErrorBody;
       if (!response.ok) {
-        throw new Error(body.error?.message ?? "เกิดข้อผิดพลาดในการเชื่อมต่อระบบ");
+        throw new Error(apiErrorMessage(body));
       }
       return body.hall as HallView;
     },
@@ -237,7 +252,7 @@ export function createCeremoniesApiClient(options: CeremoniesApiClientOptions): 
       });
       const body = (await response.json().catch(() => ({}))) as Record<string, unknown> & ApiErrorBody;
       if (!response.ok) {
-        throw new Error(body.error?.message ?? "เกิดข้อผิดพลาดในการเชื่อมต่อระบบ");
+        throw new Error(apiErrorMessage(body));
       }
       return body.hall as HallView;
     },

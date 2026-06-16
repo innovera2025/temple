@@ -704,6 +704,13 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .tbl tbody tr.clickable:hover { background: var(--surface-2); }
 .tbl .muted { color: var(--ink-3); }
 .tbl .mono, .mono { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-2); }
+
+/* กิจกรรมและพิธี (events) — give the dense filter/table page room to breathe.
+   Scoped to .events-card / .events-filters so other list pages are untouched. */
+.t-toolbar.events-filters { row-gap: 12px; padding: 14px 16px 16px; }
+.seg-wrap { flex-wrap: wrap; }
+.events-card .tbl thead th { padding: 11px 16px; }
+.events-card .tbl tbody td { padding: 14px 16px; }
 .t-foot { padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--ink-3); }
 .money { font-variant-numeric: tabular-nums; font-weight: 600; }
 .money.credit { color: var(--credit); }

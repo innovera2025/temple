@@ -984,7 +984,7 @@ function ceremonyRowActions(
   return (
     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
       {btns.map((b) => (
-        <Button key={b.next} variant={b.variant} disabled={busy} onClick={() => onChange(e.id, b.next)}>
+        <Button key={b.next} variant={b.variant} size="sm" disabled={busy} onClick={() => onChange(e.id, b.next)}>
           {b.label}
         </Button>
       ))}
@@ -1134,14 +1134,14 @@ export function DesignEvents({ api, personnelApi, canWrite, canManageHalls }: { 
         actions={canWrite ? (
           <>
             {canManageHalls ? <Button variant="secondary" icon={<Icon name="building" size={15} />} onClick={() => { setHallErr(null); setManagingHalls(true); }}>จัดการศาลา</Button> : null}
-            <Button variant="primary" icon={<Icon name="plus" size={15} />} onClick={openCreate}>จองกิจกรรม</Button>
+            <Button variant="primary" icon={<Icon name="plus" size={15} />} onClick={openCreate}>สร้างกิจกรรม</Button>
           </>
         ) : undefined} />
       {error ? <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: "var(--r)", background: "var(--danger-tint)", color: "var(--danger)", fontSize: 13 }}>โหลดข้อมูลกิจกรรมไม่สำเร็จ: {error}</div> : null}
       <div className="split">
-        <Card>
+        <Card className="events-card">
           {requestedCount > 0 ? (
-            <div style={{ marginBottom: 12, padding: "9px 13px", borderRadius: "var(--r)", background: "var(--accent-tint-2)", border: "1px solid var(--accent-line)", color: "var(--accent)", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ margin: "16px 16px 0", padding: "10px 14px", borderRadius: "var(--r)", background: "var(--accent-tint-2)", border: "1px solid var(--accent-line)", color: "var(--accent)", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
               <Icon name="lotus" size={15} />
               มีคำขอจองจากญาติโยมรอยืนยัน {requestedCount} รายการ
               {status !== "requested" ? (
@@ -1149,17 +1149,17 @@ export function DesignEvents({ api, personnelApi, canWrite, canManageHalls }: { 
               ) : null}
             </div>
           ) : null}
-          {actionErr ? <div className="error-text" style={{ marginBottom: 10 }} role="alert">{actionErr}</div> : null}
-          <Toolbar>
-            <div className="seg">
+          {actionErr ? <div className="error-text" style={{ margin: "12px 16px 0" }} role="alert">{actionErr}</div> : null}
+          <Toolbar className="events-filters">
+            <div className="seg seg-wrap">
               <button type="button" className={type === "all" ? "active" : ""} onClick={() => setType("all")}>ทั้งหมด</button>
               {CEREMONY_TYPE_OPTIONS.map((t) => <button key={t.value} type="button" className={type === t.value ? "active" : ""} onClick={() => setType(t.value)}>{t.label}</button>)}
             </div>
-            <div className="seg" style={{ marginLeft: 8 }} aria-label="กรองตามสถานะ">
+            <span className="muted" style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>{filtered.length} กิจกรรม</span>
+            <div className="seg seg-wrap" style={{ flexBasis: "100%" }} aria-label="กรองตามสถานะ">
               <button type="button" className={status === "all" ? "active" : ""} onClick={() => setStatus("all")}>ทุกสถานะ</button>
               {CEREMONY_STATUS_OPTIONS.map((s) => <button key={s.value} type="button" className={status === s.value ? "active" : ""} onClick={() => setStatus(s.value)}>{s.label}</button>)}
             </div>
-            <span className="muted" style={{ marginLeft: "auto" }}>{filtered.length} กิจกรรม</span>
           </Toolbar>
           <Table>
             <thead><tr><th>กิจกรรม</th><th>ประเภท</th><th>วันที่ / เวลา</th><th>สถานที่</th><th className="num">นิมนต์พระ</th><th>สถานะ</th>{canWrite ? <th>การจัดการ</th> : null}</tr></thead>
@@ -1206,8 +1206,9 @@ export function DesignEvents({ api, personnelApi, canWrite, canManageHalls }: { 
       </div>
 
       {creating ? (
-        <Modal title="จองกิจกรรม / พิธี" sub="บันทึกงานบุญ พิธี หรือกิจกรรมใหม่" onClose={() => setCreating(false)}
+        <Modal title="สร้างกิจกรรม / พิธี" sub="บันทึกงานบุญ พิธี หรือกิจกรรมใหม่" onClose={() => setCreating(false)}
           footer={<><Button variant="secondary" onClick={() => setCreating(false)}>ยกเลิก</Button><Button variant="primary" disabled={saving} onClick={() => void submitCreate()}>{saving ? "กำลังบันทึก…" : "บันทึก"}</Button></>}>
+          {saveErr ? <div className="error-text" role="alert" style={{ marginBottom: 12, padding: "10px 14px", borderRadius: "var(--r)", background: "var(--danger-tint)" }}>บันทึกไม่สำเร็จ: {saveErr}</div> : null}
           <div className="field"><label>ประเภทงาน</label>
             <select className="control" value={cType} onChange={(e) => setCType(e.target.value as CeremonyType)}>
               {CEREMONY_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -1253,7 +1254,6 @@ export function DesignEvents({ api, personnelApi, canWrite, canManageHalls }: { 
             <input type="checkbox" checked={cPublic} onChange={(e) => setCPublic(e.target.checked)} />
             <span>เผยแพร่กิจกรรมนี้สู่หน้าสาธารณะ (ให้ญาติโยมทั่วไปเห็น)</span>
           </label>
-          {saveErr ? <p className="error-text">{saveErr}</p> : null}
         </Modal>
       ) : null}
 

@@ -2,7 +2,7 @@ import { act, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DesignEvents } from "./design-backed-pages";
-import type { CeremoniesApi, Ceremony } from "./ceremonies/ceremonies";
+import { createCeremoniesApiClient, type CeremoniesApi, type Ceremony } from "./ceremonies/ceremonies";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const mounted: { root: Root; container: HTMLElement }[] = [];
@@ -84,7 +84,7 @@ describe("DesignEvents — wired to /ceremonies", () => {
   it("hides the booking button without write access", async () => {
     const api = { list: vi.fn(async () => [] as Ceremony[]) } as unknown as CeremoniesApi;
     const container = await mount(<DesignEvents api={api} />);
-    expect(byText(container, "button", "จองกิจกรรม")).toBeNull();
+    expect(byText(container, "button", "สร้างกิจกรรม")).toBeNull();
   });
 
   it("surfaces the devotee 'requested' queue and confirms a booking via the audited update", async () => {
@@ -124,7 +124,7 @@ describe("DesignEvents — wired to /ceremonies", () => {
   it("books a ceremony via the modal when canWrite", async () => {
     const api = { list: vi.fn(async () => [] as Ceremony[]), create: vi.fn(async () => CEREMONY) } as unknown as CeremoniesApi;
     const container = await mount(<DesignEvents api={api} canWrite />);
-    await click(byText(container, "button", "จองกิจกรรม"));
+    await click(byText(container, "button", "สร้างกิจกรรม"));
     expect(container.querySelector(".modal")).not.toBeNull();
     const inputs = container.querySelectorAll(".modal input");
     await setValue(inputs[0] ?? null, "งานทดสอบ"); // title
@@ -153,7 +153,7 @@ describe("DesignEvents — wired to /ceremonies", () => {
     } as unknown as import("./personnel/personnel").PersonnelApi;
 
     const container = await mount(<DesignEvents api={api} personnelApi={personnelApi} canWrite canManageHalls />);
-    await click(byText(container, "button", "จองกิจกรรม"));
+    await click(byText(container, "button", "สร้างกิจกรรม"));
 
     // hall options come from the registry; non-monk personnel are filtered out
     expect(container.textContent).toContain("ศาลาการเปรียญ");
@@ -177,5 +177,59 @@ describe("DesignEvents — wired to /ceremonies", () => {
     };
     expect(arg.hallId).toBe("44444444-4444-4444-8444-444444444444");
     expect(arg.monkPersonnelIds).toEqual(["55555555-5555-4555-8555-555555555555"]);
+  });
+
+  it("shows a visible error banner at the top of the modal when the create is rejected", async () => {
+    const api = {
+      list: vi.fn(async () => [] as Ceremony[]),
+      create: vi.fn(async () => {
+        throw new Error("ต้องระบุชื่องาน • ต้องระบุวันที่จัดงาน (YYYY-MM-DD)");
+      }),
+    } as unknown as CeremoniesApi;
+    const container = await mount(<DesignEvents api={api} canWrite />);
+    await click(byText(container, "button", "สร้างกิจกรรม"));
+    await click(byText(container, ".modal button", "บันทึก"));
+
+    const alert = container.querySelector('.modal [role="alert"]') as HTMLElement | null;
+    expect(alert).not.toBeNull();
+    expect(alert?.textContent).toContain("ต้องระบุชื่องาน");
+    // Banner is the first child of the modal body (above the fold), not buried below every field.
+    expect(container.querySelector(".modal-body")?.firstElementChild).toBe(alert);
+  });
+});
+
+describe("createCeremoniesApiClient — error surfacing", () => {
+  it("joins per-field validation details so the message names the bad fields", async () => {
+    const fetchFn = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          error: {
+            message: "ข้อมูลไม่ถูกต้อง",
+            details: [
+              { field: "title", message: "ต้องระบุชื่องาน" },
+              { field: "ceremonyDate", message: "ต้องระบุวันที่จัดงาน" },
+            ],
+          },
+        }),
+        { status: 422, headers: { "content-type": "application/json" } },
+      ),
+    );
+    const client = createCeremoniesApiClient({ baseUrl: "http://api", getToken: () => "t", fetchFn });
+    await expect(client.create({ ceremonyType: "merit", title: "", ceremonyDate: "" } as never)).rejects.toThrow(
+      "ต้องระบุชื่องาน • ต้องระบุวันที่จัดงาน",
+    );
+  });
+
+  it("falls back to the top-level message when there are no details", async () => {
+    const fetchFn = vi.fn(async () =>
+      new Response(JSON.stringify({ error: { message: "ไม่มีสิทธิ์" } }), {
+        status: 403,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const client = createCeremoniesApiClient({ baseUrl: "http://api", getToken: () => "t", fetchFn });
+    await expect(
+      client.create({ ceremonyType: "merit", title: "x", ceremonyDate: "2026-07-20" } as never),
+    ).rejects.toThrow("ไม่มีสิทธิ์");
   });
 });
